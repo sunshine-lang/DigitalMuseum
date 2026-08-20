@@ -279,7 +279,7 @@ export default function Home() {
           />
         )}
       </section>
-      {toast && <div className="toast"><span>✓</span>{toast}</div>}
+      {toast && <div className="toast" role="status" aria-live="polite"><span>✓</span>{toast}</div>}
     </main>
   );
 }
