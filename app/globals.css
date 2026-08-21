@@ -1043,7 +1043,7 @@ button:focus-visible {
 
 .progress-line i {
   display: block;
-  width: 72%;
+  width: 100%;
   height: 100%;
   background: linear-gradient(90deg, #607766, #c7745c);
 }
@@ -2179,6 +2179,17 @@ button:focus-visible {
 .inference-claim .claim-tag span { color: #9b6d32; }
 .inference-claim.decided { border-color: #d5c7ac; border-left-width: 3px; }
 
+.user-claim {
+  border-left-color: #647f98;
+  background: #f8fbfd;
+}
+
+.user-claim .claim-tag span { color: #526f89; }
+
+.user-claim .why-inference { background: #edf3f7; }
+.user-claim .why-inference span { color: #526f89; }
+.user-claim .why-inference p { color: #718393; }
+
 .why-inference {
   display: grid;
   grid-template-columns: 105px 1fr;
@@ -2338,6 +2349,28 @@ button:focus-visible {
   background: rgba(214,189,151,.55);
 }
 
+.evidence-level-secondary {
+  border-color: #cdd8df;
+  background:
+    linear-gradient(rgba(78,105,126,.045) 1px, transparent 1px),
+    #eef4f7;
+  background-size: 100% 23px;
+}
+
+.evidence-level-missing {
+  border-style: dashed;
+  border-color: #bbbdbb;
+  color: #6f7475;
+  background:
+    linear-gradient(rgba(94,99,100,.04) 1px, transparent 1px),
+    #f1f2f1;
+  background-size: 100% 23px;
+}
+
+.evidence-level-missing::before { background: rgba(177,179,174,.48); }
+
+.evidence-audit-lines { margin-top: 24px; }
+
 .paper-label {
   color: #8e826f;
   font-size: 7px;
@@ -2478,6 +2511,11 @@ button:focus-visible {
   background: transparent;
   font-size: 8px;
   cursor: pointer;
+}
+
+.review-footer > div:first-child button:disabled {
+  opacity: .35;
+  cursor: not-allowed;
 }
 
 .review-footer > div:first-child span {
