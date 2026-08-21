@@ -48,13 +48,15 @@ class EvidenceOccurrence(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     stage_id: Mapped[str] = mapped_column(ForeignKey("stages.id", ondelete="CASCADE"))
-    blob_sha256: Mapped[str] = mapped_column(ForeignKey("evidence_blobs.sha256"))
+    blob_sha256: Mapped[str | None] = mapped_column(
+        ForeignKey("evidence_blobs.sha256"), nullable=True
+    )
     original_filename: Mapped[str] = mapped_column(String(255))
     status: Mapped[str] = mapped_column(String(32), default="completed")
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     stage: Mapped[Stage] = relationship(back_populates="occurrences")
-    blob: Mapped[EvidenceBlob] = relationship(back_populates="occurrences")
+    blob: Mapped[EvidenceBlob | None] = relationship(back_populates="occurrences")
     coverage_items: Mapped[list[CoverageItem]] = relationship(
         back_populates="occurrence", cascade="all, delete-orphan"
     )

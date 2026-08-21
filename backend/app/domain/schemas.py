@@ -12,6 +12,11 @@ class DataEnvelope(BaseModel, Generic[T]):
     data: T
 
 
+class HealthOut(BaseModel):
+    status: Literal["ok"]
+    phase: Literal["phase-0-note-tracer"]
+
+
 class StageCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     starts_on: date
@@ -73,7 +78,7 @@ class EventOut(BaseModel):
 class OccurrenceOut(BaseModel):
     id: str
     stage_id: str
-    blob_sha256: str
+    blob_sha256: str | None
     original_filename: str
     status: str
     imported_at: datetime

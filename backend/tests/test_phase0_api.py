@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -182,6 +183,78 @@ def test_invalid_notes_fail_closed_without_creating_events(
     events = client.get(f"/api/v1/stages/{stage_id}/events")
     assert events.status_code == 200
     assert events.json()["data"] == []
+    coverage = client.get(f"/api/v1/stages/{stage_id}/coverage")
+    assert coverage.status_code == 200
+    assert coverage.json()["data"][-1]["status"] == "failed"
+    assert coverage.json()["data"][-1]["error_code"] == expected_code
+
+
+def test_note_extension_media_type_binary_signatures_and_controls_are_checked(
+    client: TestClient,
+) -> None:
+    stage_id = create_stage(client)
+
+    markdown_alias = client.post(
+        f"/api/v1/stages/{stage_id}/notes",
+        files={"file": ("note.markdown", b"hello", "text/markdown")},
+    )
+    disguised_pdf = client.post(
+        f"/api/v1/stages/{stage_id}/notes",
+        files={"file": ("note.txt", b"%PDF-1.7", "text/plain")},
+    )
+    mismatched_media_type = client.post(
+        f"/api/v1/stages/{stage_id}/notes",
+        files={"file": ("note.txt", b"plain text", "application/pdf")},
+    )
+    control_bytes = client.post(
+        f"/api/v1/stages/{stage_id}/notes",
+        files={"file": ("note.txt", b"hello\x01world", "text/plain")},
+    )
+
+    assert markdown_alias.status_code == 415
+    assert markdown_alias.json()["error"]["code"] == "unsupported_note_type"
+    assert disguised_pdf.status_code == 415
+    assert disguised_pdf.json()["error"]["code"] == "invalid_note_content"
+    assert mismatched_media_type.status_code == 415
+    assert mismatched_media_type.json()["error"]["code"] == "invalid_note_media_type"
+    assert control_bytes.status_code == 415
+    assert control_bytes.json()["error"]["code"] == "invalid_note_content"
+
+
+def test_yaml_timestamp_returns_the_note_date_validation_error(client: TestClient) -> None:
+    stage_id = create_stage(client)
+    note = b"---\ndate: 2026-05-20T12:00:00\n---\n\nA valid paragraph.\n"
+
+    response = client.post(
+        f"/api/v1/stages/{stage_id}/notes",
+        files={"file": ("timestamp.md", note, "text/markdown")},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_note_date"
+    coverage = client.get(f"/api/v1/stages/{stage_id}/coverage").json()["data"]
+    assert coverage[-1]["step"] == "parsed_locally"
+    assert coverage[-1]["status"] == "failed"
+
+
+def test_new_content_file_is_removed_when_database_commit_fails(
+    client: TestClient,
+    app_paths: tuple[str, Path],
+) -> None:
+    stage_id = create_stage(client)
+    note = b"A database failure must not leave an orphan evidence file.\n"
+
+    with (
+        patch("sqlalchemy.orm.Session.commit", side_effect=RuntimeError("database offline")),
+        pytest.raises(RuntimeError, match="database offline"),
+    ):
+        client.post(
+            f"/api/v1/stages/{stage_id}/notes",
+            files={"file": ("failure.txt", note, "text/plain")},
+        )
+
+    expected_hash = hashlib.sha256(note).hexdigest()
+    assert not (app_paths[1] / expected_hash[:2] / f"{expected_hash}.txt").exists()
 
 
 def test_review_uses_revision_guard_and_survives_app_restart(

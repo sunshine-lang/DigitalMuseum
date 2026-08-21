@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import yaml
@@ -99,6 +99,8 @@ def _metadata_date(metadata: dict[str, object]) -> date | None:
     value = metadata.get("date")
     if value is None:
         return None
+    if isinstance(value, datetime):
+        raise ApiError(422, "invalid_note_date", "笔记日期必须使用 YYYY-MM-DD")
     if isinstance(value, date):
         return value
     try:

@@ -67,7 +67,7 @@ npm run dev:phase0
 4. 打开候选事件，核对 Core Claim、逐字引用、原文行号和文件哈希。
 5. 确认页面仍标记“候选事件”，没有自动当成正式事实。
 6. 选择“确认发生过”“标记存疑”“证据不足”或“排除事件”，刷新页面后决定仍应存在。
-7. 上传 `.pdf` 或包含二进制内容的 `.txt`，页面应明确拒绝，事件数量不增加。
+7. 上传 `.pdf` 或包含二进制内容的 `.txt`，页面应明确拒绝，事件数量不增加；Coverage 会保留失败步骤和错误代码。
 8. 访问 `/demo`，确认原策展演示仍可打开，但它不代表 Phase 0 已验收。
 
 当前原文未加密，只用于非敏感测试素材；不要导入真实隐私资料。
@@ -78,7 +78,7 @@ npm run dev:phase0
 
 ```bash
 npm run test:backend
-cd backend && UV_CACHE_DIR=../.sites-runtime/uv-cache uv run ruff check app tests
+cd backend && UV_CACHE_DIR=../.sites-runtime/uv-cache uv run ruff check .
 ```
 
 前端：

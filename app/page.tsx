@@ -240,7 +240,7 @@ export default function Phase0Workspace() {
                 <div><h2>导入第一篇 Note</h2><p>原文按 SHA-256 内容哈希保存，不会被候选主张覆盖。</p></div>
               </div>
               <label className="phase0-file-input">
-                <input name="note" type="file" accept=".md,.markdown,.txt,text/plain,text/markdown" />
+                <input name="note" type="file" accept=".md,.txt,text/plain,text/markdown" />
                 <span>选择 Markdown / TXT 文件</span>
                 <small>UTF-8 · 最大 2 MiB · 暂勿使用真实敏感资料</small>
               </label>

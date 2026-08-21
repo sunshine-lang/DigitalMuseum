@@ -76,7 +76,7 @@ candidate → rejected
 
 - `POST /api/v1/stages`：创建阶段；校验名称和起止日期。
 - `GET /api/v1/stages/{stage_id}`：读取阶段及统计。
-- `POST /api/v1/stages/{stage_id}/notes`：上传 `.md`/`.txt`；成功返回 Coverage、Candidate Event 和锚点；超限/二进制/格式错误返回统一错误。
+- `POST /api/v1/stages/{stage_id}/notes`：上传 `.md`/`.txt`；成功返回 Coverage、Candidate Event 和锚点；超限/二进制/格式错误返回统一错误，并为有效阶段保留失败 Coverage。通过基础文本校验的原文会先完成内容寻址保存，再进入解析。
 - `GET /api/v1/stages/{stage_id}/coverage`：查看每个输入的保存、解析、候选生成状态。
 - `GET /api/v1/stages/{stage_id}/events`：查看候选和已审阅事件。
 - `GET /api/v1/events/{event_id}`：查看 Claim 和 Evidence Anchor。

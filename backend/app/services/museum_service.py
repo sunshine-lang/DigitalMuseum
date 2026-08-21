@@ -56,7 +56,10 @@ def get_stage(session: Session, stage_id: str) -> dict:
 
 def serialize_stage(session: Session, stage: Stage) -> dict:
     evidence_count = session.scalar(
-        select(func.count(EvidenceOccurrence.id)).where(EvidenceOccurrence.stage_id == stage.id)
+        select(func.count(EvidenceOccurrence.id)).where(
+            EvidenceOccurrence.stage_id == stage.id,
+            EvidenceOccurrence.blob_sha256.is_not(None),
+        )
     )
     event_count = session.scalar(
         select(func.count(CandidateEvent.id)).where(CandidateEvent.stage_id == stage.id)
@@ -72,28 +75,54 @@ def serialize_stage(session: Session, stage: Stage) -> dict:
     }
 
 
-def persist_note_candidate(
+def require_stage(session: Session, stage_id: str) -> Stage:
+    stage = session.get(Stage, stage_id)
+    if stage is None:
+        raise ApiError(404, "stage_not_found", "没有找到这个建馆阶段")
+    return stage
+
+
+def record_failed_import(
+    session: Session,
+    *,
+    stage_id: str,
+    original_filename: str,
+    step: str,
+    error_code: str,
+) -> None:
+    stage = require_stage(session, stage_id)
+    occurrence = EvidenceOccurrence(
+        stage_id=stage.id,
+        blob_sha256=None,
+        original_filename=original_filename,
+        status="failed",
+    )
+    occurrence.coverage_items.append(
+        CoverageItem(step=step, status="failed", error_code=error_code)
+    )
+    session.add(occurrence)
+    session.commit()
+
+
+def start_note_import(
     session: Session,
     *,
     stage_id: str,
     original_filename: str,
     media_type: str,
     content: bytes,
-    parsed: ParsedNote,
     upload_dir: Path,
-) -> dict:
-    stage = session.get(Stage, stage_id)
-    if stage is None:
-        raise ApiError(404, "stage_not_found", "没有找到这个建馆阶段")
-    if parsed.occurred_on and not (stage.starts_on <= parsed.occurred_on <= stage.ends_on):
-        raise ApiError(422, "note_outside_stage", "笔记日期不在当前建馆阶段内")
-
+) -> EvidenceOccurrence:
+    stage = require_stage(session, stage_id)
     content_hash = hashlib.sha256(content).hexdigest()
     suffix = Path(original_filename).suffix.lower()
     blob = session.get(EvidenceBlob, content_hash)
+    created_path: Path | None = None
     if blob is None:
         relative_path = Path(content_hash[:2]) / f"{content_hash}{suffix}"
-        _write_content_once(upload_dir / relative_path, content)
+        destination = upload_dir / relative_path
+        if _write_content_once(destination, content):
+            created_path = destination
         blob = EvidenceBlob(
             sha256=content_hash,
             relative_path=relative_path.as_posix(),
@@ -108,8 +137,67 @@ def persist_note_candidate(
         stage_id=stage.id,
         blob_sha256=content_hash,
         original_filename=original_filename,
-        status="completed",
+        status="processing",
     )
+    occurrence.coverage_items.append(CoverageItem(step="stored_locally", status="completed"))
+    session.add(occurrence)
+    try:
+        session.commit()
+    except Exception:
+        session.rollback()
+        if created_path is not None:
+            created_path.unlink(missing_ok=True)
+        raise
+    return occurrence
+
+
+def mark_import_failed(
+    session: Session,
+    *,
+    occurrence_id: str,
+    step: str,
+    error_code: str,
+) -> None:
+    occurrence = session.get(EvidenceOccurrence, occurrence_id)
+    if occurrence is None:
+        return
+    occurrence.status = "failed"
+    existing_steps = {item.step for item in occurrence.coverage_items}
+    if step == "candidate_generated" and "parsed_locally" not in existing_steps:
+        occurrence.coverage_items.append(
+            CoverageItem(
+                step="parsed_locally",
+                status="completed",
+                processor_version=PROCESSOR_VERSION,
+            )
+        )
+    if step not in existing_steps:
+        occurrence.coverage_items.append(
+            CoverageItem(
+                step=step,
+                status="failed",
+                processor_version=PROCESSOR_VERSION if step != "stored_locally" else None,
+                error_code=error_code,
+            )
+        )
+    session.commit()
+
+
+def persist_note_candidate(
+    session: Session,
+    *,
+    occurrence_id: str,
+    parsed: ParsedNote,
+) -> dict:
+    occurrence = session.get(EvidenceOccurrence, occurrence_id)
+    if occurrence is None:
+        raise ApiError(404, "occurrence_not_found", "没有找到这次笔记导入")
+    stage = require_stage(session, occurrence.stage_id)
+    if parsed.occurred_on and not (stage.starts_on <= parsed.occurred_on <= stage.ends_on):
+        raise ApiError(422, "note_outside_stage", "笔记日期不在当前建馆阶段内")
+    if occurrence.blob is None:
+        raise ApiError(500, "missing_evidence_blob", "原始证据没有完成本地保存")
+
     event = CandidateEvent(
         stage_id=stage.id,
         occurrence=occurrence,
@@ -128,7 +216,7 @@ def persist_note_candidate(
     )
     claim.anchors.append(
         EvidenceAnchor(
-            blob=blob,
+            blob=occurrence.blob,
             quote=parsed.claim_text,
             line_start=parsed.line_start,
             line_end=parsed.line_end,
@@ -136,9 +224,9 @@ def persist_note_candidate(
             char_end=parsed.char_end,
         )
     )
+    occurrence.status = "completed"
     occurrence.coverage_items.extend(
         [
-            CoverageItem(step="stored_locally", status="completed"),
             CoverageItem(
                 step="parsed_locally",
                 status="completed",
@@ -333,18 +421,19 @@ def _load_event(session: Session, event_id: str) -> CandidateEvent:
     return event
 
 
-def _write_content_once(destination: Path, content: bytes) -> None:
+def _write_content_once(destination: Path, content: bytes) -> bool:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
         if destination.read_bytes() != content:
             raise ApiError(500, "evidence_hash_collision", "原始证据存储发生哈希冲突")
-        return
+        return False
     temporary = destination.with_name(f".{destination.name}.{uuid4().hex}.tmp")
     try:
         temporary.write_bytes(content)
         os.replace(temporary, destination)
     finally:
         temporary.unlink(missing_ok=True)
+    return True
 
 
 def _validate_stage_range(starts_on: date, ends_on: date) -> None:
