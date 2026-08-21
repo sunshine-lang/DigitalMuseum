@@ -8,9 +8,16 @@
   "scripts": {
     "install:ci": "bash scripts/install-ci.sh",
     "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vite",
+    "dev:phase0": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vite --port 3001",
     "build": "bash scripts/build-verified.sh",
+    "build:local": "bash scripts/sites-env.sh -- node_modules/.bin/vinext build",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
+    "test:local": "npm run build:local && node --test tests/rendered-html.test.mjs",
+    "test:backend": "cd backend && UV_CACHE_DIR=../.sites-runtime/uv-cache uv run pytest",
+    "backend:sync": "cd backend && UV_CACHE_DIR=../.sites-runtime/uv-cache uv sync --python 3.11",
+    "backend:dev": "cd backend && UV_CACHE_DIR=../.sites-runtime/uv-cache uv run uvicorn app.main:app --host 127.0.0.1 --port 8010 --reload",
+    "typecheck": "tsc --noEmit",
     "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"
   },
@@ -22,6 +29,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",
+    "@cloudflare/workers-types": "^4.20260702.1",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",
@@ -39,5 +47,5 @@
     "wrangler": "4.92.0"
   },
   "type": "module",
-  "displayName": "Digital Museum \u00b7 AI \u4eba\u751f\u6863\u6848\u9986"
+  "displayName": "Digital Museum · AI 人生档案馆"
 }

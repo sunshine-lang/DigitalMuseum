@@ -1,107 +1,111 @@
-# vinext-starter
+# Digital Museum
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+> 把散落的数字痕迹，变成你的人生博物馆。
 
-## Prerequisites
+当前交付是 PRD Phase 0 的第一条纵向切片：
 
-- Node.js `>=22.13.0`
-- Linux with `flock`, `curl`, and GNU `timeout`
-
-## Sites Lifecycle
-
-The Sites lifecycle CLI runs the locked dependency install before returning this checkout. Edit the source under `app/`, then checkpoint when a coherent milestone is ready to inspect or share. The remote Sites builder runs `npm run build` against the pushed commit. Do not repeat install or build as a normal pre-checkpoint step.
-
-This starter does not use `wrangler.jsonc`.
-
-`install:ci` is intentionally a single, non-retrying `npm ci`. It refuses a concurrent install for the same project, consumes a matching image-seeded npm cache with `--prefer-offline` while retaining registry fallback for a missing cache object, otherwise downloads and verifies the complete vinext tarball recorded in `package-lock.json`, limits npm to one socket, and terminates a stalled install. `build` applies a short timeout. These helpers target Linux and use GNU `timeout`; they are not native macOS scripts.
-
-Scripts that need writable project-scoped home, npm, XDG, and temporary paths use `scripts/sites-env.sh`. The `dev` and `start` scripts honor the caller's runtime environment and keep Wrangler logs inside the checkout. The generated `.sites-runtime/` directory is disposable and ignored by Git.
-
-## Included Shape
-
-- edit site code under `app/`
-- `app/chatgpt-auth.ts` provides optional dispatch-owned ChatGPT sign-in helpers
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/index.ts` reads the D1 binding from the Cloudflare Worker environment
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```text
+创建 3–12 个月阶段
+→ 导入 Markdown / TXT Note
+→ 本地保存不可原地改写的原文
+→ 建立带逐字 Evidence Anchor 的候选 Claim / Event
+→ 用户确认、存疑、保持 Unknown 或排除
+→ 审阅状态持久化并可恢复
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+这不是整个 Phase 0，也不是完整产品。Photo、Git、真实模型、Merge/Split、ChatGPT/Codex/WorkBuddy Session、Story、Exhibition 和 Share 尚未实现。原有策展体验保留在 `/demo`，只用于说明后续方向，不能作为当前核心链路已经完成的证据。
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
+## 技术适配
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
+- 前端：延续现有 Next.js + TypeScript + vinext 项目。
+- 本地后端：Python 3.11、FastAPI、Pydantic。
+- 持久化：SQLite + SQLAlchemy + Alembic；原始 Note 以 SHA-256 内容哈希写入本地目录。
+- 解析器：确定性 `note-development-v1`，只生成 Candidate，不调用模型、不推断因果和动机。
+- 测试：pytest 通过公开 API 验证；TypeScript、ESLint、构建与渲染测试验证前端。
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
+完整取舍见 [技术适配声明](docs/technical-adaptation.md) 和 [第一阶段技术开发文档](docs/phase-0-stage-1-note-event-review.md)。
 
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
+## 本地启动
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
+需要：
 
-## Diagnostic Commands
+- Node.js 22 LTS
+- npm
+- Python 3.11
+- uv
 
-- `npm run install:ci`: perform the one bounded lockfile install
-- `npm run dev`: start the Vite/Vinext development server
-- `npm run build`: build the deployable Sites artifact
-- `npm run start`: start the built Vinext application
-- `npm test`: build and verify the rendered development-preview metadata
-- `npm run db:generate`: generate Drizzle migrations after schema changes
+第一次准备依赖：
 
-Use build commands for targeted diagnosis after a remote failure, not as part of the normal checkpoint path.
+```bash
+npm ci
+npm run backend:sync
+```
 
-The timeout defaults can be overridden for a controlled canary with `SITES_INSTALL_TIMEOUT`, `SITES_INSTALL_KILL_AFTER`, `SITES_BUILD_TIMEOUT`, and `SITES_BUILD_KILL_AFTER`. A timeout fails the command; the helpers never retry an unchanged install or build.
+打开两个终端。
 
-## Learn More
+终端 1，启动本地 API：
 
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+```bash
+npm run backend:dev
+```
+
+API 地址：`http://127.0.0.1:8010`；接口文档：`http://127.0.0.1:8010/docs`。
+
+终端 2，启动 Web 工作台：
+
+```bash
+npm run dev:phase0
+```
+
+浏览器打开 `http://127.0.0.1:3001`。默认使用 3001 是为了避开当前机器上已占用的 3000 端口；原有 `npm run dev` 仍保留。
+
+## 小白验收步骤
+
+1. 打开首页，输入阶段名称、开始日期和结束日期；范围必须在 3–12 个月内。
+2. 上传一个 UTF-8 编码、2 MiB 以内的 `.md` 或 `.txt` 文件。
+3. 查看 Processing Coverage：原文保存、本地解析、候选生成都应显示完成。
+4. 打开候选事件，核对 Core Claim、逐字引用、原文行号和文件哈希。
+5. 确认页面仍标记“候选事件”，没有自动当成正式事实。
+6. 选择“确认发生过”“标记存疑”“证据不足”或“排除事件”，刷新页面后决定仍应存在。
+7. 上传 `.pdf` 或包含二进制内容的 `.txt`，页面应明确拒绝，事件数量不增加。
+8. 访问 `/demo`，确认原策展演示仍可打开，但它不代表 Phase 0 已验收。
+
+当前原文未加密，只用于非敏感测试素材；不要导入真实隐私资料。
+
+## 自动化验证
+
+后端：
+
+```bash
+npm run test:backend
+cd backend && UV_CACHE_DIR=../.sites-runtime/uv-cache uv run ruff check app tests
+```
+
+前端：
+
+```bash
+npm run typecheck
+npm run lint
+npm run test:local
+```
+
+`npm test` 保留给带 GNU `timeout` 的 Linux/Sites 构建环境；macOS 本地使用 `npm run test:local`。
+
+本阶段没有模型调用，因此真实模型冒烟为“不适用”，不是“已通过”。以后接入 Reference Provider 时必须增加真实 Key 端到端冒烟，不能用当前确定性测试替代。
+
+## 数据位置与恢复
+
+- SQLite：`data/digital_museum.db`
+- 原始 Note：`data/uploads/{hash前两位}/{完整SHA-256}.{扩展名}`
+- Schema：由 `backend/alembic/` 管理
+
+`data/` 被 Git 忽略。刷新页面和重启后端不会丢失阶段与审阅结果。首页的“退出当前阶段”只清除浏览器中的当前阶段指针，不删除后端档案；本阶段没有实现删除入口。
+
+## 常见错误
+
+- “无法连接本地后端”：确认 `npm run backend:dev` 正在运行，且终端没有报错。
+- “建馆阶段必须在 3 到 12 个月之间”：调整起止日期。
+- “只支持 Markdown 或 TXT 文件”：本阶段不接受 PDF、Word、图片和 Session 导出。
+- “事件已被其他审阅更新”：刷新后重新查看最新 revision，再提交决定。
+
+排查时请提供：操作步骤、页面错误文字、浏览器控制台报错和后端终端最后 30 行；不要发送 API Key 或完整敏感文档。
