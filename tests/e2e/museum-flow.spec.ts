@@ -13,6 +13,13 @@ const noteFiles = [
 ];
 const unsupportedPdf = join(fixtureDir, "09-intentionally-unsupported.pdf");
 
+const photoDir = fileURLToPath(
+  new URL("../../test-data/phase0-stage4-photos", import.meta.url),
+);
+// JPEG 自带 EXIF 拍摄时间（2026-06-15，在阶段范围内）；PNG 没有拍摄时间，应被单独拒绝。
+const photoWithExif = join(photoDir, "IMG_20260615_103000.jpg");
+const photoWithoutExif = join(photoDir, "screenshot-no-exif.png");
+
 async function createStage(page: Page, name: string): Promise<void> {
   await page.getByRole("textbox", { name: "给这段时间取个名字" }).fill(name);
   await page.getByRole("textbox", { name: "从哪一天开始" }).fill("2026-05-22");
@@ -70,6 +77,35 @@ test("完整链路：导入 → 自动聚合 → 合并 → 拆分 → 确认 �
   await page.reload();
   await expect(page.getByText("正在回顾")).toBeVisible();
   await expect(page.getByText("你已确认")).toBeVisible();
+});
+
+test("照片导入：EXIF 时间归入时间线，无拍摄时间的照片单独失败", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await createStage(page, "E2E 自动验收·照片");
+
+  await page
+    .locator('input[name="photos"]')
+    .setInputFiles([photoWithExif, photoWithoutExif]);
+  await page.getByRole("button", { name: "开始整理这些照片" }).click();
+  await expect(page.getByRole("status")).toContainText("已导入 1 张，1 张需要处理");
+
+  await expect(page.getByText("来自照片")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "系统整理出 1 段可能的经历" }),
+  ).toBeVisible();
+
+  // 回到导入页核对逐份结果：成功的 JPEG 与被拒绝的 PNG 分别提示。
+  await page.getByRole("button", { name: /导入记录/ }).click();
+  const reportRows = page.locator(".mvp-import-rows > div");
+  await expect(reportRows).toHaveCount(2);
+  await expect(
+    reportRows.filter({ hasText: "IMG_20260615_103000.jpg" }),
+  ).toContainText("已导入并形成经历草稿");
+  await expect(
+    reportRows.filter({ hasText: "screenshot-no-exif.png" }),
+  ).toContainText("照片缺少可读的 EXIF 拍摄时间");
 });
 
 test("坏文件单独失败：PDF 不影响其他记录导入", async ({ page }) => {

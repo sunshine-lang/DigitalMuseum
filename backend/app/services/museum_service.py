@@ -24,8 +24,10 @@ from app.domain.models import (
 )
 from app.domain.schemas import MergeCreate, ReviewCreate, StageCreate
 from app.services import git_evidence_service as git_evidence
+from app.services import photo_evidence_service as photo_evidence
 from app.services.git_evidence_service import GitEvidence
 from app.services.note_parser import PROCESSOR_VERSION, ParsedNote
+from app.services.photo_evidence_service import PhotoEvidence
 
 AGGREGATION_RULE_VERSION = "note-aggregation-v1"
 STRUCTURAL_STATUSES = {"merged", "split"}
@@ -119,28 +121,17 @@ def start_note_import(
     upload_dir: Path,
 ) -> EvidenceOccurrence:
     stage = require_stage(session, stage_id)
-    content_hash = hashlib.sha256(content).hexdigest()
-    suffix = Path(original_filename).suffix.lower()
-    blob = session.get(EvidenceBlob, content_hash)
-    created_path: Path | None = None
-    if blob is None:
-        relative_path = Path(content_hash[:2]) / f"{content_hash}{suffix}"
-        destination = upload_dir / relative_path
-        if _write_content_once(destination, content):
-            created_path = destination
-        blob = EvidenceBlob(
-            sha256=content_hash,
-            relative_path=relative_path.as_posix(),
-            byte_size=len(content),
-            media_type=media_type,
-        )
-        session.add(blob)
-    else:
-        _write_content_once(upload_dir / blob.relative_path, content)
+    blob, created_path = _get_or_create_blob(
+        session,
+        original_filename=original_filename,
+        media_type=media_type,
+        content=content,
+        upload_dir=upload_dir,
+    )
 
     occurrence = EvidenceOccurrence(
         stage_id=stage.id,
-        blob_sha256=content_hash,
+        blob_sha256=blob.sha256,
         original_filename=original_filename,
         status="processing",
     )
@@ -414,6 +405,142 @@ def _persist_git_candidates(
     session.commit()
     all_events = [serialize_event(_load_event(session, event.id)) for event in created_events]
     return all_events
+
+
+def import_photo_evidence(
+    session: Session,
+    *,
+    stage_id: str,
+    filename: str,
+    media_type: str,
+    content: bytes,
+    upload_dir: Path,
+) -> dict:
+    stage = require_stage(session, stage_id)
+    occurrence = start_note_import(
+        session,
+        stage_id=stage.id,
+        original_filename=filename,
+        media_type=media_type,
+        content=content,
+        upload_dir=upload_dir,
+    )
+    occurrence_id = occurrence.id
+    try:
+        evidence = photo_evidence.analyze_photo(
+            content,
+            filename=filename,
+            starts_on=stage.starts_on,
+            ends_on=stage.ends_on,
+        )
+        descriptor_blob = _store_evidence_blob(
+            session,
+            original_filename=f"{Path(filename).stem}-photo-evidence.txt",
+            media_type="text/plain",
+            content=evidence.descriptor.encode("utf-8"),
+            upload_dir=upload_dir,
+        )
+        result = _persist_photo_candidate(
+            session,
+            occurrence_id=occurrence_id,
+            evidence=evidence,
+            descriptor_blob=descriptor_blob,
+        )
+    except ApiError as exc:
+        mark_import_failed(
+            session,
+            occurrence_id=occurrence_id,
+            step="parsed_locally",
+            error_code=exc.code,
+            processor_version=photo_evidence.PHOTO_PROCESSOR_VERSION,
+        )
+        raise
+    return result
+
+
+def _persist_photo_candidate(
+    session: Session,
+    *,
+    occurrence_id: str,
+    evidence: PhotoEvidence,
+    descriptor_blob: EvidenceBlob,
+) -> dict:
+    occurrence = session.get(EvidenceOccurrence, occurrence_id)
+    if occurrence is None:
+        raise ApiError(404, "occurrence_not_found", "没有找到这次照片导入")
+    stage = require_stage(session, occurrence.stage_id)
+
+    target = _find_aggregation_target(
+        session,
+        stage.id,
+        evidence.event_title,
+        evidence.occurred_on,
+        origins=("note", "aggregated", "git", "photo"),
+    )
+    if target is not None:
+        event = target
+        event.origin = "aggregated"
+        event.aggregation_rule = AGGREGATION_RULE_VERSION
+        event.updated_at = utc_now()
+    else:
+        event = CandidateEvent(
+            stage_id=stage.id,
+            occurrence=occurrence,
+            title=evidence.event_title,
+            occurred_on=evidence.occurred_on,
+            time_precision="exact",
+            status="candidate",
+            revision=0,
+            origin="photo",
+        )
+    claim = Claim(
+        event=event,
+        occurrence_id=occurrence.id,
+        text=evidence.claim_text,
+        epistemic_status="unknown",
+        evidence_role="artifact",
+        processor_version=photo_evidence.PHOTO_PROCESSOR_VERSION,
+        source_title=f"照片 {evidence.filename}"[:200],
+        source_occurred_on=evidence.occurred_on,
+    )
+    claim.anchors.extend(
+        EvidenceAnchor(
+            blob=descriptor_blob,
+            quote=anchor.quote,
+            line_start=anchor.line_start,
+            line_end=anchor.line_end,
+            char_start=anchor.char_start,
+            char_end=anchor.char_end,
+        )
+        for anchor in evidence.anchors
+    )
+    session.add(claim)
+
+    occurrence.status = "completed"
+    occurrence.coverage_items.extend(
+        [
+            CoverageItem(
+                step="parsed_locally",
+                status="completed",
+                processor_version=photo_evidence.PHOTO_PROCESSOR_VERSION,
+            ),
+            CoverageItem(
+                step="candidate_generated",
+                status="completed",
+                processor_version=photo_evidence.PHOTO_PROCESSOR_VERSION,
+            ),
+        ]
+    )
+    session.add(event)
+    session.commit()
+    reloaded_event = _load_event(session, event.id)
+    coverage = list_coverage(session, stage.id)
+    occurrence_coverage = [item for item in coverage if item["occurrence_id"] == occurrence.id]
+    return {
+        "occurrence": serialize_occurrence(occurrence),
+        "event": serialize_event(reloaded_event),
+        "coverage": occurrence_coverage,
+    }
 
 
 def merge_events(session: Session, stage_id: str, payload: MergeCreate) -> dict:
@@ -743,6 +870,60 @@ def _load_event(session: Session, event_id: str) -> CandidateEvent:
     if event is None:
         raise ApiError(404, "event_not_found", "没有找到这个候选事件")
     return event
+
+
+def _get_or_create_blob(
+    session: Session,
+    *,
+    original_filename: str,
+    media_type: str,
+    content: bytes,
+    upload_dir: Path,
+) -> tuple[EvidenceBlob, Path | None]:
+    content_hash = hashlib.sha256(content).hexdigest()
+    suffix = Path(original_filename).suffix.lower()
+    blob = session.get(EvidenceBlob, content_hash)
+    created_path: Path | None = None
+    if blob is None:
+        relative_path = Path(content_hash[:2]) / f"{content_hash}{suffix}"
+        destination = upload_dir / relative_path
+        if _write_content_once(destination, content):
+            created_path = destination
+        blob = EvidenceBlob(
+            sha256=content_hash,
+            relative_path=relative_path.as_posix(),
+            byte_size=len(content),
+            media_type=media_type,
+        )
+        session.add(blob)
+    else:
+        _write_content_once(upload_dir / blob.relative_path, content)
+    return blob, created_path
+
+
+def _store_evidence_blob(
+    session: Session,
+    *,
+    original_filename: str,
+    media_type: str,
+    content: bytes,
+    upload_dir: Path,
+) -> EvidenceBlob:
+    blob, created_path = _get_or_create_blob(
+        session,
+        original_filename=original_filename,
+        media_type=media_type,
+        content=content,
+        upload_dir=upload_dir,
+    )
+    try:
+        session.commit()
+    except Exception:
+        session.rollback()
+        if created_path is not None:
+            created_path.unlink(missing_ok=True)
+        raise
+    return blob
 
 
 def _write_content_once(destination: Path, content: bytes) -> bool:

@@ -14,6 +14,7 @@ import {
   getStage,
   importGitRepo,
   importNote,
+  importPhoto,
   mergeEvents,
   reviewEvent,
   splitEvent,
@@ -24,6 +25,8 @@ const STAGE_STORAGE_KEY = "digital-museum-phase0-stage-id";
 const MAX_BATCH_FILES = 20;
 const MAX_BATCH_BYTES = 20 * 1024 * 1024;
 const MAX_BATCH_BYTES_LABEL = "20 MiB";
+const MAX_PHOTO_BYTES = 25 * 1024 * 1024;
+const MAX_PHOTO_BYTES_LABEL = "25 MiB";
 
 type WorkspaceView = "import" | "discover" | "review" | "summary" | "exhibition";
 
@@ -68,6 +71,7 @@ function isVisibleExperience(event: CandidateEvent): boolean {
 
 function originChipLabel(event: CandidateEvent): string {
   if (event.origin === "git") return "来自 Git 仓库";
+  if (event.origin === "photo") return "来自照片";
   if (event.origin === "aggregated") return `聚合自 ${event.source_count} 份`;
   if (event.origin === "merged") return "合并产生";
   return "拆分产生";
@@ -76,6 +80,9 @@ function originChipLabel(event: CandidateEvent): string {
 function evidenceSummary(event: CandidateEvent): string {
   if (event.origin === "git") {
     return "这段经历来自 Git 仓库的提交记录：系统只读取提交日期与提交说明并保留原文位置，没有判断工作的影响力或完成质量。它仍然是候选，需要你核对。";
+  }
+  if (event.origin === "photo") {
+    return "这段经历来自导入的照片：系统只读取 EXIF 拍摄时间、相机与坐标并保留元数据原文，没有识别照片里拍了什么。它仍然是候选，需要你核对。";
   }
   if (event.origin === "aggregated") {
     return `系统发现 ${event.source_count} 份标题和日期都相同的记录，把它们整理在同一段经历里。它只读取标题、日期和首段正文并保留原文位置，没有判断事情是否完成或对你意味着什么。`;
@@ -96,6 +103,7 @@ export default function MuseumMvpWorkspace() {
   const [view, setView] = useState<WorkspaceView>("import");
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [selectedPhotos, setSelectedPhotos] = useState<File[]>([]);
   const [importResults, setImportResults] = useState<ImportResult[]>([]);
   const [reviewNote, setReviewNote] = useState("");
   const [leavingDecision, setLeavingDecision] = useState<ReviewDecision | null>(null);
@@ -335,6 +343,88 @@ export default function MuseumMvpWorkspace() {
     }
   }
 
+  function handlePhotoSelection(files: FileList | null) {
+    setSelectedPhotos(files ? Array.from(files) : []);
+    setImportResults([]);
+    setNotice(null);
+  }
+
+  async function handleImportPhotos(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!stage) return;
+    if (!selectedPhotos.length) {
+      setNotice({ kind: "error", message: "请先选择 JPEG 或 PNG 照片。" });
+      return;
+    }
+    if (selectedPhotos.length > MAX_BATCH_FILES) {
+      setNotice({
+        kind: "error",
+        message: `一次最多选择 ${MAX_BATCH_FILES} 张照片。`,
+      });
+      return;
+    }
+    const oversized = selectedPhotos.find((file) => file.size > MAX_PHOTO_BYTES);
+    if (oversized) {
+      setNotice({
+        kind: "error",
+        message: `单张照片不能超过 ${MAX_PHOTO_BYTES_LABEL}（${oversized.name} 超限）。`,
+      });
+      return;
+    }
+
+    setBusy(true);
+    setNotice(null);
+    setImportResults(
+      selectedPhotos.map((file) => ({
+        name: file.name,
+        status: "pending",
+        message: "等待处理",
+      })),
+    );
+
+    let succeeded = 0;
+    let failed = 0;
+    for (const file of selectedPhotos) {
+      setImportResults((current) =>
+        current.map((item) =>
+          item.name === file.name && item.status === "pending"
+            ? { ...item, message: "正在保存和读取拍摄时间" }
+            : item,
+        ),
+      );
+      try {
+        await importPhoto(stage.id, file);
+        succeeded += 1;
+        setImportResults((current) =>
+          updateImportResult(current, file.name, "success", "已导入并形成经历草稿"),
+        );
+      } catch (error) {
+        failed += 1;
+        setImportResults((current) =>
+          updateImportResult(current, file.name, "error", errorMessage(error)),
+        );
+      }
+    }
+
+    try {
+      const nextEvents = await refreshStage(stage.id);
+      const firstVisible = nextEvents.find(isVisibleExperience);
+      setSelectedEventId(firstVisible?.id ?? null);
+      setSelectedPhotos([]);
+      if (succeeded > 0) setView("discover");
+      setNotice({
+        kind: failed ? "error" : "success",
+        message: failed
+          ? `已导入 ${succeeded} 张，${failed} 张需要处理。成功照片没有受到影响。`
+          : `已导入 ${succeeded} 张照片。拍摄时间相同的照片会整理在同一段经历里。`,
+      });
+    } catch (error) {
+      setNotice({ kind: "error", message: errorMessage(error) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function toggleMergeId(eventId: string) {
     setMergeIds((current) =>
       current.includes(eventId)
@@ -514,7 +604,7 @@ export default function MuseumMvpWorkspace() {
         <>
           <StageSummary stage={stage} experienceCount={visibleEvents.length} pendingCount={candidateEvents.length} onExit={forgetStagePointer} />
           {view === "import" && (
-            <ImportView busy={busy} coverage={coverage} files={selectedFiles} results={importResults} onFileSelection={handleFileSelection} onSubmit={handleImport} onGitSubmit={handleImportGit} />
+            <ImportView busy={busy} coverage={coverage} files={selectedFiles} photoFiles={selectedPhotos} results={importResults} onFileSelection={handleFileSelection} onPhotoSelection={handlePhotoSelection} onSubmit={handleImport} onPhotoSubmit={handleImportPhotos} onGitSubmit={handleImportGit} />
           )}
           {view === "discover" && (
             <DiscoverView
@@ -663,20 +753,24 @@ function StageSummary({ stage, experienceCount, pendingCount, onExit }: {
   );
 }
 
-function ImportView({ busy, coverage, files, results, onFileSelection, onSubmit, onGitSubmit }: {
+function ImportView({ busy, coverage, files, photoFiles, results, onFileSelection, onPhotoSelection, onSubmit, onPhotoSubmit, onGitSubmit }: {
   busy: boolean;
   coverage: CoverageItem[];
   files: File[];
+  photoFiles: File[];
   results: ImportResult[];
   onFileSelection: (files: FileList | null) => void;
+  onPhotoSelection: (files: FileList | null) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onPhotoSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onGitSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+  const totalPhotoBytes = photoFiles.reduce((sum, file) => sum + file.size, 0);
   return (
     <section className="mvp-view mvp-import-view">
       <article className="mvp-panel mvp-import-panel">
-        <header className="mvp-section-heading"><span>01 · 导入</span><div><h2>一次导入这段时间的记录</h2><p>现在支持整理过的 Markdown/TXT。ChatGPT、Codex、WorkBuddy 原生导出文件将在后续适配。</p></div></header>
+        <header className="mvp-section-heading"><span>01 · 导入</span><div><h2>一次导入这段时间的记录</h2><p>现在支持整理过的 Markdown/TXT、JPEG/PNG 照片与本地 Git 仓库。ChatGPT、Codex、WorkBuddy 原生导出文件将在后续适配。</p></div></header>
         <form onSubmit={onSubmit}>
           <label className="mvp-dropzone">
             <input name="notes" type="file" multiple onChange={(event) => onFileSelection(event.target.files)} />
@@ -691,6 +785,22 @@ function ImportView({ busy, coverage, files, results, onFileSelection, onSubmit,
             </div>
           )}
           <button className="mvp-primary" disabled={busy || files.length === 0} type="submit">{busy ? "正在逐份保存和整理…" : "开始整理这些记录"}</button>
+        </form>
+        <form className="mvp-photo-import" onSubmit={onPhotoSubmit}>
+          <span className="mvp-git-divider">或</span>
+          <label className="mvp-dropzone">
+            <input name="photos" type="file" multiple accept=".jpg,.jpeg,.png" onChange={(event) => onPhotoSelection(event.target.files)} />
+            <span>选择 JPEG / PNG 照片</span>
+            <small>单次最多 {MAX_BATCH_FILES} 张、每张不超过 {MAX_PHOTO_BYTES_LABEL}；按照片自带的拍摄时间（EXIF）归入时间线</small>
+          </label>
+          {photoFiles.length > 0 && (
+            <div className="mvp-file-selection">
+              <div><strong>已选择 {photoFiles.length} 张</strong><span>{formatBytes(totalPhotoBytes)}</span></div>
+              <ul>{photoFiles.slice(0, 8).map((file) => <li key={`${file.name}-${file.size}`}><span>{file.name}</span><small>{formatBytes(file.size)}</small></li>)}</ul>
+              {photoFiles.length > 8 && <p>还有 {photoFiles.length - 8} 张照片将在本次一起处理。</p>}
+            </div>
+          )}
+          <button className="mvp-secondary" disabled={busy || photoFiles.length === 0} type="submit">{busy ? "正在逐张保存和整理…" : "开始整理这些照片"}</button>
         </form>
         <form className="mvp-git-import" onSubmit={onGitSubmit}>
           <span className="mvp-git-divider">或</span>

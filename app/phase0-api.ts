@@ -27,7 +27,7 @@ export type Claim = {
 
 export type ReviewDecision = "confirmed" | "disputed" | "unknown" | "rejected";
 
-export type EventOrigin = "note" | "aggregated" | "merged" | "split" | "git";
+export type EventOrigin = "note" | "aggregated" | "merged" | "split" | "git" | "photo";
 
 export type AuditDecision = ReviewDecision | "merged" | "split";
 
@@ -139,6 +139,17 @@ export function importNote(stageId: string, file: File): Promise<CandidateEvent>
   return apiRequest<{
     event: CandidateEvent;
   }>(`/api/v1/stages/${stageId}/notes`, {
+    method: "POST",
+    body: formData,
+  }).then((result) => result.event);
+}
+
+export function importPhoto(stageId: string, file: File): Promise<CandidateEvent> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return apiRequest<{
+    event: CandidateEvent;
+  }>(`/api/v1/stages/${stageId}/photos`, {
     method: "POST",
     body: formData,
   }).then((result) => result.event);

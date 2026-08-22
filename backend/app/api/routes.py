@@ -15,6 +15,7 @@ from app.domain.schemas import (
     MergeCreate,
     MergeOut,
     NoteImportOut,
+    PhotoImportOut,
     ReviewCreate,
     SplitOut,
     StageCreate,
@@ -27,6 +28,16 @@ ALLOWED_SUFFIXES = {".md": "text/markdown", ".txt": "text/plain"}
 ALLOWED_DECLARED_MEDIA_TYPES = {
     ".md": {"text/markdown", "text/plain", "application/octet-stream"},
     ".txt": {"text/plain", "application/octet-stream"},
+}
+PHOTO_SUFFIX_MEDIA_TYPES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+}
+PHOTO_DECLARED_MEDIA_TYPES = {
+    ".jpg": {"image/jpeg", "image/jpg", "application/octet-stream"},
+    ".jpeg": {"image/jpeg", "image/jpg", "application/octet-stream"},
+    ".png": {"image/png", "application/octet-stream"},
 }
 KNOWN_BINARY_PREFIXES = (
     b"%PDF-",
@@ -158,6 +169,54 @@ def create_api_router(session_provider) -> APIRouter:
                 repo_path=payload.path,
                 upload_dir=request.app.state.settings.upload_dir,
                 allowed_repo_roots=request.app.state.settings.allowed_repo_roots,
+            )
+        }
+
+    @router.post(
+        "/stages/{stage_id}/photos",
+        status_code=201,
+        response_model=DataEnvelope[PhotoImportOut],
+    )
+    async def import_photo(
+        stage_id: str,
+        request: Request,
+        file: FileDependency,
+        session: SessionDependency,
+    ) -> dict:
+        museum_service.require_stage(session, stage_id)
+        filename = _display_filename(file.filename)
+        suffix = ""
+        try:
+            filename = _safe_filename(file.filename)
+            suffix = Path(filename).suffix.lower()
+            if suffix not in PHOTO_SUFFIX_MEDIA_TYPES:
+                raise ApiError(415, "unsupported_photo_type", "只支持 JPEG 或 PNG 照片")
+
+            declared_media_type = (file.content_type or "").split(";", 1)[0].strip().lower()
+            if declared_media_type not in PHOTO_DECLARED_MEDIA_TYPES[suffix]:
+                raise ApiError(415, "invalid_photo_media_type", "文件类型与照片格式不匹配")
+
+            max_photo_bytes: int = request.app.state.settings.max_photo_bytes
+            content = await file.read(max_photo_bytes + 1)
+            if len(content) > max_photo_bytes:
+                raise ApiError(413, "photo_too_large", "照片文件超过当前上传上限")
+        except ApiError as exc:
+            museum_service.record_failed_import(
+                session,
+                stage_id=stage_id,
+                original_filename=filename,
+                step="stored_locally",
+                error_code=exc.code,
+            )
+            raise
+        return {
+            "data": museum_service.import_photo_evidence(
+                session,
+                stage_id=stage_id,
+                filename=filename,
+                media_type=PHOTO_SUFFIX_MEDIA_TYPES[suffix],
+                content=content,
+                upload_dir=request.app.state.settings.upload_dir,
             )
         }
 

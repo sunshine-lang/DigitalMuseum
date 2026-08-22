@@ -82,7 +82,7 @@ class EventOut(BaseModel):
     status: EventStatus
     revision: int
     is_formal: bool
-    origin: Literal["note", "aggregated", "merged", "split", "git"]
+    origin: Literal["note", "aggregated", "merged", "split", "git", "photo"]
     source_count: int
     claims: list[ClaimOut]
     latest_review: ReviewOut | None
@@ -109,6 +109,12 @@ class CoverageOut(BaseModel):
 
 
 class NoteImportOut(BaseModel):
+    occurrence: OccurrenceOut
+    event: EventOut
+    coverage: list[CoverageOut]
+
+
+class PhotoImportOut(BaseModel):
     occurrence: OccurrenceOut
     event: EventOut
     coverage: list[CoverageOut]

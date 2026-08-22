@@ -5692,6 +5692,18 @@ mark.mvp-evidence-hit {
 .mvp-git-import small { color: var(--muted); font-size: 11.5px; }
 .mvp-git-import button { justify-self: start; }
 
+/* 照片导入表单（第四阶段） */
+.mvp-photo-import {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px dashed var(--line);
+  display: grid;
+  gap: 12px;
+}
+.mvp-photo-import .mvp-dropzone { margin: 0; min-height: 128px; }
+.mvp-photo-import .mvp-file-selection { margin: 0; }
+.mvp-photo-import button { justify-self: start; }
+
 /* ---- 准备间（选展品 / 选风格，中性视觉） ---- */
 
 .expo-shell { min-height: 100vh; }
