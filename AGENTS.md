@@ -25,7 +25,7 @@ docs/       全部项目文档（PRD 在 docs/prd/，参考手册在 docs/refere
 npm run backend:sync      # 安装后端依赖（uv）
 npm run backend:dev       # 启动本地 API（127.0.0.1:8010）
 npm run dev:phase0        # 启动前端工作台（127.0.0.1:3001）
-npm run test:backend      # 后端 pytest（40 个用例，必须全绿）
+npm run test:backend      # 后端 pytest（43 个用例，必须全绿；含评测基线护栏）
 npm run test:local        # 前端构建 + 渲染冒烟（macOS 用这个，npm test 需要 GNU timeout）
 npm run test:e2e          # Playwright 端到端（需先停止 backend:dev；后端占用 8010、前端 3002，数据隔离在 .e2e/）
 npm run typecheck         # tsc --noEmit

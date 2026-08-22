@@ -1,0 +1,52 @@
+{
+  "stage": {
+    "name": "评测基线·Phase 0",
+    "starts_on": "2026-03-01",
+    "ends_on": "2026-08-31"
+  },
+  "git_repo": {
+    "repo_dirname": "demo-eval-repo",
+    "commits": [
+      { "message": "ancient work before the stage", "date": "2024-01-01" },
+      { "message": "build search feature", "date": "2026-05-10" },
+      { "message": "fix filter bug", "date": "2026-05-10" },
+      { "message": "write usage docs", "date": "2026-06-02" }
+    ],
+    "tags": [
+      { "name": "v1.0.0", "date": "2026-06-05", "message": "first release" }
+    ]
+  },
+  "photos": [
+    { "filename": "IMG_20260704_090000.jpg", "taken_at": "2026:07:04 09:00:00", "make": "Acme", "model": "Phone 15" },
+    { "filename": "IMG_20260704_183012.jpg", "taken_at": "2026:07:04 18:30:12" },
+    { "filename": "IMG_20260720_101500.jpg", "taken_at": "2026:07:20 10:15:00", "make": "Acme", "model": "Phone 15" }
+  ],
+  "rejected": [
+    {
+      "kind": "photo",
+      "filename": "screenshot-no-exif.png",
+      "format": "PNG",
+      "status": 422,
+      "error_code": "photo_missing_timestamp"
+    },
+    {
+      "kind": "note",
+      "filename": "out-of-range-note.md",
+      "content": "---\ntitle: 阶段之外的旧笔记\ndate: 2025-12-01\n---\n\n这段内容发生在建馆阶段开始之前。",
+      "status": 422,
+      "error_code": "note_outside_stage"
+    }
+  ],
+  "expected_events": [
+    { "title": "周末构建了检索工具", "occurred_on": "2026-04-11", "source_count": 1 },
+    { "title": "组织了一次团队复盘", "occurred_on": "2026-04-11", "source_count": 1 },
+    { "title": "学习 SQLite 索引优化", "occurred_on": "2026-05-16", "source_count": 2 },
+    { "title": "在 demo-eval-repo 提交代码", "occurred_on": "2026-05-10", "source_count": 1 },
+    { "title": "在 demo-eval-repo 提交代码", "occurred_on": "2026-06-02", "source_count": 1 },
+    { "title": "在 demo-eval-repo 发布版本 v1.0.0", "occurred_on": "2026-06-05", "source_count": 1 },
+    { "title": "拍摄照片", "occurred_on": "2026-07-04", "source_count": 2 },
+    { "title": "拍摄照片", "occurred_on": "2026-07-20", "source_count": 1 },
+    { "title": "无日期的读书笔记", "occurred_on": null, "source_count": 1, "claim_contains": "永久笔记" },
+    { "title": "关于档案馆命名的一页草稿", "occurred_on": null, "source_count": 1 }
+  ]
+}
