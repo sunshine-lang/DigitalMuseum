@@ -106,6 +106,14 @@ npm run lint
 npm run test:local
 ```
 
+端到端（Playwright，会自动拉起使用临时数据库的隔离后端和前端）：
+
+```bash
+npm run test:e2e
+```
+
+运行前必须停止正在运行的后端（`npm run backend:dev`）：E2E 后端需要独占前端默认请求的 8010 端口，前端使用 3002 端口；测试数据不会写入 `data/` 中的真实档案。
+
 `npm test` 保留给带 GNU `timeout` 的 Linux/Sites 构建环境；macOS 本地使用 `npm run test:local`。
 
 本阶段没有模型调用，因此真实模型冒烟为“不适用”，不是“已通过”。以后接入 Reference Provider 时必须增加真实 Key 端到端冒烟，不能用当前确定性测试替代。

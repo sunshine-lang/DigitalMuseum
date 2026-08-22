@@ -27,6 +27,7 @@ npm run backend:dev       # 启动本地 API（127.0.0.1:8010）
 npm run dev:phase0        # 启动前端工作台（127.0.0.1:3001）
 npm run test:backend      # 后端 pytest（22 个用例，必须全绿）
 npm run test:local        # 前端构建 + 渲染冒烟（macOS 用这个，npm test 需要 GNU timeout）
+npm run test:e2e          # Playwright 端到端（需先停止 backend:dev；后端占用 8010、前端 3002，数据隔离在 .e2e/）
 npm run typecheck         # tsc --noEmit
 npm run lint              # eslint
 ```
@@ -44,4 +45,5 @@ npm run lint              # eslint
 - 聚合规则 `note-aggregation-v1` 同样是确定性的：仅按规范化标题加日期聚合，不做语义聚类；Merge/Split 产物一律重置为 Candidate 并保留逐字锚点与审计行。
 - 样式延续集中式 CSS（`app/globals.css`），Tailwind 仅保留依赖，暂不迁移。
 - `npm run build`（build-verified.sh）需要 GNU timeout，macOS 上用 `npm run build:local`。
-- 提交前自查：`test:backend`、`test:local`、`typecheck`、`lint` 全部通过。
+- 前端 dev 模式不会内联 `NEXT_PUBLIC_*` 变量，页面始终请求默认的 8010 端口；E2E 因此必须让隔离后端占用 8010。
+- 提交前自查：`test:backend`、`test:local`、`typecheck`、`lint` 全部通过；改动用户交互链路时加跑 `test:e2e`。

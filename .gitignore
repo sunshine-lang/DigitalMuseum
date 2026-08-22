@@ -50,3 +50,8 @@ next-env.d.ts
 **/__pycache__/
 *.py[cod]
 *.tsbuildinfo
+
+# Playwright E2E
+.e2e/
+playwright-report/
+test-results/
