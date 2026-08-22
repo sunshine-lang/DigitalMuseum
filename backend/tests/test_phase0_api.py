@@ -113,7 +113,35 @@ def test_note_import_creates_grounded_candidate_and_coverage(
         "candidate_generated",
     ]
     assert all(item["status"] == "completed" for item in coverage)
-    assert coverage[-1]["processor_version"] == "note-development-v1"
+    assert coverage[-1]["processor_version"] == "note-development-v2"
+
+
+def test_note_leading_blockquote_is_skipped_when_picking_claim(
+    client: TestClient,
+) -> None:
+    stage_id = create_stage(client)
+    note = (
+        "# 阶段计划评审\n"
+        "\n"
+        "> 配套文档：docs/prd/digital-museum-prd-v0.1.md。\n"
+        "> 本文档只覆盖评审本身。\n"
+        "\n"
+        "这周完成了两条纵向切片的评审，所有锚点都能回溯到原文。\n"
+        "\n"
+        "下周计划补齐评测基线。\n"
+    ).encode()
+
+    response = client.post(
+        f"/api/v1/stages/{stage_id}/notes",
+        files={"file": ("review-notes.md", note, "text/markdown")},
+    )
+
+    assert response.status_code == 201
+    event = response.json()["data"]["event"]
+    assert event["title"] == "阶段计划评审"
+    claim = event["claims"][0]
+    assert claim["text"] == "这周完成了两条纵向切片的评审，所有锚点都能回溯到原文。"
+    assert claim["anchors"][0]["line_start"] == 6
 
 
 def test_identical_note_bytes_share_one_content_addressed_file(

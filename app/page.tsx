@@ -635,7 +635,10 @@ export default function MuseumMvpWorkspace() {
               activeAnchor={activeAnchor}
               onNoteChange={setReviewNote}
               onReview={handleReview}
-              onSkip={() => setView("discover")}
+              onSkip={() => {
+                setNotice(null);
+                setView("discover");
+              }}
               onPreview={() => setView("exhibition")}
               onAnchorActivate={activateEvidenceAnchor}
             />

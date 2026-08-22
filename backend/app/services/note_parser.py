@@ -8,7 +8,7 @@ import yaml
 
 from app.core.errors import ApiError
 
-PROCESSOR_VERSION = "note-development-v1"
+PROCESSOR_VERSION = "note-development-v2"
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,8 +55,10 @@ def parse_note(text: str, filename: str) -> ParsedNote:
         line_without_newline = lines[index].rstrip("\r\n")
         stripped = line_without_newline.strip()
         if not stripped:
-            if paragraph_started:
+            if paragraph_started and not _is_blockquote_paragraph(lines, paragraph_indices):
                 break
+            paragraph_indices = []
+            paragraph_started = False
             continue
         if stripped.startswith("#"):
             if heading_title is None:
@@ -85,6 +87,10 @@ def parse_note(text: str, filename: str) -> ParsedNote:
         char_start=char_start,
         char_end=char_end,
     )
+
+
+def _is_blockquote_paragraph(lines: list[str], indices: list[int]) -> bool:
+    return all(lines[index].lstrip().startswith(">") for index in indices)
 
 
 def _metadata_title(metadata: dict[str, object]) -> str | None:
