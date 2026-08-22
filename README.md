@@ -2,18 +2,20 @@
 
 > 把散落的数字痕迹，变成你的人生博物馆。
 
-当前交付是 PRD Phase 0 的第一条纵向切片：
+当前首页把已经落地的 Note → Event Review 链路包装为一条价值先行的 MVP 体验：
 
 ```text
-创建 3–12 个月阶段
-→ 导入 Markdown / TXT Note
+选择 3–12 个月回顾范围
+→ 一次选择多份 Markdown / TXT AI 协作记录
 → 本地保存不可原地改写的原文
-→ 建立带逐字 Evidence Anchor 的候选 Claim / Event
-→ 用户确认、存疑、保持 Unknown 或排除
+→ 先展示带逐字 Evidence Anchor 的经历草稿
+→ 同标题同日期的记录自动聚合；可手动合并所选经历、把多来源经历拆回独立候选
+→ 只核对仍是 Candidate 的关键内容
+→ 实时查看区分“本人确认 / 等待核对”的私人展览草稿
 → 审阅状态持久化并可恢复
 ```
 
-这不是整个 Phase 0，也不是完整产品。Photo、Git、真实模型、Merge/Split、ChatGPT/Codex/WorkBuddy Session、Story、Exhibition 和 Share 尚未实现。原有策展体验保留在 `/demo`，只用于说明后续方向，不能作为当前核心链路已经完成的证据。
+这不是整个 Phase 0，也不是完整产品。当前“AI 协作记录”只支持用户已经整理成 `.md/.txt` 的非敏感测试资料；ChatGPT/Codex/WorkBuddy 原生 Session 导出解析、真实模型、自动策展网页、导出和 Share 尚未实现。首页展览区是读取真实 Event 状态的本地草稿，不是可发布展览。原有视觉演示保留在 `/demo`，不能作为当前核心链路已经完成的证据。
 
 ## 技术适配
 
@@ -23,7 +25,19 @@
 - 解析器：确定性 `note-development-v1`，只生成 Candidate，不调用模型、不推断因果和动机。
 - 测试：pytest 通过公开 API 验证；TypeScript、ESLint、构建与渲染测试验证前端。
 
-完整取舍见 [技术适配声明](docs/technical-adaptation.md) 和 [第一阶段技术开发文档](docs/phase-0-stage-1-note-event-review.md)。
+完整取舍见 [PRD](docs/prd/digital-museum-prd-v0.1.md)、[MVP 用户流程](docs/mvp-value-first-ai-records-flow.md)、[技术适配声明](docs/technical-adaptation.md)、[第一阶段技术开发文档](docs/phase-0-stage-1-note-event-review.md) 和 [第二阶段技术开发文档](docs/phase-0-stage-2-aggregation-merge-split.md)。第二阶段的完整能力规划另见 [docs/phase-0-stage-2-multi-note-event-operations.md](docs/phase-0-stage-2-multi-note-event-operations.md)，其中服务端 Import Batch、事件元数据编辑与操作历史 API 尚未实现。
+
+## 项目结构
+
+```text
+app/        前端（Next.js App Router）：/ 为价值先行 MVP，/demo 为原策展演示
+backend/    本地 API：FastAPI + SQLAlchemy + Alembic，分层 api / core / domain / services
+data/       运行时数据：SQLite 库与上传原文（Git 忽略）
+docs/       项目文档：prd/（PRD 与需求分析）、阶段开发文档、技术适配声明、references/（通用参考手册）
+scripts/    Sites 平台构建脚本（面向 Linux 构建环境）
+tests/      前端渲染冒烟测试
+worker/     Cloudflare Worker 入口（vinext 模板）
+```
 
 ## 本地启动
 
@@ -61,14 +75,17 @@ npm run dev:phase0
 
 ## 小白验收步骤
 
-1. 打开首页，输入阶段名称、开始日期和结束日期；范围必须在 3–12 个月内。
-2. 上传一个 UTF-8 编码、2 MiB 以内的 `.md` 或 `.txt` 文件。
-3. 查看 Processing Coverage：原文保存、本地解析、候选生成都应显示完成。
-4. 打开候选事件，核对 Core Claim、逐字引用、原文行号和文件哈希。
-5. 确认页面仍标记“候选事件”，没有自动当成正式事实。
-6. 选择“确认发生过”“标记存疑”“证据不足”或“排除事件”，刷新页面后决定仍应存在。
-7. 上传 `.pdf` 或包含二进制内容的 `.txt`，页面应明确拒绝，事件数量不增加；Coverage 会保留失败步骤和错误代码。
-8. 访问 `/demo`，确认原策展演示仍可打开，但它不代表 Phase 0 已验收。
+1. 打开首页，填写回顾名称、开始日期和结束日期；范围必须在 3–12 个月内。
+2. 在“导入记录”一次选择多份 UTF-8 `.md/.txt`；单文件仍不得超过 2 MiB。
+3. 确认页面逐份显示成功或失败；某一份失败不会抹掉其他成功文件。
+4. 进入“发现经历”，先浏览系统整理出的草稿，再按需打开原文行号和文件指纹；标题和日期都相同的多份记录会自动聚合为一段经历。
+5. 勾选两段及以上经历并“合并为一段经历”，确认后新经历回到“等待你核对”，原经历不再出现在列表中。
+6. 对来源不少于两份的经历点击“拆回独立经历”，确认后拆分产物恢复各来源记录的标题和日期，并都需要重新核对。
+7. 进入“核对关键内容”，使用“是，已经发生”“发生过，但描述要改”“我现在不确定”或“只是讨论 / 不属于我”。
+8. 选择“描述要改”时填写说明；选择“我现在不确定”时系统不补写内容。
+9. 进入“查看回顾”，确认本人确认与等待核对的内容有明显区别，页面标记为私人草稿。
+10. 刷新页面，确认 Stage、Evidence、Event 和 Review 状态仍存在。
+11. 访问 `/demo`，确认旧视觉演示仍可打开，但没有被当作当前真实产出。
 
 当前原文未加密，只用于非敏感测试素材；不要导入真实隐私资料。
 
@@ -107,5 +124,6 @@ npm run test:local
 - “建馆阶段必须在 3 到 12 个月之间”：调整起止日期。
 - “只支持 Markdown 或 TXT 文件”：本阶段不接受 PDF、Word、图片和 Session 导出。
 - “事件已被其他审阅更新”：刷新后重新查看最新 revision，再提交决定。
+- “已合并或已拆分的事件不能再次操作”：这类经历已被新的候选经历替代，请到“发现经历”里核对新产生的经历。
 
 排查时请提供：操作步骤、页面错误文字、浏览器控制台报错和后端终端最后 30 行；不要发送 API Key 或完整敏感文档。

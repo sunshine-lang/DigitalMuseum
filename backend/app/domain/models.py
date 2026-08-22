@@ -85,14 +85,19 @@ class CandidateEvent(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     stage_id: Mapped[str] = mapped_column(ForeignKey("stages.id", ondelete="CASCADE"))
-    occurrence_id: Mapped[str] = mapped_column(
-        ForeignKey("evidence_occurrences.id", ondelete="CASCADE"), unique=True
+    occurrence_id: Mapped[str | None] = mapped_column(
+        ForeignKey("evidence_occurrences.id", ondelete="CASCADE"), nullable=True
     )
     title: Mapped[str] = mapped_column(String(200))
     occurred_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     time_precision: Mapped[str] = mapped_column(String(24), default="unknown")
     status: Mapped[str] = mapped_column(String(24), default="candidate")
     revision: Mapped[int] = mapped_column(Integer, default=0)
+    origin: Mapped[str] = mapped_column(String(24), default="note")
+    aggregation_rule: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    parent_event_id: Mapped[str | None] = mapped_column(
+        ForeignKey("candidate_events.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
@@ -111,13 +116,19 @@ class Claim(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     event_id: Mapped[str] = mapped_column(ForeignKey("candidate_events.id", ondelete="CASCADE"))
+    occurrence_id: Mapped[str] = mapped_column(
+        ForeignKey("evidence_occurrences.id", ondelete="CASCADE")
+    )
     text: Mapped[str] = mapped_column(Text)
     epistemic_status: Mapped[str] = mapped_column(String(24), default="unknown")
     evidence_role: Mapped[str] = mapped_column(String(32), default="user_statement")
     processor_version: Mapped[str] = mapped_column(String(80))
+    source_title: Mapped[str] = mapped_column(String(200))
+    source_occurred_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     event: Mapped[CandidateEvent] = relationship(back_populates="claims")
+    occurrence: Mapped[EvidenceOccurrence] = relationship(foreign_keys=[occurrence_id])
     anchors: Mapped[list[EvidenceAnchor]] = relationship(
         back_populates="claim", cascade="all, delete-orphan"
     )

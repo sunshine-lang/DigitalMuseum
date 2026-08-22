@@ -25,8 +25,16 @@ export type Claim = {
   anchors: Anchor[];
 };
 
+export type ReviewDecision = "confirmed" | "disputed" | "unknown" | "rejected";
+
+export type EventOrigin = "note" | "aggregated" | "merged" | "split";
+
+export type AuditDecision = ReviewDecision | "merged" | "split";
+
+export type EventStatus = "candidate" | ReviewDecision | "merged" | "split";
+
 export type EventReview = {
-  decision: ReviewDecision;
+  decision: AuditDecision;
   note: string | null;
   revision: number;
   created_at: string;
@@ -38,9 +46,11 @@ export type CandidateEvent = {
   title: string;
   occurred_on: string | null;
   time_precision: "exact" | "unknown";
-  status: "candidate" | ReviewDecision;
+  status: EventStatus;
   revision: number;
   is_formal: boolean;
+  origin: EventOrigin;
+  source_count: number;
   claims: Claim[];
   latest_review: EventReview | null;
 };
@@ -54,8 +64,6 @@ export type CoverageItem = {
   processor_version: string | null;
   error_code: string | null;
 };
-
-export type ReviewDecision = "confirmed" | "disputed" | "unknown" | "rejected";
 
 type ApiEnvelope<T> = { data: T };
 type ApiErrorBody = { error?: { code?: string; message?: string } };
@@ -143,5 +151,24 @@ export function reviewEvent(
   return apiRequest(`/api/v1/events/${eventId}/reviews`, {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export function mergeEvents(
+  stageId: string,
+  payload: { event_ids: string[]; title?: string },
+): Promise<{ event: CandidateEvent; sources: CandidateEvent[] }> {
+  return apiRequest(`/api/v1/stages/${stageId}/events/merge`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function splitEvent(
+  eventId: string,
+): Promise<{ event: CandidateEvent; events: CandidateEvent[] }> {
+  return apiRequest(`/api/v1/events/${eventId}/split`, {
+    method: "POST",
+    body: JSON.stringify({}),
   });
 }

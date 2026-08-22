@@ -10,8 +10,11 @@ from app.domain.schemas import (
     DataEnvelope,
     EventOut,
     HealthOut,
+    MergeCreate,
+    MergeOut,
     NoteImportOut,
     ReviewCreate,
+    SplitOut,
     StageCreate,
     StageOut,
 )
@@ -41,7 +44,7 @@ def create_api_router(session_provider) -> APIRouter:
 
     @router.get("/health", response_model=DataEnvelope[HealthOut])
     def health() -> dict:
-        return {"data": {"status": "ok", "phase": "phase-0-note-tracer"}}
+        return {"data": {"status": "ok", "phase": "phase-0-aggregation"}}
 
     @router.post("/stages", status_code=201, response_model=DataEnvelope[StageOut])
     def create_stage(
@@ -160,6 +163,21 @@ def create_api_router(session_provider) -> APIRouter:
         session: SessionDependency,
     ) -> dict:
         return {"data": museum_service.review_event(session, event_id, payload)}
+
+    @router.post(
+        "/stages/{stage_id}/events/merge",
+        response_model=DataEnvelope[MergeOut],
+    )
+    def merge_events(
+        stage_id: str,
+        payload: MergeCreate,
+        session: SessionDependency,
+    ) -> dict:
+        return {"data": museum_service.merge_events(session, stage_id, payload)}
+
+    @router.post("/events/{event_id}/split", response_model=DataEnvelope[SplitOut])
+    def split_event(event_id: str, session: SessionDependency) -> dict:
+        return {"data": museum_service.split_event(session, event_id)}
 
     return router
 

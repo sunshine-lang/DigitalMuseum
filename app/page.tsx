@@ -12,9 +12,11 @@ import {
   getEvents,
   getStage,
   importNote,
+  mergeEvents,
   reviewEvent,
+  splitEvent,
 } from "./phase0-api";
-import type { CandidateEvent as ApiCandidateEvent } from "./phase0-api";
+import type { CandidateEvent } from "./phase0-api";
 
 const STAGE_STORAGE_KEY = "digital-museum-phase0-stage-id";
 const MAX_BATCH_FILES = 20;
@@ -23,10 +25,7 @@ const MAX_BATCH_BYTES_LABEL = "20 MiB";
 
 type WorkspaceView = "import" | "discover" | "review" | "exhibition";
 
-type CandidateEvent = Omit<ApiCandidateEvent, "status"> & {
-  status: ApiCandidateEvent["status"] | "merged" | "split";
-  source_count?: number;
-};
+type StructureConfirm = "merge" | "split" | null;
 
 type ImportResult = {
   name: string;
@@ -59,8 +58,23 @@ function isVisibleExperience(event: CandidateEvent): boolean {
   return !isStructuralEvent(event) && event.status !== "rejected";
 }
 
-function sourceCount(event: CandidateEvent): number {
-  return event.source_count ?? 1;
+function originChipLabel(event: CandidateEvent): string {
+  if (event.origin === "aggregated") return `聚合自 ${event.source_count} 份`;
+  if (event.origin === "merged") return "合并产生";
+  return "拆分产生";
+}
+
+function evidenceSummary(event: CandidateEvent): string {
+  if (event.origin === "aggregated") {
+    return `系统发现 ${event.source_count} 份标题和日期都相同的记录，把它们整理在同一段经历里。它只读取标题、日期和首段正文并保留原文位置，没有判断事情是否完成或对你意味着什么。`;
+  }
+  if (event.origin === "merged") {
+    return "这段经历由你合并多段经历产生，保留了全部原始摘录和出处。合并结果还没有核对过，不会自动成为正式事实。";
+  }
+  if (event.origin === "split") {
+    return "这段经历由你拆分一段经历产生，标题和日期恢复自来源记录。它需要重新核对。";
+  }
+  return "系统只读取标题、日期和首段正文，并保留原文位置；它没有判断事情是否完成或对你意味着什么。";
 }
 
 export default function MuseumMvpWorkspace() {
@@ -73,6 +87,9 @@ export default function MuseumMvpWorkspace() {
   const [importResults, setImportResults] = useState<ImportResult[]>([]);
   const [reviewNote, setReviewNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [mergeIds, setMergeIds] = useState<string[]>([]);
+  const [structureBusy, setStructureBusy] = useState(false);
+  const [confirmingAction, setConfirmingAction] = useState<StructureConfirm>(null);
   const [loadingSavedStage, setLoadingSavedStage] = useState(true);
   const [notice, setNotice] = useState<{
     kind: "error" | "success";
@@ -121,6 +138,9 @@ export default function MuseumMvpWorkspace() {
       current && nextVisible.some((event) => event.id === current)
         ? current
         : (nextVisible[0]?.id ?? null),
+    );
+    setMergeIds((current) =>
+      current.filter((id) => nextVisible.some((event) => event.id === id)),
     );
     return nextEvents;
   }, []);
@@ -250,6 +270,77 @@ export default function MuseumMvpWorkspace() {
     }
   }
 
+  function toggleMergeId(eventId: string) {
+    setMergeIds((current) =>
+      current.includes(eventId)
+        ? current.filter((id) => id !== eventId)
+        : [...current, eventId],
+    );
+  }
+
+  function handleMergeAction(action: "request" | "confirm" | "cancel" | "clear") {
+    if (action === "request") setConfirmingAction("merge");
+    if (action === "cancel" || action === "clear") setConfirmingAction(null);
+    if (action === "clear") setMergeIds([]);
+    if (action === "confirm") void handleMerge();
+  }
+
+  function handleSplitAction(action: "request" | "confirm" | "cancel") {
+    if (action === "request") setConfirmingAction("split");
+    if (action === "cancel") setConfirmingAction(null);
+    if (action === "confirm") void handleSplit();
+  }
+
+  async function handleMerge() {
+    if (!stage || mergeIds.length < 2) return;
+    setStructureBusy(true);
+    setNotice(null);
+    try {
+      const merged = await mergeEvents(stage.id, { event_ids: mergeIds });
+      await refreshStage(stage.id);
+      setConfirmingAction(null);
+      setMergeIds([]);
+      setSelectedEventId(merged.event.id);
+      setNotice({
+        kind: "success",
+        message: "已合并为一段新的候选经历。合并结果还没有核对过，需要重新确认。",
+      });
+    } catch (error) {
+      setNotice({ kind: "error", message: errorMessage(error) });
+      if (stage && error instanceof Phase0ApiError && error.status === 409) {
+        setConfirmingAction(null);
+        setMergeIds([]);
+        await refreshStage(stage.id).catch(() => undefined);
+      }
+    } finally {
+      setStructureBusy(false);
+    }
+  }
+
+  async function handleSplit() {
+    if (!stage || !selectedEvent || selectedEvent.source_count < 2) return;
+    setStructureBusy(true);
+    setNotice(null);
+    try {
+      const split = await splitEvent(selectedEvent.id);
+      await refreshStage(stage.id);
+      setConfirmingAction(null);
+      setSelectedEventId(split.events[0]?.id ?? null);
+      setNotice({
+        kind: "success",
+        message: `已按来源拆回 ${split.events.length} 段候选经历，每段都需要重新核对。`,
+      });
+    } catch (error) {
+      setNotice({ kind: "error", message: errorMessage(error) });
+      if (stage && error instanceof Phase0ApiError && error.status === 409) {
+        setConfirmingAction(null);
+        await refreshStage(stage.id).catch(() => undefined);
+      }
+    } finally {
+      setStructureBusy(false);
+    }
+  }
+
   async function handleReview(decision: ReviewDecision) {
     if (!reviewEventCandidate) return;
     const note = reviewNote.trim();
@@ -334,7 +425,20 @@ export default function MuseumMvpWorkspace() {
             <ImportView busy={busy} coverage={coverage} files={selectedFiles} results={importResults} onFileSelection={handleFileSelection} onSubmit={handleImport} />
           )}
           {view === "discover" && (
-            <DiscoverView events={visibleEvents} selectedEvent={selectedEvent} pendingCount={candidateEvents.length} onSelect={setSelectedEventId} onReview={startReview} onPreview={() => setView("exhibition")} />
+            <DiscoverView
+              events={visibleEvents}
+              selectedEvent={selectedEvent}
+              pendingCount={candidateEvents.length}
+              mergeIds={mergeIds}
+              structureBusy={structureBusy}
+              confirmingAction={confirmingAction}
+              onSelect={setSelectedEventId}
+              onToggleMerge={toggleMergeId}
+              onMergeAction={handleMergeAction}
+              onSplitAction={handleSplitAction}
+              onReview={startReview}
+              onPreview={() => setView("exhibition")}
+            />
           )}
           {view === "review" && (
             <ReviewView event={reviewEventCandidate} remaining={candidateEvents.length} note={reviewNote} busy={busy} onNoteChange={setReviewNote} onReview={handleReview} onSkip={() => setView("discover")} onPreview={() => setView("exhibition")} />
@@ -495,11 +599,17 @@ function ImportReport({ coverage, results }: { coverage: CoverageItem[]; results
   );
 }
 
-function DiscoverView({ events, selectedEvent, pendingCount, onSelect, onReview, onPreview }: {
+function DiscoverView({ events, selectedEvent, pendingCount, mergeIds, structureBusy, confirmingAction, onSelect, onToggleMerge, onMergeAction, onSplitAction, onReview, onPreview }: {
   events: CandidateEvent[];
   selectedEvent: CandidateEvent | null;
   pendingCount: number;
+  mergeIds: string[];
+  structureBusy: boolean;
+  confirmingAction: StructureConfirm;
   onSelect: (eventId: string) => void;
+  onToggleMerge: (eventId: string) => void;
+  onMergeAction: (action: "request" | "confirm" | "cancel" | "clear") => void;
+  onSplitAction: (action: "request" | "confirm" | "cancel") => void;
   onReview: (eventId?: string) => void;
   onPreview: () => void;
 }) {
@@ -507,16 +617,47 @@ function DiscoverView({ events, selectedEvent, pendingCount, onSelect, onReview,
     <section className="mvp-view mvp-discover-view">
       <div className="mvp-discover-main">
         <header className="mvp-section-heading"><span>02 · 发现</span><div><h2>系统整理出 {events.length} 段可能的经历</h2><p>先浏览结果。带“等待你核对”的内容仍是草稿，不会自动成为正式人生事实。</p></div></header>
+        {mergeIds.length >= 2 && (
+          <div className="mvp-merge-bar" role="region">
+            <strong>已选择 {mergeIds.length} 段经历</strong>
+            {confirmingAction === "merge" ? (
+              <>
+                <small>合并后会重置为候选经历；之前做过的确认不会自动带过去，需要重新核对。</small>
+                <button className="mvp-primary" type="button" disabled={structureBusy} onClick={() => onMergeAction("confirm")}>{structureBusy ? "正在合并…" : "确认合并"}</button>
+                <button className="mvp-text-button" type="button" disabled={structureBusy} onClick={() => onMergeAction("cancel")}>取消</button>
+              </>
+            ) : (
+              <>
+                <small>如果它们其实是同一件事，可以合并成一段经历。</small>
+                <button className="mvp-secondary" type="button" onClick={() => onMergeAction("request")}>合并为一段经历</button>
+                <button className="mvp-text-button" type="button" onClick={() => onMergeAction("clear")}>清除选择</button>
+              </>
+            )}
+          </div>
+        )}
         {events.length === 0 ? <div className="mvp-empty-state"><strong>还没有经历草稿</strong><p>先回到导入页添加记录。</p></div> : (
           <div className="mvp-experience-grid">
             {sortEvents(events).map((event) => (
-              <button type="button" key={event.id} className={`mvp-experience-card${selectedEvent?.id === event.id ? " selected" : ""}`} onClick={() => onSelect(event.id)}>
-                <span className={`mvp-status ${event.status}`}>{friendlyStatus[event.status]}</span>
-                <time>{event.occurred_on ?? "时间还不明确"}</time>
-                <strong>{event.title}</strong>
-                <p>{event.claims[0]?.text ?? "原始描述保留在关联记录中。"}</p>
-                <small>{sourceCount(event)} 份来源记录 · {event.claims.length} 条原文摘录</small>
-              </button>
+              <div key={event.id} className={`mvp-experience-cell${mergeIds.includes(event.id) ? " picked" : ""}`}>
+                <label className="mvp-pick">
+                  <input
+                    type="checkbox"
+                    checked={mergeIds.includes(event.id)}
+                    onChange={() => onToggleMerge(event.id)}
+                  />
+                  <span>同一件事</span>
+                </label>
+                <button type="button" className={`mvp-experience-card${selectedEvent?.id === event.id ? " selected" : ""}`} onClick={() => onSelect(event.id)}>
+                  <span className="mvp-card-tags">
+                    <span className={`mvp-status ${event.status}`}>{friendlyStatus[event.status]}</span>
+                    {event.origin !== "note" && <span className="mvp-origin-chip">{originChipLabel(event)}</span>}
+                  </span>
+                  <time>{event.occurred_on ?? "时间还不明确"}</time>
+                  <strong>{event.title}</strong>
+                  <p>{event.claims[0]?.text ?? "原始描述保留在关联记录中。"}</p>
+                  <small>{event.source_count} 份来源记录 · {event.claims.length} 条原文摘录</small>
+                </button>
+              </div>
             ))}
           </div>
         )}
@@ -529,7 +670,28 @@ function DiscoverView({ events, selectedEvent, pendingCount, onSelect, onReview,
       </div>
       <aside className="mvp-panel mvp-evidence-panel">
         {selectedEvent ? (
-          <><span>为什么系统认为这是一段经历</span><h3>{selectedEvent.title}</h3><p className="mvp-evidence-summary">系统只读取标题、日期和首段正文，并保留原文位置；它没有判断事情是否完成或对你意味着什么。</p><EvidenceDetails event={selectedEvent} />{selectedEvent.status === "candidate" && <button className="mvp-secondary full" type="button" onClick={() => onReview(selectedEvent.id)}>核对这段经历</button>}</>
+          <>
+            <span>为什么系统认为这是一段经历</span>
+            <h3>{selectedEvent.title}</h3>
+            <p className="mvp-evidence-summary">{evidenceSummary(selectedEvent)}</p>
+            <EvidenceDetails event={selectedEvent} />
+            {selectedEvent.source_count >= 2 && (
+              <div className="mvp-split-bar">
+                <small>这段经历汇集了多份来源记录，可以拆回各自独立的候选经历；拆分后每段都需要重新核对。</small>
+                {confirmingAction === "split" ? (
+                  <div>
+                    <button type="button" disabled={structureBusy} onClick={() => onSplitAction("confirm")}>{structureBusy ? "正在拆分…" : "确认拆分"}</button>
+                    <button className="cancel" type="button" disabled={structureBusy} onClick={() => onSplitAction("cancel")}>取消</button>
+                  </div>
+                ) : (
+                  <div>
+                    <button type="button" onClick={() => onSplitAction("request")}>拆回独立经历</button>
+                  </div>
+                )}
+              </div>
+            )}
+            {selectedEvent.status === "candidate" && <button className="mvp-secondary full" type="button" onClick={() => onReview(selectedEvent.id)}>核对这段经历</button>}
+          </>
         ) : <div className="mvp-empty-state"><strong>选择一段经历</strong><p>这里会显示它来自哪份记录。</p></div>}
       </aside>
     </section>
@@ -549,13 +711,18 @@ function ReviewView({ event, remaining, note, busy, onNoteChange, onReview, onSk
   if (!event) {
     return <section className="mvp-view mvp-review-complete"><span>关键核对已完成</span><h2>现在可以看看整理后的回顾</h2><p>暂时不确定的内容会保留原样，不会被系统补写。</p><button className="mvp-primary" type="button" onClick={onPreview}>查看回顾草稿</button></section>;
   }
-  const aggregated = sourceCount(event) > 1;
+  const aggregated = event.source_count > 1;
+  const contextLine = event.source_count > 1
+    ? event.origin === "aggregated"
+      ? `系统发现 ${event.source_count} 份标题和日期都相同的记录，把它们整理在同一段经历里。`
+      : `这段经历汇集了 ${event.source_count} 份来源记录的内容。`
+    : "系统从一份记录中整理出下面这段经历。";
   return (
     <section className="mvp-view mvp-review-view">
       <article className="mvp-panel mvp-question-card">
         <header><span>03 · 关键核对</span><small>还剩 {remaining} 个问题</small></header>
         <div className="mvp-question-progress"><i style={{ width: `${Math.max(12, 100 / Math.max(remaining, 1))}%` }} /></div>
-        <p className="mvp-question-context">{aggregated ? `系统把 ${sourceCount(event)} 份同标题、同日期的记录整理在一起。` : "系统从一份记录中整理出下面这段经历。"}</p>
+        <p className="mvp-question-context">{contextLine}</p>
         <h2>{aggregated ? "这些记录属于同一段真实经历吗？" : "这件事情符合你的实际经历吗？"}</h2>
         <div className="mvp-question-experience"><time>{event.occurred_on ?? "时间还不明确"}</time><strong>{event.title}</strong><blockquote>{event.claims[0]?.text}</blockquote></div>
         <label className="mvp-review-note"><span>补充说明（选择“描述要改”时必填）</span><textarea value={note} maxLength={2000} placeholder="例如：事情发生过，但还没有正式上线。" onChange={(changeEvent) => onNoteChange(changeEvent.target.value)} /></label>
@@ -597,7 +764,7 @@ function ExhibitionView({ stage, events, confirmedCount, pendingCount, onOpenExp
           {sortEvents(events).map((event, index) => (
             <article key={event.id} className={event.status === "confirmed" ? "confirmed" : "draft"}>
               <div className="mvp-timeline-marker"><span>{String(index + 1).padStart(2, "0")}</span><i /></div>
-              <button type="button" onClick={() => onOpenExperience(event.id)}><time>{event.occurred_on ?? "时间待确认"}</time><span className={`mvp-status ${event.status}`}>{friendlyStatus[event.status]}</span><h3>{event.title}</h3><p>{event.claims[0]?.text}</p><small>{sourceCount(event)} 份来源记录 · 点击查看证据</small></button>
+                  <button type="button" onClick={() => onOpenExperience(event.id)}><time>{event.occurred_on ?? "时间待确认"}</time><span className={`mvp-status ${event.status}`}>{friendlyStatus[event.status]}</span><h3>{event.title}</h3><p>{event.claims[0]?.text}</p><small>{event.source_count} 份来源记录 · 点击查看证据</small></button>
             </article>
           ))}
         </div>

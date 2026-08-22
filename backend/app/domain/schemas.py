@@ -14,7 +14,7 @@ class DataEnvelope(BaseModel, Generic[T]):
 
 class HealthOut(BaseModel):
     status: Literal["ok"]
-    phase: Literal["phase-0-note-tracer"]
+    phase: Literal["phase-0-aggregation"]
 
 
 class StageCreate(BaseModel):
@@ -55,11 +55,22 @@ class ClaimOut(BaseModel):
 
 class ReviewOut(BaseModel):
     id: str
-    decision: Literal["confirmed", "disputed", "unknown", "rejected"]
+    decision: Literal["confirmed", "disputed", "unknown", "rejected", "merged", "split"]
     note: str | None
     previous_status: str
     revision: int
     created_at: datetime
+
+
+EventStatus = Literal[
+    "candidate",
+    "confirmed",
+    "disputed",
+    "unknown",
+    "rejected",
+    "merged",
+    "split",
+]
 
 
 class EventOut(BaseModel):
@@ -68,9 +79,11 @@ class EventOut(BaseModel):
     title: str
     occurred_on: date | None
     time_precision: Literal["exact", "unknown"]
-    status: Literal["candidate", "confirmed", "disputed", "unknown", "rejected"]
+    status: EventStatus
     revision: int
     is_formal: bool
+    origin: Literal["note", "aggregated", "merged", "split"]
+    source_count: int
     claims: list[ClaimOut]
     latest_review: ReviewOut | None
 
@@ -105,3 +118,18 @@ class ReviewCreate(BaseModel):
     decision: Literal["confirmed", "disputed", "unknown", "rejected"]
     note: str | None = Field(default=None, max_length=2000)
     expected_revision: int = Field(ge=0)
+
+
+class MergeCreate(BaseModel):
+    event_ids: list[str] = Field(min_length=2, max_length=20)
+    title: str | None = Field(default=None, max_length=200)
+
+
+class MergeOut(BaseModel):
+    event: EventOut
+    sources: list[EventOut]
+
+
+class SplitOut(BaseModel):
+    event: EventOut
+    events: list[EventOut]

@@ -22,8 +22,11 @@ from app.domain.models import (
     Stage,
     utc_now,
 )
-from app.domain.schemas import ReviewCreate, StageCreate
+from app.domain.schemas import MergeCreate, ReviewCreate, StageCreate
 from app.services.note_parser import PROCESSOR_VERSION, ParsedNote
+
+AGGREGATION_RULE_VERSION = "note-aggregation-v1"
+STRUCTURAL_STATUSES = {"merged", "split"}
 
 COVERAGE_ORDER = {
     "stored_locally": 0,
@@ -198,32 +201,64 @@ def persist_note_candidate(
     if occurrence.blob is None:
         raise ApiError(500, "missing_evidence_blob", "原始证据没有完成本地保存")
 
-    event = CandidateEvent(
-        stage_id=stage.id,
-        occurrence=occurrence,
-        title=parsed.title,
-        occurred_on=parsed.occurred_on,
-        time_precision="exact" if parsed.occurred_on else "unknown",
-        status="candidate",
-        revision=0,
-    )
-    claim = Claim(
-        event=event,
-        text=parsed.claim_text,
-        epistemic_status="unknown",
-        evidence_role="user_statement",
-        processor_version=PROCESSOR_VERSION,
-    )
-    claim.anchors.append(
-        EvidenceAnchor(
-            blob=occurrence.blob,
-            quote=parsed.claim_text,
-            line_start=parsed.line_start,
-            line_end=parsed.line_end,
-            char_start=parsed.char_start,
-            char_end=parsed.char_end,
+    target = _find_aggregation_target(session, stage.id, parsed)
+    if target is not None:
+        event = target
+        claim = Claim(
+            event=event,
+            occurrence_id=occurrence.id,
+            text=parsed.claim_text,
+            epistemic_status="unknown",
+            evidence_role="user_statement",
+            processor_version=PROCESSOR_VERSION,
+            source_title=parsed.title,
+            source_occurred_on=parsed.occurred_on,
         )
-    )
+        claim.anchors.append(
+            EvidenceAnchor(
+                blob=occurrence.blob,
+                quote=parsed.claim_text,
+                line_start=parsed.line_start,
+                line_end=parsed.line_end,
+                char_start=parsed.char_start,
+                char_end=parsed.char_end,
+            )
+        )
+        event.origin = "aggregated"
+        event.aggregation_rule = AGGREGATION_RULE_VERSION
+        event.updated_at = utc_now()
+        session.add(claim)
+    else:
+        event = CandidateEvent(
+            stage_id=stage.id,
+            occurrence=occurrence,
+            title=parsed.title,
+            occurred_on=parsed.occurred_on,
+            time_precision="exact" if parsed.occurred_on else "unknown",
+            status="candidate",
+            revision=0,
+            origin="note",
+        )
+        claim = Claim(
+            event=event,
+            occurrence_id=occurrence.id,
+            text=parsed.claim_text,
+            epistemic_status="unknown",
+            evidence_role="user_statement",
+            processor_version=PROCESSOR_VERSION,
+            source_title=parsed.title,
+            source_occurred_on=parsed.occurred_on,
+        )
+        claim.anchors.append(
+            EvidenceAnchor(
+                blob=occurrence.blob,
+                quote=parsed.claim_text,
+                line_start=parsed.line_start,
+                line_end=parsed.line_end,
+                char_start=parsed.char_start,
+                char_end=parsed.char_end,
+            )
+        )
     occurrence.status = "completed"
     occurrence.coverage_items.extend(
         [
@@ -251,6 +286,159 @@ def persist_note_candidate(
     }
 
 
+def merge_events(session: Session, stage_id: str, payload: MergeCreate) -> dict:
+    require_stage(session, stage_id)
+    unique_ids = list(dict.fromkeys(payload.event_ids))
+    if len(unique_ids) < 2:
+        raise ApiError(422, "merge_needs_multiple_events", "合并至少需要选择两个不同事件")
+
+    events: list[CandidateEvent] = []
+    for event_id in unique_ids:
+        event = session.get(CandidateEvent, event_id)
+        if event is None or event.stage_id != stage_id:
+            raise ApiError(404, "event_not_found", "没有找到这个候选事件")
+        events.append(event)
+    for event in events:
+        if event.status in STRUCTURAL_STATUSES:
+            raise ApiError(409, "event_not_mergeable", "已合并或已拆分的事件不能再次合并")
+
+    requested_title = payload.title.strip() if payload.title else None
+    if payload.title is not None and not requested_title:
+        raise ApiError(422, "invalid_merge_title", "合并事件的新标题不能为空白")
+
+    ordered = sorted(events, key=lambda event: event.created_at)
+    known_dates = [event.occurred_on for event in ordered if event.occurred_on is not None]
+    dates_agree = len(known_dates) == len(ordered) and len(set(known_dates)) == 1
+
+    merged = CandidateEvent(
+        stage_id=stage_id,
+        occurrence_id=None,
+        title=(requested_title or ordered[0].title)[:200],
+        occurred_on=known_dates[0] if dates_agree else None,
+        time_precision="exact" if dates_agree else "unknown",
+        status="candidate",
+        revision=0,
+        origin="merged",
+    )
+    session.add(merged)
+    session.flush()
+
+    source_ids = [event.id for event in ordered]
+    session.execute(
+        update(Claim)
+        .where(Claim.event_id.in_(source_ids))
+        .values(event_id=merged.id, epistemic_status="unknown")
+    )
+    now = utc_now()
+    for event in ordered:
+        previous_status = event.status
+        event.status = "merged"
+        event.revision += 1
+        event.parent_event_id = merged.id
+        event.occurrence_id = None
+        event.updated_at = now
+        session.add(
+            EventReview(
+                event_id=event.id,
+                decision="merged",
+                note=None,
+                previous_status=previous_status,
+                revision=event.revision,
+            )
+        )
+    session.commit()
+    session.expire_all()
+    return {
+        "event": serialize_event(_load_event(session, merged.id)),
+        "sources": [serialize_event(_load_event(session, event_id)) for event_id in source_ids],
+    }
+
+
+def split_event(session: Session, event_id: str) -> dict:
+    event = _load_event(session, event_id)
+    if event.status in STRUCTURAL_STATUSES:
+        raise ApiError(409, "event_not_splittable", "已合并或已拆分的事件不能再次拆分")
+
+    claim_groups: dict[str, list[Claim]] = {}
+    for claim in event.claims:
+        claim_groups.setdefault(claim.occurrence_id, []).append(claim)
+    if len(claim_groups) < 2:
+        raise ApiError(409, "nothing_to_split", "这个事件只有一个来源 Note，无法拆分")
+
+    children: list[CandidateEvent] = []
+    for occurrence_id, claims in claim_groups.items():
+        first_claim = claims[0]
+        children.append(
+            CandidateEvent(
+                stage_id=event.stage_id,
+                occurrence_id=occurrence_id,
+                title=first_claim.source_title[:200],
+                occurred_on=first_claim.source_occurred_on,
+                time_precision="exact" if first_claim.source_occurred_on else "unknown",
+                status="candidate",
+                revision=0,
+                origin="split",
+                parent_event_id=event.id,
+            )
+        )
+    session.add_all(children)
+    session.flush()
+
+    for child, (_occurrence_id, claims) in zip(children, claim_groups.items(), strict=True):
+        session.execute(
+            update(Claim)
+            .where(Claim.id.in_([claim.id for claim in claims]))
+            .values(event_id=child.id, epistemic_status="unknown")
+        )
+
+    previous_status = event.status
+    event.status = "split"
+    event.revision += 1
+    event.occurrence_id = None
+    event.updated_at = utc_now()
+    session.add(
+        EventReview(
+            event_id=event.id,
+            decision="split",
+            note=None,
+            previous_status=previous_status,
+            revision=event.revision,
+        )
+    )
+    session.commit()
+    session.expire_all()
+    return {
+        "event": serialize_event(_load_event(session, event_id)),
+        "events": [serialize_event(_load_event(session, child.id)) for child in children],
+    }
+
+
+def _find_aggregation_target(
+    session: Session,
+    stage_id: str,
+    parsed: ParsedNote,
+) -> CandidateEvent | None:
+    if parsed.occurred_on is None:
+        return None
+    normalized = _normalized_title(parsed.title)
+    if not normalized:
+        return None
+    events = session.scalars(
+        select(CandidateEvent).where(
+            CandidateEvent.stage_id == stage_id,
+            CandidateEvent.status == "candidate",
+            CandidateEvent.revision == 0,
+            CandidateEvent.occurred_on == parsed.occurred_on,
+            CandidateEvent.origin.in_(("note", "aggregated")),
+        )
+    ).all()
+    return next((event for event in events if _normalized_title(event.title) == normalized), None)
+
+
+def _normalized_title(title: str) -> str:
+    return " ".join(title.casefold().split())
+
+
 def list_events(session: Session, stage_id: str) -> list[dict]:
     if session.get(Stage, stage_id) is None:
         raise ApiError(404, "stage_not_found", "没有找到这个建馆阶段")
@@ -272,6 +460,8 @@ def get_event(session: Session, event_id: str) -> dict:
 
 def review_event(session: Session, event_id: str, payload: ReviewCreate) -> dict:
     event = _load_event(session, event_id)
+    if event.status in STRUCTURAL_STATUSES:
+        raise ApiError(409, "event_not_reviewable", "已合并或已拆分的事件不能再审阅")
     if event.revision != payload.expected_revision:
         raise ApiError(409, "stale_event_revision", "事件已被其他审阅更新，请刷新后再试")
 
@@ -371,6 +561,8 @@ def serialize_event(event: CandidateEvent) -> dict:
         "status": event.status,
         "revision": event.revision,
         "is_formal": event.status == "confirmed",
+        "origin": event.origin,
+        "source_count": len({claim.occurrence_id for claim in event.claims}),
         "claims": [
             {
                 "id": claim.id,
