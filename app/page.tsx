@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, MouseEvent } from "react";
 import {
   CoverageItem,
   Phase0ApiError,
@@ -23,9 +24,15 @@ const MAX_BATCH_FILES = 20;
 const MAX_BATCH_BYTES = 20 * 1024 * 1024;
 const MAX_BATCH_BYTES_LABEL = "20 MiB";
 
-type WorkspaceView = "import" | "discover" | "review" | "exhibition";
+type WorkspaceView = "import" | "discover" | "review" | "summary" | "exhibition";
 
 type StructureConfirm = "merge" | "split" | null;
+
+type ActiveAnchor = {
+  key: string;
+  claimId: string;
+  quote: string;
+};
 
 type ImportResult = {
   name: string;
@@ -86,11 +93,16 @@ export default function MuseumMvpWorkspace() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [importResults, setImportResults] = useState<ImportResult[]>([]);
   const [reviewNote, setReviewNote] = useState("");
+  const [leavingDecision, setLeavingDecision] = useState<ReviewDecision | null>(null);
+  const [activeAnchor, setActiveAnchor] = useState<ActiveAnchor | null>(null);
+  const reviewNoteRef = useRef<HTMLTextAreaElement | null>(null);
+  const reviewEvidenceRef = useRef<HTMLElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [mergeIds, setMergeIds] = useState<string[]>([]);
   const [structureBusy, setStructureBusy] = useState(false);
   const [confirmingAction, setConfirmingAction] = useState<StructureConfirm>(null);
   const [loadingSavedStage, setLoadingSavedStage] = useState(true);
+  const [curtainActive, setCurtainActive] = useState(false);
   const [notice, setNotice] = useState<{
     kind: "error" | "success";
     message: string;
@@ -162,6 +174,27 @@ export default function MuseumMvpWorkspace() {
 
     restoreSavedStage().finally(() => setLoadingSavedStage(false));
   }, [refreshStage]);
+
+  useEffect(() => {
+    if (view !== "review") return;
+    function onKeyDown(keyboardEvent: KeyboardEvent) {
+      if (keyboardEvent.metaKey || keyboardEvent.ctrlKey || keyboardEvent.altKey) return;
+      const target = keyboardEvent.target as HTMLElement | null;
+      if (target && (target.tagName === "TEXTAREA" || target.tagName === "INPUT" || target.isContentEditable)) return;
+      const decisionMap: Record<string, ReviewDecision> = {
+        "1": "confirmed",
+        "2": "disputed",
+        "3": "unknown",
+        "4": "rejected",
+      };
+      const decision = decisionMap[keyboardEvent.key];
+      if (!decision) return;
+      keyboardEvent.preventDefault();
+      handleReview(decision);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
 
   async function handleCreateStage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -341,35 +374,46 @@ export default function MuseumMvpWorkspace() {
     }
   }
 
-  async function handleReview(decision: ReviewDecision) {
-    if (!reviewEventCandidate) return;
+  function handleReview(decision: ReviewDecision) {
+    if (!reviewEventCandidate || busy || leavingDecision) return;
     const note = reviewNote.trim();
     if (decision === "disputed" && !note) {
       setNotice({
         kind: "error",
-        message: "请用一句话写下哪里不准确，系统会把它和这次判断一起保存。",
+        message: "选择“描述要改”前，请先用一句话写下哪里不准确。",
       });
+      reviewNoteRef.current?.focus();
       return;
     }
 
+    const target = reviewEventCandidate;
+    setLeavingDecision(decision);
+    const exitDelay = decision === "confirmed" ? 520 : 240;
+    window.setTimeout(() => {
+      void submitReview(decision, note, target);
+    }, exitDelay);
+  }
+
+  async function submitReview(decision: ReviewDecision, note: string, target: CandidateEvent) {
     setBusy(true);
     setNotice(null);
     try {
-      const reviewed = await reviewEvent(reviewEventCandidate.id, {
+      const reviewed = await reviewEvent(target.id, {
         decision,
         note: note || null,
-        expected_revision: reviewEventCandidate.revision,
+        expected_revision: target.revision,
       });
       const remaining = candidateEvents.filter(
-        (event) => event.id !== reviewEventCandidate.id,
+        (event) => event.id !== target.id,
       );
       setEvents((current) =>
         current.map((event) => (event.id === reviewed.id ? reviewed : event)),
       );
       setReviewNote("");
+      setActiveAnchor(null);
       setSelectedEventId(remaining[0]?.id ?? reviewed.id);
       setNotice({ kind: "success", message: reviewSuccessMessage(decision) });
-      if (!remaining.length) setView("exhibition");
+      if (!remaining.length) setView("summary");
     } catch (error) {
       setNotice({ kind: "error", message: errorMessage(error) });
       if (stage && error instanceof Phase0ApiError && error.status === 409) {
@@ -377,7 +421,13 @@ export default function MuseumMvpWorkspace() {
       }
     } finally {
       setBusy(false);
+      setLeavingDecision(null);
     }
+  }
+
+  function activateEvidenceAnchor(claimId: string, anchorKey: string, quote: string) {
+    setActiveAnchor({ key: anchorKey, claimId, quote });
+    reviewEvidenceRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
   function openExperience(eventId: string) {
@@ -388,7 +438,17 @@ export default function MuseumMvpWorkspace() {
   function startReview(eventId?: string) {
     if (eventId) setSelectedEventId(eventId);
     setReviewNote("");
+    setActiveAnchor(null);
     setView("review");
+  }
+
+  function openExhibitionWithCurtain(clickEvent: MouseEvent<HTMLAnchorElement>) {
+    clickEvent.preventDefault();
+    if (curtainActive) return;
+    setCurtainActive(true);
+    window.setTimeout(() => {
+      window.location.href = "/exhibition";
+    }, 220);
   }
 
   function forgetStagePointer() {
@@ -441,13 +501,45 @@ export default function MuseumMvpWorkspace() {
             />
           )}
           {view === "review" && (
-            <ReviewView event={reviewEventCandidate} remaining={candidateEvents.length} note={reviewNote} busy={busy} onNoteChange={setReviewNote} onReview={handleReview} onSkip={() => setView("discover")} onPreview={() => setView("exhibition")} />
+            <ReviewView
+              key={reviewEventCandidate?.id ?? "none"}
+              event={reviewEventCandidate}
+              remaining={candidateEvents.length}
+              note={reviewNote}
+              busy={busy}
+              leaving={leavingDecision}
+              noteRef={reviewNoteRef}
+              evidenceRef={reviewEvidenceRef}
+              activeAnchor={activeAnchor}
+              onNoteChange={setReviewNote}
+              onReview={handleReview}
+              onSkip={() => setView("discover")}
+              onPreview={() => setView("exhibition")}
+              onAnchorActivate={activateEvidenceAnchor}
+            />
+          )}
+          {view === "summary" && (
+            <ReviewSummaryView
+              stage={stage}
+              confirmedCount={confirmedEvents.length}
+              disputedCount={visibleEvents.filter((item) => item.status === "disputed").length}
+              unknownCount={visibleEvents.filter((item) => item.status === "unknown").length}
+              excludedCount={events.filter((item) => item.status === "rejected").length}
+              experienceCount={visibleEvents.length}
+              onOpenExhibition={() => setView("exhibition")}
+              onBackToDiscover={() => setView("discover")}
+              onOpenExhibitionHall={openExhibitionWithCurtain}
+            />
           )}
           {view === "exhibition" && (
-            <ExhibitionView stage={stage} events={visibleEvents} confirmedCount={confirmedEvents.length} pendingCount={candidateEvents.length} onOpenExperience={openExperience} onReview={() => startReview()} onImport={() => setView("import")} />
+            <ExhibitionView stage={stage} events={visibleEvents} confirmedCount={confirmedEvents.length} pendingCount={candidateEvents.length} onOpenExperience={openExperience} onReview={() => startReview()} onImport={() => setView("import")} onOpenExhibitionHall={openExhibitionWithCurtain} />
           )}
         </>
       )}
+
+      <div className={`mvp-curtain${curtainActive ? " active" : ""}`} aria-hidden="true">
+        <span>DIGITAL MUSEUM · 开馆</span>
+      </div>
 
       <footer className="mvp-footer">
         <span>当前体验：本地 Markdown/TXT → 经历草稿 → 关键核对 → 私人回顾</span>
@@ -589,8 +681,10 @@ function ImportReport({ coverage, results }: { coverage: CoverageItem[]; results
       <header><span>导入结果</span><small>{rows.length} 份记录</small></header>
       <div className="mvp-import-rows">
         {rows.map((item, index) => (
-          <div key={`${item.name}-${index}`} className={item.status}>
-            <i>{item.status === "success" ? "✓" : item.status === "error" ? "!" : "…"}</i>
+          <div key={`${item.name}-${index}`} className={item.status} style={{ "--i": index } as CSSProperties}>
+            <i aria-hidden="true">
+              {item.status === "success" ? <StatusCheckGlyph /> : item.status === "error" ? <StatusAlertGlyph /> : <StatusPendingGlyph />}
+            </i>
             <div><strong>{item.name}</strong><small>{item.message}</small></div>
           </div>
         ))}
@@ -617,6 +711,11 @@ function DiscoverView({ events, selectedEvent, pendingCount, mergeIds, structure
     <section className="mvp-view mvp-discover-view">
       <div className="mvp-discover-main">
         <header className="mvp-section-heading"><span>02 · 发现</span><div><h2>系统整理出 {events.length} 段可能的经历</h2><p>先浏览结果。带“等待你核对”的内容仍是草稿，不会自动成为正式人生事实。</p></div></header>
+        <div className="mvp-legend" aria-label="卡片状态图例">
+          <span><i className="ai" aria-hidden="true" />虚线半透明 · AI 整理的草稿</span>
+          <span><i className="user" aria-hidden="true" />暖金实心 + 印章 · 你确认的经历</span>
+          <span><i className="unsure" aria-hidden="true" />虚线留白 · 暂不确定</span>
+        </div>
         {mergeIds.length >= 2 && (
           <div className="mvp-merge-bar" role="region">
             <strong>已选择 {mergeIds.length} 段经历</strong>
@@ -637,8 +736,8 @@ function DiscoverView({ events, selectedEvent, pendingCount, mergeIds, structure
         )}
         {events.length === 0 ? <div className="mvp-empty-state"><strong>还没有经历草稿</strong><p>先回到导入页添加记录。</p></div> : (
           <div className="mvp-experience-grid">
-            {sortEvents(events).map((event) => (
-              <div key={event.id} className={`mvp-experience-cell${mergeIds.includes(event.id) ? " picked" : ""}`}>
+            {sortEvents(events).map((event, index) => (
+              <div key={event.id} className={`mvp-experience-cell${mergeIds.includes(event.id) ? " picked" : ""}`} style={{ "--i": index } as CSSProperties}>
                 <label className="mvp-pick">
                   <input
                     type="checkbox"
@@ -647,8 +746,10 @@ function DiscoverView({ events, selectedEvent, pendingCount, mergeIds, structure
                   />
                   <span>同一件事</span>
                 </label>
-                <button type="button" className={`mvp-experience-card${selectedEvent?.id === event.id ? " selected" : ""}`} onClick={() => onSelect(event.id)}>
+                <button type="button" className={`mvp-experience-card st-${event.status}${selectedEvent?.id === event.id ? " selected" : ""}`} onClick={() => onSelect(event.id)}>
+                  {event.status === "confirmed" && <span className="mvp-seal" aria-hidden="true">已入馆</span>}
                   <span className="mvp-card-tags">
+                    <span className="mvp-card-no">NO.{String(index + 1).padStart(2, "0")}</span>
                     <span className={`mvp-status ${event.status}`}>{friendlyStatus[event.status]}</span>
                     {event.origin !== "note" && <span className="mvp-origin-chip">{originChipLabel(event)}</span>}
                   </span>
@@ -698,19 +799,25 @@ function DiscoverView({ events, selectedEvent, pendingCount, mergeIds, structure
   );
 }
 
-function ReviewView({ event, remaining, note, busy, onNoteChange, onReview, onSkip, onPreview }: {
+function ReviewView({ event, remaining, note, busy, leaving, noteRef, evidenceRef, activeAnchor, onNoteChange, onReview, onSkip, onPreview, onAnchorActivate }: {
   event: CandidateEvent | null;
   remaining: number;
   note: string;
   busy: boolean;
+  leaving: ReviewDecision | null;
+  noteRef: React.RefObject<HTMLTextAreaElement | null>;
+  evidenceRef: React.RefObject<HTMLElement | null>;
+  activeAnchor: ActiveAnchor | null;
   onNoteChange: (value: string) => void;
   onReview: (decision: ReviewDecision) => void;
   onSkip: () => void;
   onPreview: () => void;
+  onAnchorActivate: (claimId: string, anchorKey: string, quote: string) => void;
 }) {
   if (!event) {
     return <section className="mvp-view mvp-review-complete"><span>关键核对已完成</span><h2>现在可以看看整理后的回顾</h2><p>暂时不确定的内容会保留原样，不会被系统补写。</p><button className="mvp-primary" type="button" onClick={onPreview}>查看回顾草稿</button></section>;
   }
+  const frozen = busy || leaving !== null;
   const aggregated = event.source_count > 1;
   const contextLine = event.source_count > 1
     ? event.origin === "aggregated"
@@ -719,31 +826,81 @@ function ReviewView({ event, remaining, note, busy, onNoteChange, onReview, onSk
     : "系统从一份记录中整理出下面这段经历。";
   return (
     <section className="mvp-view mvp-review-view">
-      <article className="mvp-panel mvp-question-card">
+      <article key={event.id} className={`mvp-panel mvp-question-card${leaving ? " leaving" : ""}${leaving === "confirmed" ? " stamped" : ""}`}>
+        {leaving === "confirmed" && <span className="mvp-stamp" aria-hidden="true">已入馆</span>}
         <header><span>03 · 关键核对</span><small>还剩 {remaining} 个问题</small></header>
         <div className="mvp-question-progress"><i style={{ width: `${Math.max(12, 100 / Math.max(remaining, 1))}%` }} /></div>
         <p className="mvp-question-context">{contextLine}</p>
         <h2>{aggregated ? "这些记录属于同一段真实经历吗？" : "这件事情符合你的实际经历吗？"}</h2>
         <div className="mvp-question-experience"><time>{event.occurred_on ?? "时间还不明确"}</time><strong>{event.title}</strong><blockquote>{event.claims[0]?.text}</blockquote></div>
-        <label className="mvp-review-note"><span>补充说明（选择“描述要改”时必填）</span><textarea value={note} maxLength={2000} placeholder="例如：事情发生过，但还没有正式上线。" onChange={(changeEvent) => onNoteChange(changeEvent.target.value)} /></label>
+        <label className="mvp-review-note"><span>补充说明（选择“描述要改”时必填）</span><textarea ref={noteRef} value={note} maxLength={2000} placeholder="例如：事情发生过，但还没有正式上线。" onChange={(changeEvent) => onNoteChange(changeEvent.target.value)} /></label>
         <div className="mvp-answer-grid">
-          <button className="yes" disabled={busy} type="button" onClick={() => onReview("confirmed")}>是，已经发生</button>
-          <button disabled={busy} type="button" onClick={() => onReview("disputed")}>发生过，但描述要改</button>
-          <button disabled={busy} type="button" onClick={() => onReview("unknown")}>我现在不确定</button>
-          <button disabled={busy} type="button" onClick={() => onReview("rejected")}>只是讨论 / 不属于我</button>
+          <button className="yes" disabled={frozen} type="button" onClick={() => onReview("confirmed")}>
+            <kbd aria-hidden="true">1</kbd>
+            <span><strong>是，已经发生</strong><small>确认后盖上“已入馆”印章</small></span>
+          </button>
+          <button className="revise" disabled={frozen} type="button" onClick={() => onReview("disputed")}>
+            <kbd aria-hidden="true">2</kbd>
+            <span><strong>发生过，但描述要改</strong><small>需要先写一句补充说明</small></span>
+          </button>
+          <button className="unsure" disabled={frozen} type="button" onClick={() => onReview("unknown")}>
+            <kbd aria-hidden="true">3</kbd>
+            <span><strong>我现在不确定</strong><small>保留原样，系统不会补写</small></span>
+          </button>
+          <button className="drop" disabled={frozen} type="button" onClick={() => onReview("rejected")}>
+            <kbd aria-hidden="true">4</kbd>
+            <span><strong>只是讨论 / 不属于我</strong><small>不进入回顾，原文仍保留</small></span>
+          </button>
         </div>
-        <button className="mvp-text-button" disabled={busy} type="button" onClick={onSkip}>先跳过，稍后再说</button>
+        <p className="mvp-kbd-hint">键盘 1–4 可快速作答；描述要改需先填写说明。</p>
+        <button className="mvp-text-button" disabled={frozen} type="button" onClick={onSkip}>先跳过，稍后再说</button>
       </article>
-      <aside className="mvp-panel mvp-review-evidence">
+      <aside className="mvp-panel mvp-review-evidence" ref={evidenceRef}>
         <span>你可以检查原始记录</span><h3>系统知道什么，不知道什么</h3>
         <div className="mvp-known-unknown"><div><strong>已经知道</strong><p>原文内容、文件哈希、行号和记录中的日期。</p></div><div><strong>仍不知道</strong><p>事情是否完成、你是否认同，以及它对你的意义。</p></div></div>
-        <EvidenceDetails event={event} />
+        <EvidenceDetails event={event} activeAnchor={activeAnchor} onAnchorActivate={onAnchorActivate} />
       </aside>
     </section>
   );
 }
 
-function ExhibitionView({ stage, events, confirmedCount, pendingCount, onOpenExperience, onReview, onImport }: {
+function ReviewSummaryView({ stage, confirmedCount, disputedCount, unknownCount, excludedCount, experienceCount, onOpenExhibition, onBackToDiscover, onOpenExhibitionHall }: {
+  stage: Stage;
+  confirmedCount: number;
+  disputedCount: number;
+  unknownCount: number;
+  excludedCount: number;
+  experienceCount: number;
+  onOpenExhibition: () => void;
+  onBackToDiscover: () => void;
+  onOpenExhibitionHall: (clickEvent: MouseEvent<HTMLAnchorElement>) => void;
+}) {
+  return (
+    <section className="mvp-view mvp-review-summary">
+      <span className="mvp-summary-kicker">03 · 核对完成</span>
+      <h2>
+        {confirmedCount > 0
+          ? <>这段时间被确认为 <strong>{confirmedCount}</strong> 段真实经历</>
+          : <>这段时间的经历暂时都还是草稿</>}
+      </h2>
+      <p className="mvp-summary-sub">「{stage.name}」 · {stage.starts_on} — {stage.ends_on} · 共整理 {experienceCount} 段经历</p>
+      <dl className="mvp-summary-stats">
+        <div className="ok"><dt>本人确认</dt><dd>{confirmedCount}</dd></div>
+        <div><dt>描述要改</dt><dd>{disputedCount}</dd></div>
+        <div><dt>暂不确定</dt><dd>{unknownCount}</dd></div>
+        <div><dt>不进入回顾</dt><dd>{excludedCount}</dd></div>
+      </dl>
+      <p className="mvp-summary-note">不确定的内容不会被补写；它们会带着草稿标识进入展览，等你以后再核对。</p>
+      <div className="mvp-next-actions centered">
+        <Link className="mvp-primary" href="/exhibition" onClick={onOpenExhibitionHall}>进入展览馆，选一种风格开馆 →</Link>
+        <button className="mvp-secondary" type="button" onClick={onBackToDiscover}>回到发现经历</button>
+      </div>
+      <button className="mvp-text-button" type="button" onClick={onOpenExhibition}>先看首页里的展览草稿</button>
+    </section>
+  );
+}
+
+function ExhibitionView({ stage, events, confirmedCount, pendingCount, onOpenExperience, onReview, onImport, onOpenExhibitionHall }: {
   stage: Stage;
   events: CandidateEvent[];
   confirmedCount: number;
@@ -751,6 +908,7 @@ function ExhibitionView({ stage, events, confirmedCount, pendingCount, onOpenExp
   onOpenExperience: (eventId: string) => void;
   onReview: () => void;
   onImport: () => void;
+  onOpenExhibitionHall: (clickEvent: MouseEvent<HTMLAnchorElement>) => void;
 }) {
   return (
     <section className="mvp-view mvp-exhibition-view">
@@ -762,9 +920,12 @@ function ExhibitionView({ stage, events, confirmedCount, pendingCount, onOpenExp
       {events.length ? (
         <div className="mvp-timeline">
           {sortEvents(events).map((event, index) => (
-            <article key={event.id} className={event.status === "confirmed" ? "confirmed" : "draft"}>
+            <article key={event.id} className={event.status === "confirmed" ? "confirmed" : "draft"} style={{ "--i": index } as CSSProperties}>
               <div className="mvp-timeline-marker"><span>{String(index + 1).padStart(2, "0")}</span><i /></div>
-                  <button type="button" onClick={() => onOpenExperience(event.id)}><time>{event.occurred_on ?? "时间待确认"}</time><span className={`mvp-status ${event.status}`}>{friendlyStatus[event.status]}</span><h3>{event.title}</h3><p>{event.claims[0]?.text}</p><small>{event.source_count} 份来源记录 · 点击查看证据</small></button>
+              <button type="button" onClick={() => onOpenExperience(event.id)}>
+                {event.status === "confirmed" && <span className="mvp-seal" aria-hidden="true">已入馆</span>}
+                <time>{event.occurred_on ?? "时间待确认"}</time><span className={`mvp-status ${event.status}`}>{friendlyStatus[event.status]}</span><h3>{event.title}</h3><p>{event.claims[0]?.text}</p><small>{event.source_count} 份来源记录 · 点击查看证据</small>
+              </button>
             </article>
           ))}
         </div>
@@ -773,25 +934,91 @@ function ExhibitionView({ stage, events, confirmedCount, pendingCount, onOpenExp
         <div><span>保存之前</span><h3>档案和公开展示是两件事</h3><p>当前结果只保存在本地。以后开放分享时，系统仍需单独检查人名、邮箱、路径、密钥和原始对话。</p></div>
         <ul><li><i>✓</i> 当前没有公开或分享功能</li><li><i>✓</i> 暂时不确定的内容不会被自动补写</li><li><i>✓</i> 候选内容保持草稿标识</li></ul>
       </section>
-      <div className="mvp-next-actions centered">{pendingCount > 0 && <button className="mvp-primary" type="button" onClick={onReview}>继续核对 {pendingCount} 段经历</button>}<button className="mvp-secondary" type="button" onClick={onImport}>继续导入记录</button></div>
+      <div className="mvp-next-actions centered"><Link className="mvp-primary" href="/exhibition" onClick={onOpenExhibitionHall}>进入展览馆 · 选一种风格开馆 →</Link>{pendingCount > 0 && <button className="mvp-secondary" type="button" onClick={onReview}>继续核对 {pendingCount} 段经历</button>}<button className="mvp-secondary" type="button" onClick={onImport}>继续导入记录</button></div>
     </section>
   );
 }
 
-function EvidenceDetails({ event }: { event: CandidateEvent }) {
+function EvidenceDetails({ event, activeAnchor, onAnchorActivate }: {
+  event: CandidateEvent;
+  activeAnchor?: ActiveAnchor | null;
+  onAnchorActivate?: (claimId: string, anchorKey: string, quote: string) => void;
+}) {
   return (
     <div className="mvp-evidence-list">
-      {event.claims.map((claim, index) => (
-        <details key={claim.id} open={index === 0}>
-          <summary><span>原文摘录 {event.claims.length > 1 ? index + 1 : ""}</span><small>{claim.anchors.length} 个来源位置</small></summary>
-          <blockquote>{claim.text}</blockquote>
-          {claim.anchors.map((anchor) => (
-            <div className="mvp-anchor" key={`${anchor.blob_sha256}-${anchor.char_start}`}><p>{anchor.quote}</p><dl><div><dt>行号</dt><dd>{anchor.line_start}{anchor.line_end !== anchor.line_start ? `–${anchor.line_end}` : ""}</dd></div><div><dt>文件指纹</dt><dd title={anchor.blob_sha256}>{anchor.blob_sha256.slice(0, 14)}…</dd></div></dl></div>
-          ))}
-        </details>
-      ))}
+      {event.claims.map((claim, index) => {
+        const highlightQuote = activeAnchor && activeAnchor.claimId === claim.id ? activeAnchor.quote : null;
+        return (
+          <details key={claim.id} open={index === 0}>
+            <summary><span>原文摘录 {event.claims.length > 1 ? index + 1 : ""}</span><small>{claim.anchors.length} 个来源位置</small></summary>
+            <blockquote>{highlightQuote ? <HighlightedExcerpt text={claim.text} quote={highlightQuote} pulseKey={activeAnchor?.key} /> : claim.text}</blockquote>
+            {claim.anchors.map((anchor) => {
+              const anchorKey = `${anchor.blob_sha256}-${anchor.char_start}`;
+              const body = (<><p>{anchor.quote}</p><dl><div><dt>行号</dt><dd>{anchor.line_start}{anchor.line_end !== anchor.line_start ? `–${anchor.line_end}` : ""}</dd></div><div><dt>文件指纹</dt><dd title={anchor.blob_sha256}>{anchor.blob_sha256.slice(0, 14)}…</dd></div></dl></>);
+              if (!onAnchorActivate) {
+                return <div className="mvp-anchor" key={anchorKey}>{body}</div>;
+              }
+              return (
+                <div
+                  className={`mvp-anchor interactive${activeAnchor?.key === anchorKey ? " active" : ""}`}
+                  key={anchorKey}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onAnchorActivate(claim.id, anchorKey, anchor.quote)}
+                  onKeyDown={(keyEvent) => {
+                    if (keyEvent.key === "Enter" || keyEvent.key === " ") {
+                      keyEvent.preventDefault();
+                      onAnchorActivate(claim.id, anchorKey, anchor.quote);
+                    }
+                  }}
+                >
+                  {body}
+                  <small className="mvp-anchor-hint">点击在上方原文中定位</small>
+                </div>
+              );
+            })}
+          </details>
+        );
+      })}
       {event.latest_review?.note && <div className="mvp-user-note"><strong>你的补充</strong><p>{event.latest_review.note}</p></div>}
     </div>
+  );
+}
+
+function HighlightedExcerpt({ text, quote, pulseKey }: { text: string; quote: string; pulseKey?: string }) {
+  const index = text.indexOf(quote);
+  if (index === -1) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, index)}
+      <mark className="mvp-evidence-hit" key={pulseKey}>{quote}</mark>
+      {text.slice(index + quote.length)}
+    </>
+  );
+}
+
+function StatusCheckGlyph() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path d="M3.5 8.6l3 3L12.8 4.8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function StatusAlertGlyph() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path d="M8 4v5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="8" cy="11.8" r="1.1" fill="currentColor" />
+    </svg>
+  );
+}
+
+function StatusPendingGlyph() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeDasharray="2.4 2.4" strokeLinecap="round" />
+    </svg>
   );
 }
 
