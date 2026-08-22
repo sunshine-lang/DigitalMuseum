@@ -1,6 +1,6 @@
 # 第一阶段技术开发文档｜Note → Event Review 纵向切片
 
-> 配套文档：`digital-museum-prd-v0.1.md`、《AI 产品 Vibe Coding 通用技术栈手册》、`docs/technical-adaptation.md`。
+> 配套文档：`docs/prd/digital-museum-prd-v0.1.md`、`docs/references/AI产品Vibe Coding通用技术栈手册.md`、`docs/technical-adaptation.md`。
 > 本文档只覆盖 Phase 0 的第一条可验收链路，不代表整个 Phase 0 Gate 已完成。
 
 ## 一、阶段目标

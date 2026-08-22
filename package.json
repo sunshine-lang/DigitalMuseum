@@ -18,11 +18,9 @@
     "backend:sync": "cd backend && UV_CACHE_DIR=../.sites-runtime/uv-cache uv sync --python 3.11",
     "backend:dev": "cd backend && UV_CACHE_DIR=../.sites-runtime/uv-cache uv run uvicorn app.main:app --host 127.0.0.1 --port 8010 --reload",
     "typecheck": "tsc --noEmit",
-    "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"
+    "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next"
   },
   "dependencies": {
-    "drizzle-orm": "0.45.2",
     "next": "16.2.6",
     "react": "19.2.6",
     "react-dom": "19.2.6"
@@ -36,7 +34,6 @@
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",
     "@vitejs/plugin-rsc": "0.5.26",
-    "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
     "react-server-dom-webpack": "19.2.6",

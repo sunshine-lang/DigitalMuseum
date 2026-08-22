@@ -1,6 +1,6 @@
 # 技术适配声明
 
-> 依据：`digital-museum-prd-v0.1.md` 与《AI 产品 Vibe Coding 通用技术栈手册》。
+> 依据：`docs/prd/digital-museum-prd-v0.1.md` 与 `docs/references/AI产品Vibe Coding通用技术栈手册.md`。
 > 适用范围：Phase 0 的第一条纵向切片（Note → Event Review）。
 
 ## 1. 产品形态判断
