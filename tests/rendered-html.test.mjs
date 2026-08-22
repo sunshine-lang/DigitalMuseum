@@ -32,7 +32,7 @@ test("renders development preview metadata", async () => {
   assert.match(await response.text(), developmentPreviewMeta);
 });
 
-test("renders the Phase 0 Note Event Review workspace", async () => {
+test("renders the value-first AI records MVP workspace", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("phase0", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
@@ -45,9 +45,17 @@ test("renders the Phase 0 Note Event Review workspace", async () => {
   const html = await response.text();
 
   assert.equal(response.status, 200);
-  assert.match(html, /Phase 0 · Note Event Review/);
-  assert.match(html, /创建阶段/);
-  assert.match(html, /候选不是事实/);
+  assert.match(html, /AI 协作记录体验版/);
+  assert.match(html, /把散落的 AI 协作记录/);
+  assert.match(html, /导入记录/);
+  assert.match(html, /发现经历/);
+  assert.match(html, /核对关键内容/);
+  assert.match(html, /查看回顾/);
+  assert.match(html, /原始记录保存在本地/);
+  assert.match(html, /先看草稿/);
+  assert.match(html, /原生导出解析、自动策展网页和公开分享尚未实现/);
+  assert.doesNotMatch(html, /5 分钟/);
+  assert.doesNotMatch(html, /Unknown/);
 });
 
 test("keeps the previous exhibition experience under the demo route", async () => {
