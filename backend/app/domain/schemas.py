@@ -48,7 +48,7 @@ class ClaimOut(BaseModel):
     id: str
     text: str
     epistemic_status: Literal["unknown", "user_confirmed", "disputed"]
-    evidence_role: Literal["user_statement"]
+    evidence_role: Literal["user_statement", "artifact"]
     processor_version: str
     anchors: list[AnchorOut]
 
@@ -82,7 +82,7 @@ class EventOut(BaseModel):
     status: EventStatus
     revision: int
     is_formal: bool
-    origin: Literal["note", "aggregated", "merged", "split"]
+    origin: Literal["note", "aggregated", "merged", "split", "git"]
     source_count: int
     claims: list[ClaimOut]
     latest_review: ReviewOut | None
@@ -133,3 +133,13 @@ class MergeOut(BaseModel):
 class SplitOut(BaseModel):
     event: EventOut
     events: list[EventOut]
+
+
+class GitRepoCreate(BaseModel):
+    path: str = Field(min_length=1, max_length=1024)
+
+
+class GitImportOut(BaseModel):
+    occurrence: OccurrenceOut
+    events: list[EventOut]
+    coverage: list[CoverageOut]

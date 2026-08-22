@@ -23,6 +23,8 @@ from app.domain.models import (
     utc_now,
 )
 from app.domain.schemas import MergeCreate, ReviewCreate, StageCreate
+from app.services import git_evidence_service as git_evidence
+from app.services.git_evidence_service import GitEvidence
 from app.services.note_parser import PROCESSOR_VERSION, ParsedNote
 
 AGGREGATION_RULE_VERSION = "note-aggregation-v1"
@@ -160,6 +162,7 @@ def mark_import_failed(
     occurrence_id: str,
     step: str,
     error_code: str,
+    processor_version: str = PROCESSOR_VERSION,
 ) -> None:
     occurrence = session.get(EvidenceOccurrence, occurrence_id)
     if occurrence is None:
@@ -171,7 +174,7 @@ def mark_import_failed(
             CoverageItem(
                 step="parsed_locally",
                 status="completed",
-                processor_version=PROCESSOR_VERSION,
+                processor_version=processor_version,
             )
         )
     if step not in existing_steps:
@@ -179,7 +182,7 @@ def mark_import_failed(
             CoverageItem(
                 step=step,
                 status="failed",
-                processor_version=PROCESSOR_VERSION if step != "stored_locally" else None,
+                processor_version=processor_version if step != "stored_locally" else None,
                 error_code=error_code,
             )
         )
@@ -201,7 +204,7 @@ def persist_note_candidate(
     if occurrence.blob is None:
         raise ApiError(500, "missing_evidence_blob", "原始证据没有完成本地保存")
 
-    target = _find_aggregation_target(session, stage.id, parsed)
+    target = _find_aggregation_target(session, stage.id, parsed.title, parsed.occurred_on)
     if target is not None:
         event = target
         claim = Claim(
@@ -284,6 +287,133 @@ def persist_note_candidate(
         "event": serialize_event(reloaded_event),
         "coverage": occurrence_coverage,
     }
+
+
+def import_git_evidence(
+    session: Session,
+    *,
+    stage_id: str,
+    repo_path: str,
+    upload_dir: Path,
+    allowed_repo_roots: str,
+) -> dict:
+    stage = require_stage(session, stage_id)
+    evidence = git_evidence.import_git_repository(
+        repo_path,
+        starts_on=stage.starts_on,
+        ends_on=stage.ends_on,
+        allowed_roots=allowed_repo_roots,
+    )
+    content = evidence.document.encode("utf-8")
+    occurrence = start_note_import(
+        session,
+        stage_id=stage.id,
+        original_filename=f"{evidence.repo_name}-git-evidence.txt",
+        media_type="text/plain",
+        content=content,
+        upload_dir=upload_dir,
+    )
+    occurrence_id = occurrence.id
+    try:
+        events = _persist_git_candidates(session, occurrence_id=occurrence_id, evidence=evidence)
+    except ApiError as exc:
+        mark_import_failed(
+            session,
+            occurrence_id=occurrence_id,
+            step="candidate_generated",
+            error_code=exc.code,
+            processor_version=git_evidence.GIT_PROCESSOR_VERSION,
+        )
+        raise
+    coverage = list_coverage(session, stage.id)
+    occurrence_coverage = [item for item in coverage if item["occurrence_id"] == occurrence_id]
+    return {
+        "occurrence": serialize_occurrence(occurrence),
+        "events": events,
+        "coverage": occurrence_coverage,
+    }
+
+
+def _persist_git_candidates(
+    session: Session,
+    *,
+    occurrence_id: str,
+    evidence: GitEvidence,
+) -> list[dict]:
+    occurrence = session.get(EvidenceOccurrence, occurrence_id)
+    if occurrence is None:
+        raise ApiError(404, "occurrence_not_found", "没有找到这次仓库导入")
+    stage = require_stage(session, occurrence.stage_id)
+    if occurrence.blob is None:
+        raise ApiError(500, "missing_evidence_blob", "原始证据没有完成本地保存")
+
+    created_events: list[CandidateEvent] = []
+    for item in evidence.items:
+        target = _find_aggregation_target(
+            session,
+            stage.id,
+            item.title,
+            item.occurred_on,
+            origins=("note", "aggregated", "git"),
+        )
+        if target is not None:
+            event = target
+            event.origin = "aggregated"
+            event.aggregation_rule = AGGREGATION_RULE_VERSION
+            event.updated_at = utc_now()
+        else:
+            event = CandidateEvent(
+                stage_id=stage.id,
+                occurrence=occurrence,
+                title=item.title,
+                occurred_on=item.occurred_on,
+                time_precision="exact",
+                status="candidate",
+                revision=0,
+                origin="git",
+            )
+            created_events.append(event)
+        claim = Claim(
+            event=event,
+            occurrence_id=occurrence.id,
+            text=item.claim_text,
+            epistemic_status="unknown",
+            evidence_role="artifact",
+            processor_version=git_evidence.GIT_PROCESSOR_VERSION,
+            source_title=item.title,
+            source_occurred_on=item.occurred_on,
+        )
+        claim.anchors.extend(
+            EvidenceAnchor(
+                blob=occurrence.blob,
+                quote=anchor.quote,
+                line_start=anchor.line_start,
+                line_end=anchor.line_end,
+                char_start=anchor.char_start,
+                char_end=anchor.char_end,
+            )
+            for anchor in item.anchors
+        )
+        session.add(claim)
+
+    occurrence.status = "completed"
+    occurrence.coverage_items.extend(
+        [
+            CoverageItem(
+                step="parsed_locally",
+                status="completed",
+                processor_version=git_evidence.GIT_PROCESSOR_VERSION,
+            ),
+            CoverageItem(
+                step="candidate_generated",
+                status="completed",
+                processor_version=git_evidence.GIT_PROCESSOR_VERSION,
+            ),
+        ]
+    )
+    session.commit()
+    all_events = [serialize_event(_load_event(session, event.id)) for event in created_events]
+    return all_events
 
 
 def merge_events(session: Session, stage_id: str, payload: MergeCreate) -> dict:
@@ -416,11 +546,13 @@ def split_event(session: Session, event_id: str) -> dict:
 def _find_aggregation_target(
     session: Session,
     stage_id: str,
-    parsed: ParsedNote,
+    title: str,
+    occurred_on: date | None,
+    origins: tuple[str, ...] = ("note", "aggregated"),
 ) -> CandidateEvent | None:
-    if parsed.occurred_on is None:
+    if occurred_on is None:
         return None
-    normalized = _normalized_title(parsed.title)
+    normalized = _normalized_title(title)
     if not normalized:
         return None
     events = session.scalars(
@@ -428,8 +560,8 @@ def _find_aggregation_target(
             CandidateEvent.stage_id == stage_id,
             CandidateEvent.status == "candidate",
             CandidateEvent.revision == 0,
-            CandidateEvent.occurred_on == parsed.occurred_on,
-            CandidateEvent.origin.in_(("note", "aggregated")),
+            CandidateEvent.occurred_on == occurred_on,
+            CandidateEvent.origin.in_(origins),
         )
     ).all()
     return next((event for event in events if _normalized_title(event.title) == normalized), None)

@@ -20,14 +20,14 @@ export type Claim = {
   id: string;
   text: string;
   epistemic_status: "unknown" | "user_confirmed" | "disputed";
-  evidence_role: "user_statement";
+  evidence_role: "user_statement" | "artifact";
   processor_version: string;
   anchors: Anchor[];
 };
 
 export type ReviewDecision = "confirmed" | "disputed" | "unknown" | "rejected";
 
-export type EventOrigin = "note" | "aggregated" | "merged" | "split";
+export type EventOrigin = "note" | "aggregated" | "merged" | "split" | "git";
 
 export type AuditDecision = ReviewDecision | "merged" | "split";
 
@@ -170,5 +170,15 @@ export function splitEvent(
   return apiRequest(`/api/v1/events/${eventId}/split`, {
     method: "POST",
     body: JSON.stringify({}),
+  });
+}
+
+export function importGitRepo(
+  stageId: string,
+  repoPath: string,
+): Promise<{ events: CandidateEvent[] }> {
+  return apiRequest(`/api/v1/stages/${stageId}/git-repos`, {
+    method: "POST",
+    body: JSON.stringify({ path: repoPath }),
   });
 }

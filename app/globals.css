@@ -5654,6 +5654,44 @@ mark.mvp-evidence-hit {
   .mvp-curtain.active { animation: none; }
 }
 
+/* Git 仓库导入表单（第三阶段） */
+.mvp-git-import {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px dashed var(--line);
+  display: grid;
+  gap: 12px;
+}
+.mvp-git-divider {
+  justify-self: center;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: .3em;
+  text-indent: .3em;
+}
+.mvp-git-import label > span {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.mvp-git-import input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper-2);
+  color: var(--ink);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+}
+.mvp-git-import input:focus-visible {
+  outline: 2px solid rgba(49, 92, 139, 0.35);
+  outline-offset: 1px;
+}
+.mvp-git-import small { color: var(--muted); font-size: 11.5px; }
+.mvp-git-import button { justify-self: start; }
+
 /* ---- 准备间（选展品 / 选风格，中性视觉） ---- */
 
 .expo-shell { min-height: 100vh; }

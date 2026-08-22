@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     database_url: str = f"sqlite:///{PROJECT_ROOT / 'data' / 'digital_museum.db'}"
     upload_dir: Path = PROJECT_ROOT / "data" / "uploads"
     max_upload_bytes: int = Field(default=2 * 1024 * 1024, ge=1)
+    allowed_repo_roots: str = "~"
     cors_origins: tuple[str, ...] = (
         "http://127.0.0.1:3000",
         "http://localhost:3000",

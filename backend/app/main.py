@@ -26,6 +26,7 @@ def create_app(
     database_url: str | None = None,
     upload_dir: Path | None = None,
     max_upload_bytes: int | None = None,
+    allowed_repo_roots: str | None = None,
 ) -> FastAPI:
     overrides: dict[str, object] = {}
     if database_url is not None:
@@ -34,6 +35,8 @@ def create_app(
         overrides["upload_dir"] = upload_dir
     if max_upload_bytes is not None:
         overrides["max_upload_bytes"] = max_upload_bytes
+    if allowed_repo_roots is not None:
+        overrides["allowed_repo_roots"] = allowed_repo_roots
     settings = Settings(**overrides)
     engine = create_database_engine(settings.database_url)
     session_factory = create_session_factory(engine)

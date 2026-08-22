@@ -9,6 +9,8 @@ from app.domain.schemas import (
     CoverageOut,
     DataEnvelope,
     EventOut,
+    GitImportOut,
+    GitRepoCreate,
     HealthOut,
     MergeCreate,
     MergeOut,
@@ -137,6 +139,27 @@ def create_api_router(session_provider) -> APIRouter:
                 )
             raise
         return {"data": result}
+
+    @router.post(
+        "/stages/{stage_id}/git-repos",
+        status_code=201,
+        response_model=DataEnvelope[GitImportOut],
+    )
+    def import_git_repo(
+        stage_id: str,
+        payload: GitRepoCreate,
+        request: Request,
+        session: SessionDependency,
+    ) -> dict:
+        return {
+            "data": museum_service.import_git_evidence(
+                session,
+                stage_id=stage_id,
+                repo_path=payload.path,
+                upload_dir=request.app.state.settings.upload_dir,
+                allowed_repo_roots=request.app.state.settings.allowed_repo_roots,
+            )
+        }
 
     @router.get(
         "/stages/{stage_id}/coverage",

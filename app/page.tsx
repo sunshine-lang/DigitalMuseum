@@ -12,6 +12,7 @@ import {
   getCoverage,
   getEvents,
   getStage,
+  importGitRepo,
   importNote,
   mergeEvents,
   reviewEvent,
@@ -66,12 +67,16 @@ function isVisibleExperience(event: CandidateEvent): boolean {
 }
 
 function originChipLabel(event: CandidateEvent): string {
+  if (event.origin === "git") return "来自 Git 仓库";
   if (event.origin === "aggregated") return `聚合自 ${event.source_count} 份`;
   if (event.origin === "merged") return "合并产生";
   return "拆分产生";
 }
 
 function evidenceSummary(event: CandidateEvent): string {
+  if (event.origin === "git") {
+    return "这段经历来自 Git 仓库的提交记录：系统只读取提交日期与提交说明并保留原文位置，没有判断工作的影响力或完成质量。它仍然是候选，需要你核对。";
+  }
   if (event.origin === "aggregated") {
     return `系统发现 ${event.source_count} 份标题和日期都相同的记录，把它们整理在同一段经历里。它只读取标题、日期和首段正文并保留原文位置，没有判断事情是否完成或对你意味着什么。`;
   }
@@ -303,6 +308,33 @@ export default function MuseumMvpWorkspace() {
     }
   }
 
+  async function handleImportGit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!stage) return;
+    const form = new FormData(event.currentTarget);
+    const repoPath = String(form.get("gitPath") ?? "").trim();
+    if (!repoPath) {
+      setNotice({ kind: "error", message: "请先填写本地 Git 仓库的路径。" });
+      return;
+    }
+    setBusy(true);
+    setNotice(null);
+    try {
+      const result = await importGitRepo(stage.id, repoPath);
+      await refreshStage(stage.id);
+      setNotice({
+        kind: "success",
+        message: result.events.length
+          ? `已从 Git 仓库整理出 ${result.events.length} 段经历，等待你核对。`
+          : "这个仓库的活动已并入既有经历草稿，没有产生重复事件。",
+      });
+    } catch (error) {
+      setNotice({ kind: "error", message: errorMessage(error) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function toggleMergeId(eventId: string) {
     setMergeIds((current) =>
       current.includes(eventId)
@@ -482,7 +514,7 @@ export default function MuseumMvpWorkspace() {
         <>
           <StageSummary stage={stage} experienceCount={visibleEvents.length} pendingCount={candidateEvents.length} onExit={forgetStagePointer} />
           {view === "import" && (
-            <ImportView busy={busy} coverage={coverage} files={selectedFiles} results={importResults} onFileSelection={handleFileSelection} onSubmit={handleImport} />
+            <ImportView busy={busy} coverage={coverage} files={selectedFiles} results={importResults} onFileSelection={handleFileSelection} onSubmit={handleImport} onGitSubmit={handleImportGit} />
           )}
           {view === "discover" && (
             <DiscoverView
@@ -631,13 +663,14 @@ function StageSummary({ stage, experienceCount, pendingCount, onExit }: {
   );
 }
 
-function ImportView({ busy, coverage, files, results, onFileSelection, onSubmit }: {
+function ImportView({ busy, coverage, files, results, onFileSelection, onSubmit, onGitSubmit }: {
   busy: boolean;
   coverage: CoverageItem[];
   files: File[];
   results: ImportResult[];
   onFileSelection: (files: FileList | null) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onGitSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   return (
@@ -658,6 +691,15 @@ function ImportView({ busy, coverage, files, results, onFileSelection, onSubmit 
             </div>
           )}
           <button className="mvp-primary" disabled={busy || files.length === 0} type="submit">{busy ? "正在逐份保存和整理…" : "开始整理这些记录"}</button>
+        </form>
+        <form className="mvp-git-import" onSubmit={onGitSubmit}>
+          <span className="mvp-git-divider">或</span>
+          <label>
+            <span>导入一个本地 Git 仓库（只读提交记录）</span>
+            <input name="gitPath" placeholder="/Users/you/Projects/your-repo" autoComplete="off" />
+          </label>
+          <button className="mvp-secondary" disabled={busy} type="submit">{busy ? "正在读取仓库…" : "读取仓库提交记录"}</button>
+          <small>系统只读取建馆阶段内的提交日期与提交说明，不会修改仓库内容。</small>
         </form>
         <div className="mvp-privacy-note"><strong>本地优先</strong><p>当前版本不调用模型，也不会把文件发送到云端。请仍只使用非敏感测试资料。</p></div>
       </article>
