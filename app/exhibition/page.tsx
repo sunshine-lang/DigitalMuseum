@@ -64,6 +64,7 @@ const themes: Array<{
 
 const statusLabels: Record<string, string> = {
   candidate: "等待核对",
+  verified: "系统核实",
   confirmed: "本人确认",
   disputed: "描述待修正",
   unknown: "暂不确定",
@@ -131,6 +132,10 @@ export default function ExhibitionWorkspace() {
     () => selectedEvents.filter((event) => event.status === "confirmed").length,
     [selectedEvents],
   );
+  const verifiedCount = useMemo(
+    () => selectedEvents.filter((event) => event.status === "verified").length,
+    [selectedEvents],
+  );
 
   useEffect(() => {
     const savedStageId = window.localStorage.getItem(STAGE_STORAGE_KEY);
@@ -147,9 +152,13 @@ export default function ExhibitionWorkspace() {
           setStatus("empty");
           return;
         }
-        const confirmed = visible.filter((event) => event.status === "confirmed");
+        // 默认选展：confirmed + verified 合集（本人确认与系统核实都算“已确认真”），
+        // 合集为空时退回全部可见事件。
+        const settled = visible.filter(
+          (event) => event.status === "confirmed" || event.status === "verified",
+        );
         setSelectedIds(
-          new Set((confirmed.length ? confirmed : visible).map((event) => event.id)),
+          new Set((settled.length ? settled : visible).map((event) => event.id)),
         );
         setStatus("ready");
       })
@@ -285,6 +294,7 @@ export default function ExhibitionWorkspace() {
             {groups.map(([key, groupEvents]) => {
               const selectedInGroup = groupEvents.filter((event) => selectedIds.has(event.id)).length;
               const confirmedInGroup = groupEvents.filter((event) => event.status === "confirmed").length;
+              const verifiedInGroup = groupEvents.filter((event) => event.status === "verified").length;
               return (
                 <article className="expo-module" key={key}>
                   <header>
@@ -292,7 +302,7 @@ export default function ExhibitionWorkspace() {
                       <i className={selectedInGroup === groupEvents.length ? "on" : selectedInGroup > 0 ? "half" : ""} aria-hidden />
                       <strong>{monthLabel(key)}</strong>
                     </button>
-                    <small>{groupEvents.length} 段经历 · {confirmedInGroup} 段已确认</small>
+                    <small>{groupEvents.length} 段经历 · {confirmedInGroup + verifiedInGroup} 段已确认{verifiedInGroup > 0 ? `（含系统核实 ${verifiedInGroup}）` : ""}</small>
                   </header>
                   <ul>
                     {groupEvents.map((event) => (
@@ -365,13 +375,24 @@ export default function ExhibitionWorkspace() {
 
   const theme = themes.find((item) => item.id === themeId) ?? themes[0];
   const spanMonths = stage ? monthsBetween(stage.starts_on, stage.ends_on) : groups.length;
-  const draftCount = selectedEvents.length - confirmedCount;
-  const closingLine =
-    confirmedCount === 0
-      ? "今天展出的仍是草稿。完成核对之后，它们会真正属于你。"
-      : confirmedCount === selectedEvents.length
-        ? `这 ${spanMonths} 个月里的每一段展出经历，都由你亲自确认。`
-        : `这 ${spanMonths} 个月里，你确认了 ${confirmedCount} 段真实经历；其余 ${draftCount} 段仍在等待你的核对。`;
+  const draftCount = selectedEvents.length - confirmedCount - verifiedCount;
+  let closingLine: string;
+  if (confirmedCount === 0 && verifiedCount === 0) {
+    closingLine = "今天展出的仍是草稿。完成核对之后，它们会真正属于你。";
+  } else if (verifiedCount === 0 && confirmedCount === selectedEvents.length) {
+    closingLine = `这 ${spanMonths} 个月里的每一段展出经历，都由你亲自确认。`;
+  } else if (confirmedCount === 0 && verifiedCount === selectedEvents.length) {
+    closingLine = `这 ${spanMonths} 个月里展出的每一段经历，都由系统从确定性记录自动核实。`;
+  } else {
+    const trustParts = [`你亲自确认了 ${confirmedCount} 段`, `系统核实了 ${verifiedCount} 段`].filter(
+      (part, index) => (index === 0 ? confirmedCount > 0 : verifiedCount > 0),
+    );
+    closingLine =
+      `这 ${spanMonths} 个月里，${trustParts.join("、")}经历；` +
+      (draftCount > 0
+        ? `其余 ${draftCount} 段仍在等待你的核对。`
+        : "每一段都有明确的可信来源。");
+  }
 
   return (
     <main className="expo-show" data-expo-theme={themeId}>
@@ -419,19 +440,20 @@ export default function ExhibitionWorkspace() {
         .map(([key, groupEvents], chapterIndex) => {
           const shown = groupEvents.filter((event) => selectedIds.has(event.id));
           const confirmedHere = shown.filter((event) => event.status === "confirmed").length;
+          const verifiedHere = shown.filter((event) => event.status === "verified").length;
           return (
             <section className="expo-chapter" id={`chapter-${key}`} key={key}>
               <header className="expo-reveal">
                 <span className="expo-chapter-num">{String(chapterIndex + 1).padStart(2, "0")}</span>
                 <div>
                   <h2>{monthLabel(key)}</h2>
-                  <p>{shown.length} 段经历 · {confirmedHere} 段本人确认</p>
+                  <p>{shown.length} 段经历 · {confirmedHere} 段本人确认{verifiedHere > 0 ? ` · ${verifiedHere} 段系统核实` : ""}</p>
                 </div>
               </header>
               <div className="expo-hall">
                 {shown.map((event, exhibitIndex) => (
                   <article
-                    className={`expo-card expo-reveal${event.status === "confirmed" ? "" : " draft"}`}
+                    className={`expo-card expo-reveal${event.status === "confirmed" || event.status === "verified" ? "" : " draft"}`}
                     key={event.id}
                   >
                     <figure className="expo-art">
@@ -439,6 +461,8 @@ export default function ExhibitionWorkspace() {
                       <span className="expo-card-no">No. {String(chapterIndex + 1).padStart(2, "0")}{String(exhibitIndex + 1).padStart(2, "0")}</span>
                       {event.status === "confirmed" ? (
                         <span className="expo-seal">已入馆</span>
+                      ) : event.status === "verified" ? (
+                        <span className="expo-seal sys">系统核实</span>
                       ) : (
                         <span className="expo-card-status">
                           {statusLabels[event.status] ?? "等待核对"}

@@ -69,6 +69,7 @@ class ReviewOut(BaseModel):
 
 EventStatus = Literal[
     "candidate",
+    "verified",
     "confirmed",
     "disputed",
     "unknown",

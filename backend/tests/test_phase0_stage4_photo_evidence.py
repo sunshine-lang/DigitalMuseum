@@ -113,7 +113,7 @@ def test_photo_import_creates_candidate_event_with_anchors(
     assert event["title"] == "拍摄照片"
     assert event["occurred_on"] == "2026-05-10"
     assert event["time_precision"] == "exact"
-    assert event["status"] == "candidate"
+    assert event["status"] == "verified"
 
     claim = event["claims"][0]
     assert claim["evidence_role"] == "artifact"

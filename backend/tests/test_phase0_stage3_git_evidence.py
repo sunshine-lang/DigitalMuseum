@@ -92,7 +92,7 @@ def test_git_import_creates_day_and_tag_events(git_client: TestClient, git_repo:
     by_key = {(event["title"], event["occurred_on"]): event for event in events}
     day_event = by_key[("在 demo-repo 提交代码", "2026-05-10")]
     assert day_event["origin"] == "git"
-    assert day_event["status"] == "candidate"
+    assert day_event["status"] == "verified"
     claim = day_event["claims"][0]
     assert claim["evidence_role"] == "artifact"
     assert claim["processor_version"] == "git-evidence-v1"

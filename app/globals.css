@@ -6564,3 +6564,93 @@ a.mvp-primary {
   .mvp-stage-resume li { flex-direction: column; align-items: flex-start; gap: 10px; }
   .mvp-stage-resume li > button { width: 100%; }
 }
+
+/* ============================================================
+   分级信任 · 系统核实（verified）
+   确定性证据（Git 提交 / 照片元数据）自动获得“系统核实”身份。
+   样式介于 candidate（虚线草稿）与 confirmed（暖金钢印）之间：
+   实线边框 + 细微核对纹理 + 双勾角标；色板沿用 mvp token 的机器绿。
+   ============================================================ */
+
+/* 发现页图例：系统核实色板 */
+.mvp-legend i.sys {
+  border: 1.5px solid rgba(71, 117, 94, 0.7);
+  background: repeating-linear-gradient(45deg, rgba(71, 117, 94, 0.16) 0 4px, transparent 4px 8px);
+}
+
+/* 发现页卡片：稳重实线 + 核对纹理 + 内侧绿色标条 */
+.mvp-experience-card.st-verified {
+  border: 1px solid rgba(71, 117, 94, 0.55);
+  background:
+    linear-gradient(var(--mvp-card), var(--mvp-card)),
+    repeating-linear-gradient(0deg, transparent 0 11px, rgba(71, 117, 94, 0.06) 11px 12px);
+  box-shadow: inset 3px 0 var(--mvp-green);
+}
+.mvp-experience-card.st-verified:hover { background: var(--mvp-card); }
+
+/* 双勾角标：机器确定性核对过的两道印记 */
+.mvp-experience-card.st-verified::after {
+  content: "✓✓";
+  position: absolute;
+  right: 14px;
+  bottom: 15px;
+  color: var(--mvp-green);
+  font: 700 10px var(--mvp-mono);
+  letter-spacing: .1em;
+  opacity: .8;
+}
+
+/* 状态徽标：浅色场 */
+.mvp-status.verified {
+  color: var(--mvp-green);
+  border-color: rgba(71, 117, 94, 0.5);
+  background: rgba(71, 117, 94, 0.09);
+}
+
+/* 工作台“查看回顾”时间线：verified 用实线稳重卡，不落入 draft 虚线 */
+.mvp-timeline article.verified > button {
+  border-color: rgba(122, 180, 150, 0.5);
+  background: rgba(71, 117, 94, 0.14);
+}
+.mvp-timeline article.verified .mvp-timeline-marker span {
+  color: #9cc4ae;
+  border-color: rgba(122, 180, 150, 0.55);
+  background: rgba(71, 117, 94, 0.16);
+}
+
+/* 状态徽标：暗色展厅 */
+.mvp-exhibition-view .mvp-status.verified {
+  color: #9cc4ae;
+  border-color: rgba(122, 180, 150, 0.5);
+  background: rgba(71, 117, 94, 0.22);
+}
+
+/* 展览馆：系统核实徽标用细边方章，区别于“已入馆”圆形钢印（本人确认专属） */
+.expo-show .expo-seal.sys {
+  width: auto;
+  height: auto;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--e-accent) 62%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--e-accent) 22%, transparent);
+  outline-offset: 2px;
+  transform: rotate(-2deg);
+  padding: 4px 10px;
+  font-size: 9px;
+  line-height: 1.4;
+  letter-spacing: 0.18em;
+  text-indent: 0.18em;
+}
+.expo-show .expo-art .expo-seal.sys {
+  top: 14px;
+  right: 14px;
+  background: color-mix(in srgb, var(--e-card) 82%, transparent);
+}
+
+@media (max-width: 680px) {
+  .mvp-experience-card.st-verified::after { right: 10px; bottom: 12px; }
+  .expo-show .expo-seal.sys { padding: 3px 8px; font-size: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mvp-experience-card.st-verified { transition: none; }
+}

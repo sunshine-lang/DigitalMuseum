@@ -33,7 +33,7 @@ export type EventOrigin = "note" | "aggregated" | "merged" | "split" | "git" | "
 
 export type AuditDecision = ReviewDecision | "merged" | "split";
 
-export type EventStatus = "candidate" | ReviewDecision | "merged" | "split";
+export type EventStatus = "candidate" | "verified" | ReviewDecision | "merged" | "split";
 
 export type EventReview = {
   decision: AuditDecision;

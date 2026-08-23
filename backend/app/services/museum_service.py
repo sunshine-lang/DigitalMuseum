@@ -31,6 +31,9 @@ from app.services.photo_evidence_service import PhotoEvidence
 
 AGGREGATION_RULE_VERSION = "note-aggregation-v1"
 STRUCTURAL_STATUSES = {"merged", "split"}
+# 聚合可并入的状态：candidate 是待核对草稿；verified 是确定性证据的系统核实态
+# （Git 提交 / 照片元数据）。被用户审阅过的事件 revision > 0，天然不会匹配。
+AGGREGATABLE_STATUSES = ("candidate", "verified")
 
 COVERAGE_ORDER = {
     "stored_locally": 0,
@@ -391,7 +394,9 @@ def _persist_git_candidates(
                 title=item.title,
                 occurred_on=item.occurred_on,
                 time_precision="exact",
-                status="candidate",
+                # Git 提交日期是机器确定性算出的事实：直接进入“系统核实”态，
+                # 不占用人工核对队列；异议通道（review API）保持开放。
+                status="verified",
                 revision=0,
                 origin="git",
             )
@@ -521,7 +526,9 @@ def _persist_photo_candidate(
             title=evidence.event_title,
             occurred_on=evidence.occurred_on,
             time_precision="exact",
-            status="candidate",
+            # EXIF 拍摄时间是机器确定性读出的事实：直接进入“系统核实”态，
+            # 不占用人工核对队列；异议通道（review API）保持开放。
+            status="verified",
             revision=0,
             origin="photo",
         )
@@ -717,7 +724,7 @@ def _find_aggregation_target(
     events = session.scalars(
         select(CandidateEvent).where(
             CandidateEvent.stage_id == stage_id,
-            CandidateEvent.status == "candidate",
+            CandidateEvent.status.in_(AGGREGATABLE_STATUSES),
             CandidateEvent.revision == 0,
             CandidateEvent.occurred_on == occurred_on,
             CandidateEvent.origin.in_(origins),

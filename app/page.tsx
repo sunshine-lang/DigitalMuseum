@@ -54,6 +54,7 @@ const viewItems: Array<{ id: WorkspaceView; label: string; helper: string }> = [
 
 const friendlyStatus: Record<CandidateEvent["status"], string> = {
   candidate: "等待你核对",
+  verified: "系统核实",
   confirmed: "你已确认",
   disputed: "描述需要修改",
   unknown: "暂时不确定",
@@ -79,11 +80,20 @@ function originChipLabel(event: CandidateEvent): string {
 }
 
 function evidenceSummary(event: CandidateEvent): string {
+  if (event.status === "verified") {
+    if (event.origin === "photo") {
+      return "这段经历由系统从照片元数据（EXIF 拍摄时间、相机与坐标）自动核实：这些是机器确定性读出的事实，没有请模型推断，也无需你确认。如果与事实不符，可以随时在核对中提出异议。";
+    }
+    if (event.origin === "git") {
+      return "这段经历由系统从确定性记录（Git 提交日期与提交说明）自动核实：没有请模型推断，也无需你确认。如果与事实不符，可以随时在核对中提出异议。";
+    }
+    return `系统发现 ${event.source_count} 份标题和日期都相同的确定性记录，把它们整理在同一段经历里并自动核实：没有请模型推断，也无需你确认；如果与事实不符，可以随时在核对中提出异议。`;
+  }
   if (event.origin === "git") {
-    return "这段经历来自 Git 仓库的提交记录：系统只读取提交日期与提交说明并保留原文位置，没有判断工作的影响力或完成质量。它仍然是候选，需要你核对。";
+    return "这段经历来自 Git 仓库的提交记录：系统只读取提交日期与提交说明并保留原文位置，没有判断工作的影响力或完成质量。如果与事实不符，可以在核对中提出异议。";
   }
   if (event.origin === "photo") {
-    return "这段经历来自导入的照片：系统只读取 EXIF 拍摄时间、相机与坐标并保留元数据原文，没有识别照片里拍了什么。它仍然是候选，需要你核对。";
+    return "这段经历来自导入的照片：系统只读取 EXIF 拍摄时间、相机与坐标并保留元数据原文，没有识别照片里拍了什么。如果与事实不符，可以在核对中提出异议。";
   }
   if (event.origin === "aggregated") {
     return `系统发现 ${event.source_count} 份标题和日期都相同的记录，把它们整理在同一段经历里。它只读取标题、日期和首段正文并保留原文位置，没有判断事情是否完成或对你意味着什么。`;
@@ -112,6 +122,7 @@ export default function MuseumMvpWorkspace() {
   const reviewNoteRef = useRef<HTMLTextAreaElement | null>(null);
   const reviewEvidenceRef = useRef<HTMLElement | null>(null);
   const [busy, setBusy] = useState(false);
+  const [batchBusy, setBatchBusy] = useState(false);
   const [mergeIds, setMergeIds] = useState<string[]>([]);
   const [structureBusy, setStructureBusy] = useState(false);
   const [confirmingAction, setConfirmingAction] = useState<StructureConfirm>(null);
@@ -130,6 +141,14 @@ export default function MuseumMvpWorkspace() {
   const candidateEvents = useMemo(
     () => visibleEvents.filter((event) => event.status === "candidate"),
     [visibleEvents],
+  );
+  // 笔记快速通道：亲笔笔记内容默认可信，只提示检查标题/日期提取。
+  const noteCandidates = useMemo(
+    () =>
+      candidateEvents.filter(
+        (event) => event.origin === "note" || event.origin === "aggregated",
+      ),
+    [candidateEvents],
   );
   const confirmedEvents = useMemo(
     () => visibleEvents.filter((event) => event.status === "confirmed"),
@@ -522,7 +541,7 @@ export default function MuseumMvpWorkspace() {
     if (decision === "disputed" && !note) {
       setNotice({
         kind: "error",
-        message: "选择“描述要改”前，请先用一句话写下哪里不准确。",
+        message: "提出修正前，请先用一句话写下哪里提错了或不准确。",
       });
       reviewNoteRef.current?.focus();
       return;
@@ -564,6 +583,38 @@ export default function MuseumMvpWorkspace() {
     } finally {
       setBusy(false);
       setLeavingDecision(null);
+    }
+  }
+
+  async function handleBatchConfirm() {
+    if (!stage || !noteCandidates.length || batchBusy) return;
+    setBatchBusy(true);
+    setNotice(null);
+    const targets = [...noteCandidates];
+    let confirmedCount = 0;
+    try {
+      for (const target of targets) {
+        await reviewEvent(target.id, {
+          decision: "confirmed",
+          note: null,
+          expected_revision: 0,
+        });
+        confirmedCount += 1;
+      }
+      await refreshStage(stage.id);
+      setNotice({
+        kind: "success",
+        message: `已一次确认 ${confirmedCount} 段笔记经历。`,
+      });
+    } catch (error) {
+      const failedTitle = targets[confirmedCount]?.title ?? "";
+      setNotice({
+        kind: "error",
+        message: `批量确认在「${failedTitle}」处停止：${errorMessage(error)} 已确认的 ${confirmedCount} 段不受影响。`,
+      });
+      await refreshStage(stage.id).catch(() => undefined);
+    } finally {
+      setBatchBusy(false);
     }
   }
 
@@ -630,6 +681,8 @@ export default function MuseumMvpWorkspace() {
               events={visibleEvents}
               selectedEvent={selectedEvent}
               pendingCount={candidateEvents.length}
+              noteCandidateCount={noteCandidates.length}
+              batchBusy={batchBusy}
               mergeIds={mergeIds}
               structureBusy={structureBusy}
               confirmingAction={confirmingAction}
@@ -638,6 +691,7 @@ export default function MuseumMvpWorkspace() {
               onMergeAction={handleMergeAction}
               onSplitAction={handleSplitAction}
               onReview={startReview}
+              onBatchConfirm={handleBatchConfirm}
               onPreview={() => setView("exhibition")}
             />
           )}
@@ -891,10 +945,12 @@ function ImportReport({ coverage, results }: { coverage: CoverageItem[]; results
   );
 }
 
-function DiscoverView({ events, selectedEvent, pendingCount, mergeIds, structureBusy, confirmingAction, onSelect, onToggleMerge, onMergeAction, onSplitAction, onReview, onPreview }: {
+function DiscoverView({ events, selectedEvent, pendingCount, noteCandidateCount, batchBusy, mergeIds, structureBusy, confirmingAction, onSelect, onToggleMerge, onMergeAction, onSplitAction, onReview, onBatchConfirm, onPreview }: {
   events: CandidateEvent[];
   selectedEvent: CandidateEvent | null;
   pendingCount: number;
+  noteCandidateCount: number;
+  batchBusy: boolean;
   mergeIds: string[];
   structureBusy: boolean;
   confirmingAction: StructureConfirm;
@@ -903,14 +959,16 @@ function DiscoverView({ events, selectedEvent, pendingCount, mergeIds, structure
   onMergeAction: (action: "request" | "confirm" | "cancel" | "clear") => void;
   onSplitAction: (action: "request" | "confirm" | "cancel") => void;
   onReview: (eventId?: string) => void;
+  onBatchConfirm: () => void;
   onPreview: () => void;
 }) {
   return (
     <section className="mvp-view mvp-discover-view">
       <div className="mvp-discover-main">
-        <header className="mvp-section-heading"><span>02 · 发现</span><div><h2>系统整理出 {events.length} 段可能的经历</h2><p>先浏览结果。带“等待你核对”的内容仍是草稿，不会自动成为正式人生事实。</p></div></header>
+        <header className="mvp-section-heading"><span>02 · 发现</span><div><h2>系统整理出 {events.length} 段可能的经历</h2><p>先浏览结果。带“等待你核对”的内容仍是草稿；带“系统核实”的内容来自确定性记录（Git 提交、照片元数据），无需你逐条确认。</p></div></header>
         <div className="mvp-legend" aria-label="卡片状态图例">
           <span><i className="ai" aria-hidden="true" />虚线半透明 · AI 整理的草稿</span>
+          <span><i className="sys" aria-hidden="true" />实线纹理 · 系统核实的确定性记录</span>
           <span><i className="user" aria-hidden="true" />暖金实心 + 印章 · 你确认的经历</span>
           <span><i className="unsure" aria-hidden="true" />虚线留白 · 暂不确定</span>
         </div>
@@ -963,6 +1021,11 @@ function DiscoverView({ events, selectedEvent, pendingCount, mergeIds, structure
         {events.length > 0 && (
           <div className="mvp-next-actions">
             {pendingCount > 0 ? <button className="mvp-primary" type="button" onClick={() => onReview(selectedEvent?.id)}>用几分钟核对 {pendingCount} 个关键内容</button> : <button className="mvp-primary" type="button" onClick={onPreview}>查看整理后的回顾</button>}
+            {noteCandidateCount > 0 && (
+              <button className="mvp-secondary" type="button" disabled={batchBusy} onClick={onBatchConfirm}>
+                {batchBusy ? "正在逐段确认…" : `这些都是我的笔记，一次确认（${noteCandidateCount}）`}
+              </button>
+            )}
             <button className="mvp-secondary" type="button" onClick={onPreview}>先看看展览草稿</button>
           </div>
         )}
@@ -1017,6 +1080,10 @@ function ReviewView({ event, remaining, note, busy, leaving, noteRef, evidenceRe
   }
   const frozen = busy || leaving !== null;
   const aggregated = event.source_count > 1;
+  // 笔记（user_statement）默认可信：只核对标题/日期这类确定性提取；
+  // 其余来源仍问“是否符合实际经历”。
+  const extractionCheck = event.claims[0]?.evidence_role === "user_statement";
+  const reviseLabel = extractionCheck ? "提取错了" : "发生过，但描述要改";
   const contextLine = event.source_count > 1
     ? event.origin === "aggregated"
       ? `系统发现 ${event.source_count} 份标题和日期都相同的记录，把它们整理在同一段经历里。`
@@ -1029,17 +1096,21 @@ function ReviewView({ event, remaining, note, busy, leaving, noteRef, evidenceRe
         <header><span>03 · 关键核对</span><small>还剩 {remaining} 个问题</small></header>
         <div className="mvp-question-progress"><i style={{ width: `${Math.max(12, 100 / Math.max(remaining, 1))}%` }} /></div>
         <p className="mvp-question-context">{contextLine}</p>
-        <h2>{aggregated ? "这些记录属于同一段真实经历吗？" : "这件事情符合你的实际经历吗？"}</h2>
+        <h2>
+          {extractionCheck
+            ? aggregated ? "这些笔记的标题和日期，提取得对吗？" : "这个标题和日期，提取得对吗？"
+            : aggregated ? "这些记录属于同一段真实经历吗？" : "这件事情符合你的实际经历吗？"}
+        </h2>
         <div className="mvp-question-experience"><time>{event.occurred_on ?? "时间还不明确"}</time><strong>{event.title}</strong><blockquote>{event.claims[0]?.text}</blockquote></div>
-        <label className="mvp-review-note"><span>补充说明（选择“描述要改”时必填）</span><textarea ref={noteRef} value={note} maxLength={2000} placeholder="例如：事情发生过，但还没有正式上线。" onChange={(changeEvent) => onNoteChange(changeEvent.target.value)} /></label>
+        <label className="mvp-review-note"><span>补充说明（选择“{reviseLabel}”时必填）</span><textarea ref={noteRef} value={note} maxLength={2000} placeholder={extractionCheck ? "例如：日期提错了，实际是上个月。" : "例如：事情发生过，但还没有正式上线。"} onChange={(changeEvent) => onNoteChange(changeEvent.target.value)} /></label>
         <div className="mvp-answer-grid">
           <button className="yes" disabled={frozen} type="button" onClick={() => onReview("confirmed")}>
             <kbd aria-hidden="true">1</kbd>
-            <span><strong>是，已经发生</strong><small>确认后盖上“已入馆”印章</small></span>
+            <span>{extractionCheck ? <><strong>对，没问题</strong><small>标题与日期和你的笔记一致</small></> : <><strong>是，已经发生</strong><small>确认后盖上“已入馆”印章</small></>}</span>
           </button>
           <button className="revise" disabled={frozen} type="button" onClick={() => onReview("disputed")}>
             <kbd aria-hidden="true">2</kbd>
-            <span><strong>发生过，但描述要改</strong><small>需要先写一句补充说明</small></span>
+            <span><strong>{reviseLabel}</strong><small>需要先写一句补充说明</small></span>
           </button>
           <button className="unsure" disabled={frozen} type="button" onClick={() => onReview("unknown")}>
             <kbd aria-hidden="true">3</kbd>
@@ -1047,10 +1118,10 @@ function ReviewView({ event, remaining, note, busy, leaving, noteRef, evidenceRe
           </button>
           <button className="drop" disabled={frozen} type="button" onClick={() => onReview("rejected")}>
             <kbd aria-hidden="true">4</kbd>
-            <span><strong>只是讨论 / 不属于我</strong><small>不进入回顾，原文仍保留</small></span>
+            <span><strong>{extractionCheck ? "不属于我" : "只是讨论 / 不属于我"}</strong><small>不进入回顾，原文仍保留</small></span>
           </button>
         </div>
-        <p className="mvp-kbd-hint">键盘 1–4 可快速作答；描述要改需先填写说明。</p>
+        <p className="mvp-kbd-hint">键盘 1–4 可快速作答；{extractionCheck ? "提取错了" : "描述要改"}需先填写说明。</p>
         <button className="mvp-text-button" disabled={frozen} type="button" onClick={onSkip}>先跳过，稍后再说</button>
       </article>
       <aside className="mvp-panel mvp-review-evidence" ref={evidenceRef}>
@@ -1118,7 +1189,7 @@ function ExhibitionView({ stage, events, confirmedCount, pendingCount, onOpenExp
       {events.length ? (
         <div className="mvp-timeline">
           {sortEvents(events).map((event, index) => (
-            <article key={event.id} className={event.status === "confirmed" ? "confirmed" : "draft"} style={{ "--i": index } as CSSProperties}>
+            <article key={event.id} className={event.status === "confirmed" ? "confirmed" : event.status === "verified" ? "verified" : "draft"} style={{ "--i": index } as CSSProperties}>
               <div className="mvp-timeline-marker"><span>{String(index + 1).padStart(2, "0")}</span><i /></div>
               <button type="button" onClick={() => onOpenExperience(event.id)}>
                 {event.status === "confirmed" && <span className="mvp-seal" aria-hidden="true">已入馆</span>}

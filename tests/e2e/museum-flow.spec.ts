@@ -66,7 +66,7 @@ test("完整链路：导入 → 自动聚合 → 合并 → 拆分 → 确认 �
   await expect(page.getByText("拆分产生")).toHaveCount(3);
 
   await page.getByRole("button", { name: "核对这段经历" }).click();
-  await page.getByRole("button", { name: "是，已经发生" }).click();
+  await page.getByRole("button", { name: "对，没问题" }).click();
   await expect(page.getByRole("status")).toContainText("已加入你的正式经历");
   await page.getByRole("button", { name: "先跳过，稍后再说" }).click();
 
@@ -94,6 +94,18 @@ test("照片导入：EXIF 时间归入时间线，无拍摄时间的照片单独
   await expect(page.getByText("来自照片")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "系统整理出 1 段可能的经历" }),
+  ).toBeVisible();
+
+  // 确定性证据获得“系统核实”身份：卡片带状态徽标，且不进入人工核对队列。
+  await expect(page.locator(".mvp-experience-card.st-verified")).toHaveCount(1);
+  await expect(
+    page.locator(".mvp-experience-card.st-verified .mvp-status.verified"),
+  ).toHaveText("系统核实");
+  await expect(
+    page.getByRole("button", { name: /用几分钟核对/ }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "查看整理后的回顾" }),
   ).toBeVisible();
 
   // 回到导入页核对逐份结果：成功的 JPEG 与被拒绝的 PNG 分别提示。
