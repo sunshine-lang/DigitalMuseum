@@ -6011,6 +6011,13 @@ mark.mvp-evidence-hit {
 .expo-anchor dl { display: flex; gap: 22px; margin: 0 0 4px; }
 .expo-anchor dt { font-size: 10px; color: var(--e-muted); letter-spacing: .08em; }
 .expo-anchor dd { margin: 2px 0 0; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; }
+/* 展品标签内的哈希、文件名等长串在窄屏可断行，避免横向溢出 */
+.expo-label, .expo-label summary, .expo-label blockquote,
+.expo-anchor, .expo-anchor p, .expo-anchor dd,
+.expo-card-text, .expo-card h3 {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
 .expo-card > footer {
   border-top: 1px solid var(--e-line);
   padding-top: 11px;
