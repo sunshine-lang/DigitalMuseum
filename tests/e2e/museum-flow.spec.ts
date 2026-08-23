@@ -115,9 +115,11 @@ test("坏文件单独失败：PDF 不影响其他记录导入", async ({ page })
       .getByRole("button", { name: "切换回顾范围" })
       .or(page.getByRole("heading", { name: "选择回顾时间" })),
   ).toBeVisible();
+  // “切换回顾范围”现在跳 /stages；若本地残留阶段指针，需从那里新建回到建馆表单。
   const exitButton = page.getByRole("button", { name: "切换回顾范围" });
   if (await exitButton.isVisible()) {
     await exitButton.click();
+    await page.getByRole("button", { name: "＋ 新建回顾阶段" }).click();
   }
   await createStage(page, "E2E 自动验收·坏文件");
 
@@ -137,4 +139,75 @@ test("坏文件单独失败：PDF 不影响其他记录导入", async ({ page })
   await expect(
     reportRows.filter({ hasText: "09-intentionally-unsupported.pdf" }),
   ).toContainText("只支持 Markdown 或 TXT 文件");
+});
+
+test("阶段管理：创建两个阶段可互相切换、重命名、删除", async ({ page }) => {
+  await page.goto("/");
+  await createStage(page, "E2E 阶段管理·甲");
+  await page.locator('input[name="notes"]').setInputFiles([noteFiles[0]]);
+  await page.getByRole("button", { name: "开始整理这些记录" }).click();
+  await expect(page.getByRole("status")).toContainText("已导入 1 份记录");
+  await expect(
+    page.getByRole("heading", { name: "系统整理出 1 段可能的经历" }),
+  ).toBeVisible();
+
+  // 从工作台进入 /stages，再回到甲阶段，验证内容还在（跨 context 的自救路径）。
+  await page.getByRole("button", { name: "切换回顾范围" }).click();
+  await expect(
+    page.getByRole("heading", { name: "管理你的回顾阶段" }),
+  ).toBeVisible();
+  const stageACard = page.locator(".mvp-stage-card", {
+    hasText: "E2E 阶段管理·甲",
+  });
+  await expect(stageACard).toBeVisible();
+  await expect(stageACard.getByText("已保存记录")).toBeVisible();
+  await stageACard.getByRole("button", { name: "进入回顾" }).click();
+  await expect(page.getByText("正在回顾")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "系统整理出 1 段可能的经历" }),
+  ).toBeVisible();
+
+  // 新建阶段乙：/stages → 新建回顾阶段 → 首页建馆表单（含“继续已有的回顾”区块）。
+  await page.getByRole("button", { name: "切换回顾范围" }).click();
+  await page.getByRole("button", { name: "＋ 新建回顾阶段" }).click();
+  await expect(
+    page.getByRole("heading", { name: "选择回顾时间" }),
+  ).toBeVisible();
+  await expect(page.getByText("继续已有的回顾")).toBeVisible();
+  await createStage(page, "E2E 阶段管理·乙");
+
+  // 回 /stages 把甲重命名。
+  await page.goto("/stages");
+  await stageACard.getByRole("button", { name: "重命名" }).click();
+  const renameForm = page.locator(".mvp-stage-rename");
+  await renameForm.locator("input").fill("E2E 阶段管理·甲改名");
+  await renameForm.getByRole("button", { name: "保存新名称" }).click();
+  await expect(page.getByRole("status")).toContainText("阶段已重命名");
+  await expect(
+    page.locator(".mvp-stage-card", { hasText: "E2E 阶段管理·甲改名" }),
+  ).toBeVisible();
+
+  // 两步确认删除乙；甲不受影响。
+  const stageBCard = page.locator(".mvp-stage-card", {
+    hasText: "E2E 阶段管理·乙",
+  });
+  await stageBCard.getByRole("button", { name: "删除", exact: true }).click();
+  await expect(stageBCard.getByText("将永久删除")).toBeVisible();
+  await stageBCard.getByRole("button", { name: "删除这个阶段" }).click();
+  await stageBCard.getByRole("button", { name: "确认永久删除" }).click();
+  await expect(page.getByRole("status")).toContainText(
+    "已删除「E2E 阶段管理·乙」",
+  );
+  await expect(stageBCard).toHaveCount(0);
+
+  // 甲仍完整可进：从 /stages 一步找回。
+  await page
+    .locator(".mvp-stage-card", { hasText: "E2E 阶段管理·甲改名" })
+    .getByRole("button", { name: "进入回顾" })
+    .click();
+  await expect(page.getByText("正在回顾")).toBeVisible();
+  await expect(page.getByText("E2E 阶段管理·甲改名")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "系统整理出 1 段可能的经历" }),
+  ).toBeVisible();
 });

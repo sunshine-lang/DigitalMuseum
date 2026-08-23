@@ -23,6 +23,10 @@ class StageCreate(BaseModel):
     ends_on: date
 
 
+class StageUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
 class StageOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -33,6 +37,7 @@ class StageOut(BaseModel):
     created_at: datetime
     evidence_count: int = 0
     event_count: int = 0
+    confirmed_count: int = 0
 
 
 class AnchorOut(BaseModel):

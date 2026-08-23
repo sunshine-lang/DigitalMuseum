@@ -7,7 +7,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errors import ApiError
@@ -22,7 +22,7 @@ from app.domain.models import (
     Stage,
     utc_now,
 )
-from app.domain.schemas import MergeCreate, ReviewCreate, StageCreate
+from app.domain.schemas import MergeCreate, ReviewCreate, StageCreate, StageUpdate
 from app.services import git_evidence_service as git_evidence
 from app.services import photo_evidence_service as photo_evidence
 from app.services.git_evidence_service import GitEvidence
@@ -61,6 +61,31 @@ def get_stage(session: Session, stage_id: str) -> dict:
     return serialize_stage(session, stage)
 
 
+def list_stages(session: Session) -> list[dict]:
+    stages = session.scalars(select(Stage).order_by(Stage.created_at.desc())).all()
+    return [serialize_stage(session, stage) for stage in stages]
+
+
+def rename_stage(session: Session, stage_id: str, payload: StageUpdate) -> dict:
+    stage = require_stage(session, stage_id)
+    normalized_name = payload.name.strip()
+    if not normalized_name:
+        raise ApiError(422, "invalid_stage_name", "阶段名称不能为空")
+    stage.name = normalized_name
+    session.commit()
+    return serialize_stage(session, stage)
+
+
+def delete_stage(session: Session, stage_id: str) -> None:
+    stage = require_stage(session, stage_id)
+    # 走 Core DELETE 让数据库 FK（ondelete=CASCADE）清理 occurrences、
+    # coverage、events、claims、anchors、reviews；EvidenceBlob 不在级联链上，
+    # 原始文件与内容寻址记录全部保留。
+    session.execute(delete(Stage).where(Stage.id == stage.id))
+    session.commit()
+    session.expire_all()
+
+
 def serialize_stage(session: Session, stage: Stage) -> dict:
     evidence_count = session.scalar(
         select(func.count(EvidenceOccurrence.id)).where(
@@ -71,6 +96,12 @@ def serialize_stage(session: Session, stage: Stage) -> dict:
     event_count = session.scalar(
         select(func.count(CandidateEvent.id)).where(CandidateEvent.stage_id == stage.id)
     )
+    confirmed_count = session.scalar(
+        select(func.count(CandidateEvent.id)).where(
+            CandidateEvent.stage_id == stage.id,
+            CandidateEvent.status == "confirmed",
+        )
+    )
     return {
         "id": stage.id,
         "name": stage.name,
@@ -79,6 +110,7 @@ def serialize_stage(session: Session, stage: Stage) -> dict:
         "created_at": stage.created_at,
         "evidence_count": evidence_count or 0,
         "event_count": event_count or 0,
+        "confirmed_count": confirmed_count or 0,
     }
 
 

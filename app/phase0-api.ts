@@ -3,8 +3,10 @@ export type Stage = {
   name: string;
   starts_on: string;
   ends_on: string;
+  created_at: string;
   evidence_count: number;
   event_count: number;
+  confirmed_count: number;
 };
 
 export type Anchor = {
@@ -123,6 +125,23 @@ export function createStage(payload: {
 
 export function getStage(stageId: string): Promise<Stage> {
   return apiRequest(`/api/v1/stages/${stageId}`);
+}
+
+export function listStages(): Promise<Stage[]> {
+  return apiRequest("/api/v1/stages");
+}
+
+export function renameStage(stageId: string, name: string): Promise<Stage> {
+  return apiRequest(`/api/v1/stages/${stageId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function deleteStage(stageId: string): Promise<{ id: string }> {
+  return apiRequest(`/api/v1/stages/${stageId}`, {
+    method: "DELETE",
+  });
 }
 
 export function getEvents(stageId: string): Promise<CandidateEvent[]> {

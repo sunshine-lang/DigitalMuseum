@@ -15,6 +15,7 @@ import {
   importGitRepo,
   importNote,
   importPhoto,
+  listStages,
   mergeEvents,
   reviewEvent,
   splitEvent,
@@ -115,6 +116,7 @@ export default function MuseumMvpWorkspace() {
   const [structureBusy, setStructureBusy] = useState(false);
   const [confirmingAction, setConfirmingAction] = useState<StructureConfirm>(null);
   const [loadingSavedStage, setLoadingSavedStage] = useState(true);
+  const [recentStages, setRecentStages] = useState<Stage[]>([]);
   const [curtainActive, setCurtainActive] = useState(false);
   const [notice, setNotice] = useState<{
     kind: "error" | "success";
@@ -178,15 +180,33 @@ export default function MuseumMvpWorkspace() {
         const restoredEvents = await refreshStage(savedStageId);
         if (restoredEvents.some(isVisibleExperience)) setView("discover");
       } catch (error) {
-        setNotice({ kind: "error", message: errorMessage(error) });
         if (error instanceof Phase0ApiError && error.status === 404) {
           window.localStorage.removeItem(STAGE_STORAGE_KEY);
+          setNotice({
+            kind: "error",
+            message: "之前保存的回顾阶段已不存在，本地指针已清除。可以从下方继续已有回顾，或到「我的回顾」页管理全部阶段。",
+          });
+        } else {
+          setNotice({ kind: "error", message: errorMessage(error) });
         }
       }
     }
 
     restoreSavedStage().finally(() => setLoadingSavedStage(false));
   }, [refreshStage]);
+
+  useEffect(() => {
+    if (loadingSavedStage || stage) return;
+    let cancelled = false;
+    listStages()
+      .then((allStages) => {
+        if (!cancelled) setRecentStages(allStages.slice(0, 3));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [loadingSavedStage, stage]);
 
   useEffect(() => {
     if (view !== "review") return;
@@ -573,19 +593,13 @@ export default function MuseumMvpWorkspace() {
     }, 220);
   }
 
-  function forgetStagePointer() {
-    window.localStorage.removeItem(STAGE_STORAGE_KEY);
-    setStage(null);
-    setEvents([]);
-    setCoverage([]);
-    setSelectedEventId(null);
-    setSelectedFiles([]);
-    setImportResults([]);
-    setView("import");
-    setNotice({
-      kind: "success",
-      message: "已退出当前回顾。后端档案仍保留，本次操作没有删除原始资料。",
-    });
+  function openStageLibrary() {
+    window.location.assign("/stages");
+  }
+
+  function enterRecentStage(stageId: string) {
+    window.localStorage.setItem(STAGE_STORAGE_KEY, stageId);
+    window.location.assign("/");
   }
 
   return (
@@ -599,10 +613,15 @@ export default function MuseumMvpWorkspace() {
       {loadingSavedStage ? (
         <section className="mvp-loading">正在读取本地回顾…</section>
       ) : !stage ? (
-        <StageForm busy={busy} onSubmit={handleCreateStage} />
+        <>
+          {recentStages.length > 0 && (
+            <ResumeStages stages={recentStages} onEnter={enterRecentStage} />
+          )}
+          <StageForm busy={busy} onSubmit={handleCreateStage} />
+        </>
       ) : (
         <>
-          <StageSummary stage={stage} experienceCount={visibleEvents.length} pendingCount={candidateEvents.length} onExit={forgetStagePointer} />
+          <StageSummary stage={stage} experienceCount={visibleEvents.length} pendingCount={candidateEvents.length} onSwitch={openStageLibrary} />
           {view === "import" && (
             <ImportView busy={busy} coverage={coverage} files={selectedFiles} photoFiles={selectedPhotos} results={importResults} onFileSelection={handleFileSelection} onPhotoSelection={handlePhotoSelection} onSubmit={handleImport} onPhotoSubmit={handleImportPhotos} onGitSubmit={handleImportGit} />
           )}
@@ -721,6 +740,31 @@ function FlowNavigation({ current, hasStage, hasEvents, onChange }: {
   );
 }
 
+function ResumeStages({ stages, onEnter }: {
+  stages: Stage[];
+  onEnter: (stageId: string) => void;
+}) {
+  return (
+    <section className="mvp-stage-resume">
+      <header>
+        <span>继续已有的回顾</span>
+        <Link href="/stages">查看全部 →</Link>
+      </header>
+      <ul>
+        {stages.map((stage) => (
+          <li key={stage.id}>
+            <div>
+              <strong>{stage.name}</strong>
+              <small>{stage.starts_on} — {stage.ends_on} · {stage.evidence_count} 份记录 · {stage.event_count} 段经历</small>
+            </div>
+            <button type="button" onClick={() => onEnter(stage.id)}>进入</button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function StageForm({ busy, onSubmit }: { busy: boolean; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   return (
     <form className="mvp-stage-form" onSubmit={onSubmit}>
@@ -736,11 +780,11 @@ function StageForm({ busy, onSubmit }: { busy: boolean; onSubmit: (event: FormEv
   );
 }
 
-function StageSummary({ stage, experienceCount, pendingCount, onExit }: {
+function StageSummary({ stage, experienceCount, pendingCount, onSwitch }: {
   stage: Stage;
   experienceCount: number;
   pendingCount: number;
-  onExit: () => void;
+  onSwitch: () => void;
 }) {
   return (
     <section className="mvp-stage-summary">
@@ -750,7 +794,7 @@ function StageSummary({ stage, experienceCount, pendingCount, onExit }: {
         <div><dt>发现经历</dt><dd>{experienceCount}</dd></div>
         <div><dt>需要核对</dt><dd>{pendingCount}</dd></div>
       </dl>
-      <button type="button" onClick={onExit}>切换回顾范围</button>
+      <button type="button" onClick={onSwitch}>切换回顾范围</button>
     </section>
   );
 }

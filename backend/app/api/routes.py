@@ -20,6 +20,7 @@ from app.domain.schemas import (
     SplitOut,
     StageCreate,
     StageOut,
+    StageUpdate,
 )
 from app.services import museum_service
 from app.services.note_parser import parse_note
@@ -66,9 +67,26 @@ def create_api_router(session_provider) -> APIRouter:
     ) -> dict:
         return {"data": museum_service.create_stage(session, payload)}
 
+    @router.get("/stages", response_model=DataEnvelope[list[StageOut]])
+    def stages(session: SessionDependency) -> dict:
+        return {"data": museum_service.list_stages(session)}
+
     @router.get("/stages/{stage_id}", response_model=DataEnvelope[StageOut])
     def get_stage(stage_id: str, session: SessionDependency) -> dict:
         return {"data": museum_service.get_stage(session, stage_id)}
+
+    @router.patch("/stages/{stage_id}", response_model=DataEnvelope[StageOut])
+    def rename_stage(
+        stage_id: str,
+        payload: StageUpdate,
+        session: SessionDependency,
+    ) -> dict:
+        return {"data": museum_service.rename_stage(session, stage_id, payload)}
+
+    @router.delete("/stages/{stage_id}", response_model=DataEnvelope[dict])
+    def delete_stage(stage_id: str, session: SessionDependency) -> dict:
+        museum_service.delete_stage(session, stage_id)
+        return {"data": {"id": stage_id}}
 
     @router.post(
         "/stages/{stage_id}/notes",
