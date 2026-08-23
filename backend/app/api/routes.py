@@ -11,6 +11,9 @@ from app.domain.schemas import (
     ClaudeSessionCreate,
     ClaudeSessionImportOut,
     ClaudeSessionPreviewOut,
+    CodexSessionCreate,
+    CodexSessionImportOut,
+    CodexSessionPreviewOut,
     CoverageOut,
     DataEnvelope,
     EventOut,
@@ -30,6 +33,7 @@ from app.domain.schemas import (
 )
 from app.services import (
     claude_session_evidence_service,
+    codex_session_evidence_service,
     git_evidence_service,
     museum_service,
 )
@@ -274,6 +278,43 @@ def create_api_router(session_provider) -> APIRouter:
                 upload_dir=request.app.state.settings.upload_dir,
                 allowed_repo_roots=request.app.state.settings.allowed_repo_roots,
                 claude_projects_root=request.app.state.settings.claude_projects_root,
+            )
+        }
+
+    @router.get(
+        "/codex-sessions/preview",
+        response_model=DataEnvelope[CodexSessionPreviewOut],
+    )
+    def preview_codex_sessions(request: Request, path: str = "") -> dict:
+        # 只读预览项目全部 Codex 会话的最早/最晚日期与数量；解析与安全约束
+        # 与 codex-evidence-v1 导入完全一致（含 subagent 线程排除），不落库。
+        return {
+            "data": codex_session_evidence_service.preview_codex_sessions(
+                path,
+                allowed_roots=request.app.state.settings.allowed_repo_roots,
+                sessions_root=request.app.state.settings.codex_sessions_root,
+            )
+        }
+
+    @router.post(
+        "/stages/{stage_id}/codex-sessions",
+        status_code=201,
+        response_model=DataEnvelope[CodexSessionImportOut],
+    )
+    def import_codex_sessions(
+        stage_id: str,
+        payload: CodexSessionCreate,
+        request: Request,
+        session: SessionDependency,
+    ) -> dict:
+        return {
+            "data": museum_service.import_codex_sessions(
+                session,
+                stage_id=stage_id,
+                path=payload.path,
+                upload_dir=request.app.state.settings.upload_dir,
+                allowed_repo_roots=request.app.state.settings.allowed_repo_roots,
+                codex_sessions_root=request.app.state.settings.codex_sessions_root,
             )
         }
 

@@ -4,7 +4,7 @@
 
 ## 项目是什么
 
-Digital Museum · AI 人生档案馆。开源本地工具（方向见 PRD v0.2，2026-08-23 起）：目标用户是 AI 编码 Agent 开发者，第一燃料是本机的 Agent 会话记录与 Git、笔记等文本痕迹；交付终点是静态展览导出（Stage 8，未实现），明确不做云部署与多用户。当前首页 `/` 为“导入记录 → 发现经历（含合并/拆分整理）→ 核对关键内容 → 私人回顾草稿”的价值先行 MVP，支持整理过的 `.md/.txt` 笔记、本地 Git 仓库（只读提交记录）、Claude Code 会话（`~/.claude/projects` 只读）与 JPEG/PNG 照片（EXIF，已暂缓投入、代码保留）。Codex/ChatGPT/WorkBuddy 适配器尚未实现。`/demo` 静态演示已于 2026-08 移除；站内 `/` 与 `/exhibition` 均读取真实档案数据。
+Digital Museum · AI 人生档案馆。开源本地工具（方向见 PRD v0.2，2026-08-23 起）：目标用户是 AI 编码 Agent 开发者，第一燃料是本机的 Agent 会话记录与 Git、笔记等文本痕迹；交付终点是静态展览导出（Stage 8，未实现），明确不做云部署与多用户。当前首页 `/` 为“导入记录 → 发现经历（含合并/拆分整理）→ 核对关键内容 → 私人回顾草稿”的价值先行 MVP，支持整理过的 `.md/.txt` 笔记、本地 Git 仓库（只读提交记录）、Claude Code 会话（`~/.claude/projects` 只读）、Codex 会话（`~/.codex/sessions` 只读）与 JPEG/PNG 照片（EXIF，已暂缓投入、代码保留）。ChatGPT/WorkBuddy 适配器尚未实现。`/demo` 静态演示已于 2026-08 移除；站内 `/` 与 `/exhibition` 均读取真实档案数据。
 
 文档阅读顺序：`docs/prd/digital-museum-prd-v0.2.md`（当前有效）→ `docs/technical-adaptation.md` → `docs/mvp-value-first-ai-records-flow.md` → `docs/phase-0-stage-1-note-event-review.md` 及后续 `docs/phase-0-stage-*.md`。PRD v0.1 的真实性契约、对象模型与 Event Review 信息层级继续有效；`docs/references/` 下的三份手册是通用外部方法论参考资料，不是本项目规范。
 
@@ -25,7 +25,7 @@ docs/       全部项目文档（PRD 在 docs/prd/，参考手册在 docs/refere
 npm run backend:sync      # 安装后端依赖（uv）
 npm run backend:dev       # 启动本地 API（127.0.0.1:8010）
 npm run dev:phase0        # 启动前端工作台（127.0.0.1:3001）
-npm run test:backend      # 后端 pytest（86 个用例，必须全绿；含评测基线护栏）
+npm run test:backend      # 后端 pytest（93 个用例，必须全绿；含评测基线护栏）
 npm run test:local        # 前端构建 + 渲染冒烟（macOS 用这个，npm test 需要 GNU timeout）
 npm run test:e2e          # Playwright 端到端（需先停止 backend:dev；后端占用 8010、前端 3002，数据隔离在 .e2e/）
 npm run typecheck         # tsc --noEmit
@@ -44,7 +44,8 @@ npm run lint              # eslint
 - 解析器 `note-development-v1` 是确定性的：只生成 Candidate，不推断因果与动机，不用确定性结果冒充模型效果。
 - 适配器 `git-evidence-v1` 与 `photo-evidence-v1` 同样是确定性的：Git 只读提交/标签并渲染证据文档；照片只读 EXIF（拍摄时间、相机、GPS 原始坐标），不猜日期、不做 OCR/图像识别，Claim 一律 `evidence_role="artifact"`。照片链路已按 PRD v0.2 暂缓投入：代码与测试保留，不做 HEIC/OCR/补录等新投入。
 - 适配器 `claude-code-evidence-v1`（Stage 6）是确定性的：只读 `~/.claude/projects`（配置 `claude_projects_root`）下按 Claude Code 转义规则命名的会话 JSONL；只提取会话时间戳（UTC 按本机时区归日，与 git 适配器口径一致）、用户/助手消息计数与首条真实用户消息原文（跳过 `<` 开头的系统包装行与 tool_result）；**绝不修改 `~/.claude` 下任何内容，证据文档不整份复制会话**；单行损坏确定性跳过；按天生成事件，标题「在 {项目} 与 Claude Code 协作」。
-- 分级信任：确定性读数（Git 提交日按 committer date、照片 EXIF、Claude 会话时间戳与计数）导入即 `status="verified"`（系统核实），不进人工核对队列，但 UI 必须保留「对这段记录提出异议」入口；推断性标题（如"创建标签"）与用户已 rejected 的同题同日事件一律保持/降级为 `candidate`；用户已审阅过的事件（disputed/unknown/confirmed）重复导入时并入不复制、状态以用户判定为准。不要把确定性"读取"表述成"核实了事实"，也不要把会话时间戳/计数的核实表述成"解读了对话内容"。
+- 适配器 `codex-evidence-v1`（Stage 7）同样是确定性的：只读 `~/.codex/sessions`（配置 `codex_sessions_root`）下按日期存放的 rollout JSONL，按每文件首行 `session_meta.payload.cwd` 归属项目；**只统计 `thread_source == "user"` 的会话——subagent 内部线程的 user_message 是系统注入的审计材料，一律排除**；只提取时间戳、`user_message`/`agent_message` 计数与首条真实用户消息原文；**绝不修改 `~/.codex` 任何内容**；其余口径与 claude 适配器一致。两个 Agent 适配器共用 `agent_session_evidence.py` 的证据文档渲染，Stage 10 新适配器照此复用。
+- 分级信任：确定性读数（Git 提交日按 committer date、照片 EXIF、Claude/Codex 会话时间戳与计数）导入即 `status="verified"`（系统核实），不进人工核对队列，但 UI 必须保留「对这段记录提出异议」入口；推断性标题（如"创建标签"）与用户已 rejected 的同题同日事件一律保持/降级为 `candidate`；用户已审阅过的事件（disputed/unknown/confirmed）重复导入时并入不复制、状态以用户判定为准。不要把确定性"读取"表述成"核实了事实"，也不要把会话时间戳/计数的核实表述成"解读了对话内容"。
 - 聚合规则 `note-aggregation-v1` 同样是确定性的：仅按规范化标题加日期聚合，不做语义聚类；Merge/Split 产物一律重置为 Candidate 并保留逐字锚点与审计行。
 - 阶段管理：`DELETE /api/v1/stages/{id}` 级联清空该阶段全部数据，随后回收零引用的 EvidenceBlob（occurrences 与 evidence_anchors 都不再引用）——删行并清理文件；被其他阶段共享（仍有引用）的 blob 必须保留。前端展示原图走 `claims[].source_media`（仅 image/jpeg、image/png），加载失败静默回落 SpecimenArt。
 - 样式延续集中式 CSS（`app/globals.css`），Tailwind 仅保留依赖，暂不迁移。

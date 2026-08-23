@@ -24,9 +24,10 @@ from app.domain.models import (
 )
 from app.domain.schemas import MergeCreate, ReviewCreate, StageCreate, StageUpdate
 from app.services import claude_session_evidence_service as claude_evidence
+from app.services import codex_session_evidence_service as codex_evidence
 from app.services import git_evidence_service as git_evidence
 from app.services import photo_evidence_service as photo_evidence
-from app.services.claude_session_evidence_service import ClaudeActivityItem
+from app.services.agent_session_evidence import AgentActivityItem
 from app.services.git_evidence_service import GitActivityItem
 from app.services.note_parser import PROCESSOR_VERSION, ParsedNote
 from app.services.photo_evidence_service import PhotoEvidence
@@ -465,11 +466,65 @@ def import_claude_sessions(
     }
 
 
+def import_codex_sessions(
+    session: Session,
+    *,
+    stage_id: str,
+    path: str,
+    upload_dir: Path,
+    allowed_repo_roots: str,
+    codex_sessions_root: str,
+) -> dict:
+    stage = require_stage(session, stage_id)
+    evidence = codex_evidence.import_codex_sessions(
+        path,
+        starts_on=stage.starts_on,
+        ends_on=stage.ends_on,
+        allowed_roots=allowed_repo_roots,
+        sessions_root=codex_sessions_root,
+    )
+    content = evidence.document.encode("utf-8")
+    occurrence = start_note_import(
+        session,
+        stage_id=stage.id,
+        original_filename=f"{evidence.project_label}-codex-sessions.txt",
+        media_type="text/plain",
+        content=content,
+        upload_dir=upload_dir,
+    )
+    occurrence_id = occurrence.id
+    try:
+        events = _persist_machine_candidates(
+            session,
+            occurrence_id=occurrence_id,
+            items=evidence.items,
+            origin="codex",
+            origins=("note", "aggregated", "codex"),
+            processor_version=codex_evidence.CODEX_PROCESSOR_VERSION,
+        )
+    except ApiError as exc:
+        mark_import_failed(
+            session,
+            occurrence_id=occurrence_id,
+            step="candidate_generated",
+            error_code=exc.code,
+            processor_version=codex_evidence.CODEX_PROCESSOR_VERSION,
+        )
+        raise
+    coverage = list_coverage(session, stage.id)
+    occurrence_coverage = [item for item in coverage if item["occurrence_id"] == occurrence_id]
+    return {
+        "occurrence": serialize_occurrence(occurrence),
+        "events": events,
+        "coverage": occurrence_coverage,
+    }
+
+
 def _persist_machine_candidates(
     session: Session,
     *,
     occurrence_id: str,
-    items: tuple[GitActivityItem | ClaudeActivityItem, ...],
+    items: tuple[GitActivityItem | AgentActivityItem, ...],
     origin: str,
     origins: tuple[str, ...],
     processor_version: str,

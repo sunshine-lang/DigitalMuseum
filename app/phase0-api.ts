@@ -51,7 +51,8 @@ export type EventOrigin =
   | "split"
   | "git"
   | "photo"
-  | "claude";
+  | "claude"
+  | "codex";
 
 export type AuditDecision = ReviewDecision | "merged" | "split";
 
@@ -257,6 +258,21 @@ export function importClaudeSessions(
   projectPath: string,
 ): Promise<{ occurrence: { original_filename: string }; events: CandidateEvent[] }> {
   return apiRequest(`/api/v1/stages/${stageId}/claude-sessions`, {
+    method: "POST",
+    body: JSON.stringify({ path: projectPath }),
+  });
+}
+
+/** occurrence.original_filename 形如 "MyProject-codex-sessions.txt"。 */
+export function codexProjectLabel(originalFilename: string): string {
+  return originalFilename.replace(/-codex-sessions\.txt$/, "");
+}
+
+export function importCodexSessions(
+  stageId: string,
+  projectPath: string,
+): Promise<{ occurrence: { original_filename: string }; events: CandidateEvent[] }> {
+  return apiRequest(`/api/v1/stages/${stageId}/codex-sessions`, {
     method: "POST",
     body: JSON.stringify({ path: projectPath }),
   });

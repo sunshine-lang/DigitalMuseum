@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     max_photo_bytes: int = Field(default=25 * 1024 * 1024, ge=1)
     allowed_repo_roots: str = "~"
     claude_projects_root: str = "~/.claude/projects"
+    codex_sessions_root: str = "~/.codex/sessions"
     cors_origins: tuple[str, ...] = (
         "http://127.0.0.1:3000",
         "http://localhost:3000",

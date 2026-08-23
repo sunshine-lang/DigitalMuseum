@@ -18,7 +18,18 @@
 - **E2E 环境阻断（未解决，需补跑）**：本机另一个 ZCode 会话以 ~35s 周期监管 8010 端口（杀掉占用者并重启自己的 uvicorn），Playwright 隔离后端两次均在运行中被杀（失败全是「无法连接本地后端」，非功能问题；两轮合计 5/7 用例通过，失败集互不相同）。不杀对方会话进程（用户其他工作）。**待办：环境安静后运行 `npm run test:e2e` 补验。**
 - 提交：`12a27ac`（14 文件，+1256/-52），已推送 github 远端。
 
-## 切片 S7-1：codex-evidence-v1 后端（进行中）
+## 切片 S7-1：codex-evidence-v1 后端 ✅
 
-- 侦察完成：345 文件、773 user 线程 / 317 subagent（必须排除）/ 1 composer_link；user_message 在 `event_msg.payload.message`；user 线程 0 条 `<` 注入。
-- 下一步：实现适配器 + API + 测试。
+- 抽出共享渲染模块 `agent_session_evidence.py`（数据类 + 按天证据文档 + 逐行锚点 + 时间戳/文本清洗），claude 适配器重构为复用它（行为不变，93 测试护航）；
+- 新增 `codex_session_evidence_service.py`：按日期目录扫描 rollout、`session_meta.cwd` 归属过滤、**subagent/composer_link 线程排除**、`<` 注入行跳过；
+- 接线：config `codex_sessions_root`、schemas（origin + 3 个新模型）、main 覆盖参数、routes 两个端点、museum_service `import_codex_sessions`（origins 白名单加 codex）；
+- 测试：`test_phase0_stage7_codex_sessions.py` 7 用例；全量 93/93；ruff 清零。
+
+## 切片 S7-2：Codex 前端通道 + 文档 ✅
+
+- 前端第五通道（表单/chip/信任文案/成功提示）；API 层 `importCodexSessions` + `codexProjectLabel`；
+- 文档：`docs/phase-0-stage-7-codex-sessions.md` 新建；AGENTS.md（支持清单、codex 适配器约定、93 用例）；README 同步；
+- **对抗性审查发现与处理**：① 首个测试断言写错（B 会话有 2 条用户消息，总数应为 3 不是 2）——实现正确、测试修正；② 共享模块里曾留下无意义占位导入——清理；③ ruff E501/F401 两处即改。
+- 真实数据验收（临时 DB，只读 `~/.codex/sessions`）：DigitalMuseum 项目 4 个用户线程 → 2 天 verified 事件（32 个 cwd 命中文件中 subagent 全部正确排除）；锚点逐字；重复导入聚合；`~/.codex` 前后 mtime/size 未变。
+- 验证：typecheck ✅ lint ✅ test:local 3/3 ✅ test:backend 93/93 ✅ ruff ✅（E2E 仍被端口监管环境阻断，见切片 0）
+- 提交：见 git log（stage-7 分支），已推送。

@@ -15,7 +15,7 @@
 → 审阅状态持久化并可恢复
 ```
 
-这不是整个 Phase 0，也不是完整产品。当前“AI 协作记录”支持用户已经整理成 `.md/.txt` 的非敏感测试资料、本地 Git 仓库（只读提交记录）与 Claude Code 会话（只读 `~/.claude/projects`）；照片适配器已暂缓投入（代码保留）。Codex/ChatGPT/WorkBuddy 原生 Session 解析、真实模型、静态展览导出和 Share 尚未实现。首页展览区是读取真实 Event 状态的本地草稿，不是可发布展览。`/demo` 静态演示已于 2026-08 移除。
+这不是整个 Phase 0，也不是完整产品。当前“AI 协作记录”支持用户已经整理成 `.md/.txt` 的非敏感测试资料、本地 Git 仓库（只读提交记录）、Claude Code 会话（只读 `~/.claude/projects`）与 Codex 会话（只读 `~/.codex/sessions`）；照片适配器已暂缓投入（代码保留）。ChatGPT/WorkBuddy 原生 Session 解析、真实模型、静态展览导出和 Share 尚未实现。首页展览区是读取真实 Event 状态的本地草稿，不是可发布展览。`/demo` 静态演示已于 2026-08 移除。
 
 ## 技术适配
 

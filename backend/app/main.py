@@ -29,6 +29,7 @@ def create_app(
     max_photo_bytes: int | None = None,
     allowed_repo_roots: str | None = None,
     claude_projects_root: str | None = None,
+    codex_sessions_root: str | None = None,
 ) -> FastAPI:
     overrides: dict[str, object] = {}
     if database_url is not None:
@@ -43,6 +44,8 @@ def create_app(
         overrides["allowed_repo_roots"] = allowed_repo_roots
     if claude_projects_root is not None:
         overrides["claude_projects_root"] = claude_projects_root
+    if codex_sessions_root is not None:
+        overrides["codex_sessions_root"] = codex_sessions_root
     settings = Settings(**overrides)
     engine = create_database_engine(settings.database_url)
     session_factory = create_session_factory(engine)
