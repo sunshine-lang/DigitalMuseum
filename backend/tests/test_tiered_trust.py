@@ -293,3 +293,104 @@ def test_verified_status_persists_across_restart(app_paths, tmp_path: Path, git_
         assert event["status"] == "verified"
         assert event["origin"] == "git"
         assert event["revision"] == 0
+
+
+def test_disputed_verified_event_absorbs_reimport_without_duplicate(
+    git_client: TestClient, git_repo: Path
+):
+    """对抗性审查修复：用户异议过的日期，重复导入不得复制新的"系统核实"事件。"""
+    stage_id = _create_stage(git_client)
+    first = git_client.post(
+        f"/api/v1/stages/{stage_id}/git-repos", json={"path": str(git_repo)}
+    )
+    assert first.status_code == 201
+    events = _list_events(git_client, stage_id)
+    target = next(e for e in events if "提交代码" in e["title"] and e["occurred_on"] == "2026-05-10")
+
+    disputed = git_client.post(
+        f"/api/v1/events/{target['id']}/reviews",
+        json={"decision": "disputed", "note": "这天其实没提交", "expected_revision": 0},
+    )
+    assert disputed.status_code == 200
+
+    second = git_client.post(
+        f"/api/v1/stages/{stage_id}/git-repos", json={"path": str(git_repo)}
+    )
+    assert second.status_code == 201
+
+    events = _list_events(git_client, stage_id)
+    same_day = [e for e in events if "提交代码" in e["title"] and e["occurred_on"] == "2026-05-10"]
+    assert len(same_day) == 1  # 不复制
+    assert same_day[0]["status"] == "disputed"  # 用户判定优先于机器读数
+    assert len(same_day[0]["claims"]) == 2  # 两次导入各并入了 1 条 claim（按天聚合）
+
+
+def test_rejected_target_downgrades_reimport_to_candidate(
+    photo_client: TestClient,
+):
+    """对抗性审查修复：被用户排除的事件，机器再断言同题同日时降级回人工核对。"""
+    stage_id = _create_stage(photo_client)
+    first = _upload_photo(photo_client, stage_id, content=_jpeg_bytes())
+    assert first.status_code == 201
+    event = first.json()["data"]["event"]
+
+    rejected = photo_client.post(
+        f"/api/v1/events/{event['id']}/reviews",
+        json={"decision": "rejected", "note": None, "expected_revision": 0},
+    )
+    assert rejected.status_code == 200
+
+    again = _upload_photo(photo_client, stage_id, content=_jpeg_bytes())
+    assert again.status_code == 201
+    new_event = again.json()["data"]["event"]
+    assert new_event["id"] != event["id"]
+    assert new_event["status"] == "candidate"
+
+
+def test_committer_date_defines_the_commit_day(app_paths, tmp_path: Path):
+    """对抗性审查修复：cherry-pick/rebase 后 author date 是写作日，
+    「这一天提交了」必须以 committer date（进入仓库的日期）为准。"""
+    repo = tmp_path / "rebased-repo"
+    repo.mkdir()
+    _git(repo, "init", "-b", "main")
+    env_days = {"GIT_AUTHOR_DATE": "2026-05-10T12:00:00", "GIT_COMMITTER_DATE": "2026-06-20T12:00:00"}
+    import os as _os
+
+    env = _os.environ.copy()
+    env.update(
+        {
+            "GIT_AUTHOR_NAME": "Tester",
+            "GIT_AUTHOR_EMAIL": "tester@example.com",
+            "GIT_COMMITTER_NAME": "Tester",
+            "GIT_COMMITTER_EMAIL": "tester@example.com",
+            **env_days,
+        }
+    )
+    import subprocess as _sp
+
+    (repo / "a.txt").write_text("a", encoding="utf-8")
+    _sp.run(["git", "-C", str(repo), "add", "."], check=True, capture_output=True, env=env)
+    _sp.run(
+        ["git", "-C", str(repo), "commit", "-m", "rebased work"],
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+
+    database_url, upload_dir = app_paths
+    with TestClient(
+        create_app(
+            database_url=database_url,
+            upload_dir=upload_dir,
+            allowed_repo_roots=str(tmp_path),
+        )
+    ) as client:
+        stage_id = _create_stage(client)
+        response = client.post(
+            f"/api/v1/stages/{stage_id}/git-repos", json={"path": str(repo)}
+        )
+        assert response.status_code == 201
+        events = _list_events(client, stage_id)
+        assert [(e["title"], e["occurred_on"]) for e in events] == [
+            ("在 rebased-repo 提交代码", "2026-06-20")
+        ]

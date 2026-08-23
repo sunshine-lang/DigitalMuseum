@@ -29,6 +29,9 @@ class GitActivityItem:
     occurred_on: date
     claim_text: str
     anchors: tuple[GitAnchor, ...]
+    # 确定性事实（提交日）导入即"系统核实"；推断性标题（存在标签 ≠ 发布了版本，
+    # 且轻量标签的 creatordate 不可靠）必须保持 candidate 由人核对。
+    initial_status: str = "verified"
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,7 +56,7 @@ def import_git_repository(
         repo_path,
         "log",
         "--date=short",
-        f"--pretty=format:%H{_FIELD_SEP}%ad{_FIELD_SEP}%s",
+        f"--pretty=format:%H{_FIELD_SEP}%cd{_FIELD_SEP}%s",
     )
     tags_output = _git(
         repo_path,
@@ -110,7 +113,7 @@ def _render_evidence_document(
         f"range: {starts_on}..{ends_on}",
         "",
     ]
-    pending: list[tuple[str, date, str, int, int]] = []
+    pending: list[tuple[str, date, str, int, int, str]] = []
 
     for day in sorted(commits_by_day):
         commits = commits_by_day[day]
@@ -134,6 +137,7 @@ def _render_evidence_document(
                 claim_text,
                 block_start,
                 block_end,
+                "verified",
             )
         )
 
@@ -144,11 +148,12 @@ def _render_evidence_document(
         claim_text = f"在仓库 {repo_name}（{branch} 分支）创建了标签 {tag_name}。"
         pending.append(
             (
-                f"在 {repo_name} 发布版本 {tag_name}",
+                f"在 {repo_name} 创建标签 {tag_name}",
                 date.fromisoformat(day),
                 claim_text,
                 block_start,
                 block_start,
+                "candidate",
             )
         )
 
@@ -159,7 +164,7 @@ def _render_evidence_document(
         total += len(line) + 1
 
     items: list[GitActivityItem] = []
-    for title, occurred_on, claim_text, block_start, block_end in pending:
+    for title, occurred_on, claim_text, block_start, block_end, initial_status in pending:
         anchors = tuple(
             GitAnchor(
                 quote=line_text,
@@ -177,6 +182,7 @@ def _render_evidence_document(
                 occurred_on=occurred_on,
                 claim_text=claim_text,
                 anchors=anchors,
+                initial_status=initial_status,
             )
         )
 

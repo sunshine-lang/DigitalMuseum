@@ -190,3 +190,47 @@ def test_delete_missing_stage_returns_contract_error(client: TestClient) -> None
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "stage_not_found"
+
+
+def test_delete_stage_with_merge_split_lineage(app_paths):
+    """对抗性审查修复：含 split 血缘（parent_event_id 自引用）的阶段
+    删除必须整链级联干净，不留孤儿行。"""
+    from sqlalchemy import text
+
+    database_url, upload_dir = app_paths
+    with TestClient(create_app(database_url=database_url, upload_dir=upload_dir)) as client:
+        stage_id = create_stage(client)
+        note_a = (
+            "---\ntitle: 聚合标题\ndate: 2026-05-10\n---\n\n第一份记录正文。\n"
+        ).encode()
+        note_b = (
+            "---\ntitle: 聚合标题\ndate: 2026-05-10\n---\n\n第二份记录正文。\n"
+        ).encode()
+        for name, content in [("a.md", note_a), ("b.md", note_b)]:
+            response = client.post(
+                f"/api/v1/stages/{stage_id}/notes",
+                files={"file": (name, content, "text/markdown")},
+            )
+            assert response.status_code == 201
+        events = client.get(f"/api/v1/stages/{stage_id}/events").json()["data"]
+        assert len(events) == 1  # 同题同日聚合成一个事件
+
+        split = client.post(f"/api/v1/events/{events[0]['id']}/split")
+        assert split.status_code == 200  # 2 份来源可拆，产生 split 血缘
+
+        deleted = client.delete(f"/api/v1/stages/{stage_id}")
+        assert deleted.status_code == 200
+
+    engine = create_engine(database_url)
+    with engine.connect() as connection:
+        for table in [
+            "candidate_events",
+            "claims",
+            "evidence_anchors",
+            "event_reviews",
+            "evidence_occurrences",
+            "coverage_items",
+        ]:
+            count = connection.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar()
+            assert count == 0, f"{table} 残留 {count} 行"
+    engine.dispose()

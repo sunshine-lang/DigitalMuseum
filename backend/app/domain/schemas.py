@@ -23,8 +23,9 @@ class StageCreate(BaseModel):
     ends_on: date
 
 
+# 长度/非空校验在 museum_service.rename_stage 统一为 invalid_stage_name。
 class StageUpdate(BaseModel):
-    name: str = Field(min_length=1, max_length=120)
+    name: str
 
 
 class StageOut(BaseModel):
@@ -38,6 +39,7 @@ class StageOut(BaseModel):
     evidence_count: int = 0
     event_count: int = 0
     confirmed_count: int = 0
+    verified_count: int = 0
 
 
 class AnchorOut(BaseModel):

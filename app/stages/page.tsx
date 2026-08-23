@@ -184,6 +184,7 @@ export default function StageLibraryPage() {
                     <div><dt>已保存记录</dt><dd>{stage.evidence_count}</dd></div>
                     <div><dt>发现经历</dt><dd>{stage.event_count}</dd></div>
                     <div><dt>已确认</dt><dd>{stage.confirmed_count}</dd></div>
+                    <div><dt>系统核实</dt><dd>{stage.verified_count}</dd></div>
                   </dl>
                   <div className="mvp-stage-actions">
                     <button className="mvp-primary" type="button" onClick={() => enterStage(stage.id)}>进入回顾</button>

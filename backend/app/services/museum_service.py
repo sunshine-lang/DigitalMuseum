@@ -72,8 +72,8 @@ def list_stages(session: Session) -> list[dict]:
 def rename_stage(session: Session, stage_id: str, payload: StageUpdate) -> dict:
     stage = require_stage(session, stage_id)
     normalized_name = payload.name.strip()
-    if not normalized_name:
-        raise ApiError(422, "invalid_stage_name", "阶段名称不能为空")
+    if not normalized_name or len(normalized_name) > 120:
+        raise ApiError(422, "invalid_stage_name", "阶段名称不能为空且不超过 120 字")
     stage.name = normalized_name
     session.commit()
     return serialize_stage(session, stage)
@@ -105,6 +105,12 @@ def serialize_stage(session: Session, stage: Stage) -> dict:
             CandidateEvent.status == "confirmed",
         )
     )
+    verified_count = session.scalar(
+        select(func.count(CandidateEvent.id)).where(
+            CandidateEvent.stage_id == stage.id,
+            CandidateEvent.status == "verified",
+        )
+    )
     return {
         "id": stage.id,
         "name": stage.name,
@@ -114,6 +120,7 @@ def serialize_stage(session: Session, stage: Stage) -> dict:
         "evidence_count": evidence_count or 0,
         "event_count": event_count or 0,
         "confirmed_count": confirmed_count or 0,
+        "verified_count": verified_count or 0,
     }
 
 
@@ -375,31 +382,17 @@ def _persist_git_candidates(
 
     created_events: list[CandidateEvent] = []
     for item in evidence.items:
-        target = _find_aggregation_target(
+        event, created = _resolve_machine_event(
             session,
-            stage.id,
-            item.title,
-            item.occurred_on,
+            stage,
+            occurrence,
+            title=item.title,
+            occurred_on=item.occurred_on,
+            initial_status=item.initial_status,
+            origin="git",
             origins=("note", "aggregated", "git"),
         )
-        if target is not None:
-            event = target
-            event.origin = "aggregated"
-            event.aggregation_rule = AGGREGATION_RULE_VERSION
-            event.updated_at = utc_now()
-        else:
-            event = CandidateEvent(
-                stage_id=stage.id,
-                occurrence=occurrence,
-                title=item.title,
-                occurred_on=item.occurred_on,
-                time_precision="exact",
-                # Git 提交日期是机器确定性算出的事实：直接进入“系统核实”态，
-                # 不占用人工核对队列；异议通道（review API）保持开放。
-                status="verified",
-                revision=0,
-                origin="git",
-            )
+        if created:
             created_events.append(event)
         claim = Claim(
             event=event,
@@ -507,31 +500,16 @@ def _persist_photo_candidate(
         raise ApiError(404, "occurrence_not_found", "没有找到这次照片导入")
     stage = require_stage(session, occurrence.stage_id)
 
-    target = _find_aggregation_target(
+    event, _created = _resolve_machine_event(
         session,
-        stage.id,
-        evidence.event_title,
-        evidence.occurred_on,
+        stage,
+        occurrence,
+        title=evidence.event_title,
+        occurred_on=evidence.occurred_on,
+        initial_status="verified",
+        origin="photo",
         origins=("note", "aggregated", "git", "photo"),
     )
-    if target is not None:
-        event = target
-        event.origin = "aggregated"
-        event.aggregation_rule = AGGREGATION_RULE_VERSION
-        event.updated_at = utc_now()
-    else:
-        event = CandidateEvent(
-            stage_id=stage.id,
-            occurrence=occurrence,
-            title=evidence.event_title,
-            occurred_on=evidence.occurred_on,
-            time_precision="exact",
-            # EXIF 拍摄时间是机器确定性读出的事实：直接进入“系统核实”态，
-            # 不占用人工核对队列；异议通道（review API）保持开放。
-            status="verified",
-            revision=0,
-            origin="photo",
-        )
     claim = Claim(
         event=event,
         occurrence_id=occurrence.id,
@@ -707,6 +685,100 @@ def split_event(session: Session, event_id: str) -> dict:
         "event": serialize_event(_load_event(session, event_id)),
         "events": [serialize_event(_load_event(session, child.id)) for child in children],
     }
+
+
+def _resolve_machine_event(
+    session: Session,
+    stage: Stage,
+    occurrence: EvidenceOccurrence,
+    *,
+    title: str,
+    occurred_on: date,
+    initial_status: str,
+    origin: str,
+    origins: tuple[str, ...],
+) -> tuple[CandidateEvent, bool]:
+    """确定性证据（Git/照片）的事件落位规则。
+
+    1. 同题同日的未审阅事件（candidate/verified，revision=0）→ 并入聚合；
+    2. 同题同日、用户已审阅且仍可见（confirmed/disputed/unknown，revision>0）
+       → 并入为新 claim，但**保持用户判定**——机器读数不得覆盖或复制用户
+       刚刚否认过的事实；
+    3. 同题同日但被用户 rejected（已从可见列表排除）→ 新建事件降级为
+       candidate（人工意见与机器读数冲突时，交还人工）；
+    4. 都没有 → 按 initial_status 新建（提交日/EXIF = verified，推断性
+       标题 = candidate）。
+    """
+    target = _find_aggregation_target(
+        session, stage.id, title, occurred_on, origins=origins
+    )
+    if target is not None:
+        target.origin = "aggregated"
+        target.aggregation_rule = AGGREGATION_RULE_VERSION
+        target.updated_at = utc_now()
+        return target, False
+
+    absorb = _find_reviewed_absorb_target(session, stage.id, title, occurred_on, origins)
+    if absorb is not None:
+        absorb.origin = "aggregated"
+        absorb.aggregation_rule = AGGREGATION_RULE_VERSION
+        absorb.updated_at = utc_now()
+        return absorb, False
+
+    status = initial_status
+    if _has_rejected_target(session, stage.id, title, occurred_on, origins):
+        status = "candidate"
+    event = CandidateEvent(
+        stage_id=stage.id,
+        occurrence=occurrence,
+        title=title,
+        occurred_on=occurred_on,
+        time_precision="exact",
+        status=status,
+        revision=0,
+        origin=origin,
+    )
+    session.add(event)
+    return event, True
+
+
+def _find_reviewed_absorb_target(
+    session: Session,
+    stage_id: str,
+    title: str,
+    occurred_on: date,
+    origins: tuple[str, ...],
+) -> CandidateEvent | None:
+    events = session.scalars(
+        select(CandidateEvent).where(
+            CandidateEvent.stage_id == stage_id,
+            CandidateEvent.status.in_(("confirmed", "disputed", "unknown")),
+            CandidateEvent.revision > 0,
+            CandidateEvent.occurred_on == occurred_on,
+            CandidateEvent.origin.in_(origins + ("merged", "split")),
+        )
+    ).all()
+    return next(
+        (event for event in events if _normalized_title(event.title) == _normalized_title(title)),
+        None,
+    )
+
+
+def _has_rejected_target(
+    session: Session,
+    stage_id: str,
+    title: str,
+    occurred_on: date,
+    origins: tuple[str, ...],
+) -> bool:
+    events = session.scalars(
+        select(CandidateEvent).where(
+            CandidateEvent.stage_id == stage_id,
+            CandidateEvent.status == "rejected",
+            CandidateEvent.occurred_on == occurred_on,
+        )
+    ).all()
+    return any(_normalized_title(event.title) == _normalized_title(title) for event in events)
 
 
 def _find_aggregation_target(

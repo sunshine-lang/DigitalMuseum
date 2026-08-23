@@ -82,18 +82,18 @@ function originChipLabel(event: CandidateEvent): string {
 function evidenceSummary(event: CandidateEvent): string {
   if (event.status === "verified") {
     if (event.origin === "photo") {
-      return "这段经历由系统从照片元数据（EXIF 拍摄时间、相机与坐标）自动核实：这些是机器确定性读出的事实，没有请模型推断，也无需你确认。如果与事实不符，可以随时在核对中提出异议。";
+      return "这段经历由系统从照片元数据（EXIF 拍摄时间、相机与坐标）自动核实：这些是机器确定性读出的事实，没有请模型推断，也无需你确认。如果与事实不符，点下方「对这段记录提出异议」随时纠正。";
     }
     if (event.origin === "git") {
-      return "这段经历由系统从确定性记录（Git 提交日期与提交说明）自动核实：没有请模型推断，也无需你确认。如果与事实不符，可以随时在核对中提出异议。";
+      return "这段经历由系统从确定性记录（Git 提交日期与提交说明）自动核实：没有请模型推断，也无需你确认。如果与事实不符，点下方「对这段记录提出异议」随时纠正。";
     }
-    return `系统发现 ${event.source_count} 份标题和日期都相同的确定性记录，把它们整理在同一段经历里并自动核实：没有请模型推断，也无需你确认；如果与事实不符，可以随时在核对中提出异议。`;
+    return `系统发现 ${event.source_count} 份标题和日期都相同的确定性记录，把它们整理在同一段经历里并自动核实：没有请模型推断，也无需你确认；如果与事实不符，点下方「对这段记录提出异议」随时纠正。`;
   }
   if (event.origin === "git") {
-    return "这段经历来自 Git 仓库的提交记录：系统只读取提交日期与提交说明并保留原文位置，没有判断工作的影响力或完成质量。如果与事实不符，可以在核对中提出异议。";
+    return "这段经历来自 Git 仓库的提交记录：系统只读取提交日期与提交说明并保留原文位置，没有判断工作的影响力或完成质量。如果与事实不符，点下方「对这段记录提出异议」随时纠正。";
   }
   if (event.origin === "photo") {
-    return "这段经历来自导入的照片：系统只读取 EXIF 拍摄时间、相机与坐标并保留元数据原文，没有识别照片里拍了什么。如果与事实不符，可以在核对中提出异议。";
+    return "这段经历来自导入的照片：系统只读取 EXIF 拍摄时间、相机与坐标并保留元数据原文，没有识别照片里拍了什么。如果与事实不符，点下方「对这段记录提出异议」随时纠正。";
   }
   if (event.origin === "aggregated") {
     return `系统发现 ${event.source_count} 份标题和日期都相同的记录，把它们整理在同一段经历里。它只读取标题、日期和首段正文并保留原文位置，没有判断事情是否完成或对你意味着什么。`;
@@ -113,6 +113,7 @@ export default function MuseumMvpWorkspace() {
   const [coverage, setCoverage] = useState<CoverageItem[]>([]);
   const [view, setView] = useState<WorkspaceView>("import");
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [reviewOverrideId, setReviewOverrideId] = useState<string | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [selectedPhotos, setSelectedPhotos] = useState<File[]>([]);
   const [importResults, setImportResults] = useState<ImportResult[]>([]);
@@ -143,10 +144,14 @@ export default function MuseumMvpWorkspace() {
     [visibleEvents],
   );
   // 笔记快速通道：亲笔笔记内容默认可信，只提示检查标题/日期提取。
+  // 混入机器产物（artifact claims）的事件不进快速通道，避免把系统读数
+  // 一键盖成"本人确认"（对抗性审查 #6）。
   const noteCandidates = useMemo(
     () =>
       candidateEvents.filter(
-        (event) => event.origin === "note" || event.origin === "aggregated",
+        (event) =>
+          (event.origin === "note" || event.origin === "aggregated") &&
+          event.claims.every((claim) => claim.evidence_role === "user_statement"),
       ),
     [candidateEvents],
   );
@@ -161,13 +166,17 @@ export default function MuseumMvpWorkspace() {
       null,
     [selectedEventId, visibleEvents],
   );
-  const reviewEventCandidate = useMemo(
-    () =>
+  const reviewEventCandidate = useMemo(() => {
+    // 异议通道：verified 事件通过「对这段记录提出异议」进入核对视图，
+    // 不再静默替换成别的候选（对抗性审查 #1）。
+    const override = visibleEvents.find((event) => event.id === reviewOverrideId);
+    if (override) return override;
+    return (
       candidateEvents.find((event) => event.id === selectedEventId) ??
       candidateEvents[0] ??
-      null,
-    [candidateEvents, selectedEventId],
-  );
+      null
+    );
+  }, [candidateEvents, visibleEvents, reviewOverrideId, selectedEventId]);
 
   const refreshStage = useCallback(async (stageId: string) => {
     const [nextStage, apiEvents, nextCoverage] = await Promise.all([
@@ -630,6 +639,15 @@ export default function MuseumMvpWorkspace() {
 
   function startReview(eventId?: string) {
     if (eventId) setSelectedEventId(eventId);
+    setReviewOverrideId(null);
+    setReviewNote("");
+    setActiveAnchor(null);
+    setView("review");
+  }
+
+  function startDispute(eventId: string) {
+    setSelectedEventId(eventId);
+    setReviewOverrideId(eventId);
     setReviewNote("");
     setActiveAnchor(null);
     setView("review");
@@ -691,6 +709,7 @@ export default function MuseumMvpWorkspace() {
               onMergeAction={handleMergeAction}
               onSplitAction={handleSplitAction}
               onReview={startReview}
+              onDispute={startDispute}
               onBatchConfirm={handleBatchConfirm}
               onPreview={() => setView("exhibition")}
             />
@@ -945,7 +964,7 @@ function ImportReport({ coverage, results }: { coverage: CoverageItem[]; results
   );
 }
 
-function DiscoverView({ events, selectedEvent, pendingCount, noteCandidateCount, batchBusy, mergeIds, structureBusy, confirmingAction, onSelect, onToggleMerge, onMergeAction, onSplitAction, onReview, onBatchConfirm, onPreview }: {
+function DiscoverView({ events, selectedEvent, pendingCount, noteCandidateCount, batchBusy, mergeIds, structureBusy, confirmingAction, onSelect, onToggleMerge, onMergeAction, onSplitAction, onReview, onDispute, onBatchConfirm, onPreview }: {
   events: CandidateEvent[];
   selectedEvent: CandidateEvent | null;
   pendingCount: number;
@@ -959,6 +978,7 @@ function DiscoverView({ events, selectedEvent, pendingCount, noteCandidateCount,
   onMergeAction: (action: "request" | "confirm" | "cancel" | "clear") => void;
   onSplitAction: (action: "request" | "confirm" | "cancel") => void;
   onReview: (eventId?: string) => void;
+  onDispute: (eventId: string) => void;
   onBatchConfirm: () => void;
   onPreview: () => void;
 }) {
@@ -984,7 +1004,7 @@ function DiscoverView({ events, selectedEvent, pendingCount, noteCandidateCount,
             ) : (
               <>
                 <small>如果它们其实是同一件事，可以合并成一段经历。</small>
-                <button className="mvp-secondary" type="button" onClick={() => onMergeAction("request")}>合并为一段经历</button>
+                <button className="mvp-secondary" type="button" disabled={batchBusy} onClick={() => onMergeAction("request")}>合并为一段经历</button>
                 <button className="mvp-text-button" type="button" onClick={() => onMergeAction("clear")}>清除选择</button>
               </>
             )}
@@ -1053,6 +1073,7 @@ function DiscoverView({ events, selectedEvent, pendingCount, noteCandidateCount,
               </div>
             )}
             {selectedEvent.status === "candidate" && <button className="mvp-secondary full" type="button" onClick={() => onReview(selectedEvent.id)}>核对这段经历</button>}
+            {selectedEvent.status === "verified" && <button className="mvp-secondary full" type="button" onClick={() => onDispute(selectedEvent.id)}>对这段记录提出异议</button>}
           </>
         ) : <div className="mvp-empty-state"><strong>选择一段经历</strong><p>这里会显示它来自哪份记录。</p></div>}
       </aside>

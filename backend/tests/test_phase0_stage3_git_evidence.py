@@ -103,8 +103,11 @@ def test_git_import_creates_day_and_tag_events(git_client: TestClient, git_repo:
     other_day = by_key[("在 demo-repo 提交代码", "2026-06-02")]
     assert "提交了 1 个变更" in other_day["claims"][0]["text"]
 
-    tag_event = by_key[("在 demo-repo 发布版本 v1.0.0", "2026-06-05")]
+    tag_event = by_key[("在 demo-repo 创建标签 v1.0.0", "2026-06-05")]
     assert tag_event["origin"] == "git"
+    # 标签是推断性标题（存在标签 ≠ 发布了版本，轻量标签日期不可靠）：
+    # 保持 candidate 由人核对，不享受"系统核实"。
+    assert tag_event["status"] == "candidate"
     assert "创建了标签 v1.0.0" in tag_event["claims"][0]["text"]
 
 

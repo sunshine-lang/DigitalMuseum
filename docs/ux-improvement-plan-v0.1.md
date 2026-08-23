@@ -113,3 +113,18 @@ confirmed_count 新增聚合（status="confirmed" 且非 structural）。
 - 删除阶段不可恢复 → 两步确认 + 影响计数明示；Blob 留存策略写入 AGENTS。
 - Blob 端点暴露本地文件 → 仅限库内已登记哈希、严格 hex 校验、无列举；单用户本机原型可接受，写入 AGENTS 安全条目。
 - preview/字段扩展均不破坏既有 API 契约（只增不改）；E2E 全量回归每切片必跑。
+
+## 补丁记录 · 对抗性审查修复（2026-08-23）
+
+独立审查（第一性原理、对抗性）对切片 A/F 提出 12 项发现，已修复其中的高危与中危项：
+
+- **#1 异议通道落地**：verified 事件证据栏新增「对这段记录提出异议」按钮，进入核对视图且不再静默替换目标事件；文案同步指向该入口。
+- **#2 标签事件退出 verified**：标题改为「在 X 创建标签 Y」（存在标签 ≠ 发布了版本，轻量标签日期不可靠），状态保持 candidate。
+- **#3 提交日改用 committer date**（%cd）：cherry-pick/rebase 后「这一天提交了」不再被 author date 误导。
+- **#4 异议优先**：用户已审阅（disputed/unknown/confirmed）的同题同日事件，重复导入并入为新 claim 且保持用户判定，不再复制"系统核实"事件；被 rejected 的目标使新导入降级为 candidate（机器与人工冲突时交还人工）。
+- **#5/#7 文档与口径**：AGENTS.md 更新（57 用例、verified 语义、Blob 留存策略）；/stages 增加「系统核实」统计（confirmed 与 verified 分开计数）。
+- **#6 批量确认收窄**：仅纳入全部 claims 为 user_statement 的事件，混合机器产物的事件不再被一键盖"本人确认"。
+- **#9/#11 测试与契约**：新增含 split 血缘的阶段删除级联测试；重命名 >120 字返回 invalid_stage_name（校验移入服务层）。
+- 遗留（低危，记录待办）：blob 引用回收端点、评测基线对 verified 日期错误的可见性、批量确认的中途失败 E2E。
+
+新增测试：test_tiered_trust.py（disputed 吸收 / rejected 降级 / committer date）、test_stages_management.py（血缘删除）。

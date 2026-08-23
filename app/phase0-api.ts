@@ -7,6 +7,7 @@ export type Stage = {
   evidence_count: number;
   event_count: number;
   confirmed_count: number;
+  verified_count: number;
 };
 
 export type Anchor = {
