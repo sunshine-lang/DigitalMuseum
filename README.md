@@ -15,7 +15,7 @@
 → 审阅状态持久化并可恢复
 ```
 
-这不是整个 Phase 0，也不是完整产品。当前“AI 协作记录”只支持用户已经整理成 `.md/.txt` 的非敏感测试资料；ChatGPT/Codex/WorkBuddy 原生 Session 导出解析、真实模型、自动策展网页、导出和 Share 尚未实现。首页展览区是读取真实 Event 状态的本地草稿，不是可发布展览。原有视觉演示保留在 `/demo`，不能作为当前核心链路已经完成的证据。
+这不是整个 Phase 0，也不是完整产品。当前“AI 协作记录”支持用户已经整理成 `.md/.txt` 的非敏感测试资料、本地 Git 仓库（只读提交记录）与 Claude Code 会话（只读 `~/.claude/projects`）；照片适配器已暂缓投入（代码保留）。Codex/ChatGPT/WorkBuddy 原生 Session 解析、真实模型、静态展览导出和 Share 尚未实现。首页展览区是读取真实 Event 状态的本地草稿，不是可发布展览。`/demo` 静态演示已于 2026-08 移除。
 
 ## 技术适配
 
@@ -30,7 +30,7 @@
 ## 项目结构
 
 ```text
-app/        前端（Next.js App Router）：/ 为价值先行 MVP，/demo 为原策展演示
+app/        前端（Next.js App Router）：/ 为价值先行 MVP，/exhibition 为展览草稿
 backend/    本地 API：FastAPI + SQLAlchemy + Alembic，分层 api / core / domain / services
 data/       运行时数据：SQLite 库与上传原文（Git 忽略）
 docs/       项目文档：prd/（PRD 与需求分析）、阶段开发文档、技术适配声明、references/（通用参考手册）
@@ -85,7 +85,7 @@ npm run dev:phase0
 8. 选择“描述要改”时填写说明；选择“我现在不确定”时系统不补写内容。
 9. 进入“查看回顾”，确认本人确认与等待核对的内容有明显区别，页面标记为私人草稿。
 10. 刷新页面，确认 Stage、Evidence、Event 和 Review 状态仍存在。
-11. 访问 `/demo`，确认旧视觉演示仍可打开，但没有被当作当前真实产出。
+11. 粘贴一个本机项目路径（如 `/Users/you/Projects/your-project`）点「读取 Claude Code 会话」，确认生成带“系统核实”标记的按天经历，且 `~/.claude` 没有被修改。
 
 当前原文未加密，只用于非敏感测试素材；不要导入真实隐私资料。
 

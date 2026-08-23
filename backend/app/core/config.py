@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     max_upload_bytes: int = Field(default=2 * 1024 * 1024, ge=1)
     max_photo_bytes: int = Field(default=25 * 1024 * 1024, ge=1)
     allowed_repo_roots: str = "~"
+    claude_projects_root: str = "~/.claude/projects"
     cors_origins: tuple[str, ...] = (
         "http://127.0.0.1:3000",
         "http://localhost:3000",

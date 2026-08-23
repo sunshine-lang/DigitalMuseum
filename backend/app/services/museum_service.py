@@ -23,9 +23,11 @@ from app.domain.models import (
     utc_now,
 )
 from app.domain.schemas import MergeCreate, ReviewCreate, StageCreate, StageUpdate
+from app.services import claude_session_evidence_service as claude_evidence
 from app.services import git_evidence_service as git_evidence
 from app.services import photo_evidence_service as photo_evidence
-from app.services.git_evidence_service import GitEvidence
+from app.services.claude_session_evidence_service import ClaudeActivityItem
+from app.services.git_evidence_service import GitActivityItem
 from app.services.note_parser import PROCESSOR_VERSION, ParsedNote
 from app.services.photo_evidence_service import PhotoEvidence
 
@@ -383,7 +385,14 @@ def import_git_evidence(
     )
     occurrence_id = occurrence.id
     try:
-        events = _persist_git_candidates(session, occurrence_id=occurrence_id, evidence=evidence)
+        events = _persist_machine_candidates(
+            session,
+            occurrence_id=occurrence_id,
+            items=evidence.items,
+            origin="git",
+            origins=("note", "aggregated", "git"),
+            processor_version=git_evidence.GIT_PROCESSOR_VERSION,
+        )
     except ApiError as exc:
         mark_import_failed(
             session,
@@ -402,21 +411,78 @@ def import_git_evidence(
     }
 
 
-def _persist_git_candidates(
+def import_claude_sessions(
+    session: Session,
+    *,
+    stage_id: str,
+    path: str,
+    upload_dir: Path,
+    allowed_repo_roots: str,
+    claude_projects_root: str,
+) -> dict:
+    stage = require_stage(session, stage_id)
+    evidence = claude_evidence.import_claude_sessions(
+        path,
+        starts_on=stage.starts_on,
+        ends_on=stage.ends_on,
+        allowed_roots=allowed_repo_roots,
+        projects_root=claude_projects_root,
+    )
+    content = evidence.document.encode("utf-8")
+    occurrence = start_note_import(
+        session,
+        stage_id=stage.id,
+        original_filename=f"{evidence.project_label}-claude-sessions.txt",
+        media_type="text/plain",
+        content=content,
+        upload_dir=upload_dir,
+    )
+    occurrence_id = occurrence.id
+    try:
+        events = _persist_machine_candidates(
+            session,
+            occurrence_id=occurrence_id,
+            items=evidence.items,
+            origin="claude",
+            origins=("note", "aggregated", "claude"),
+            processor_version=claude_evidence.CLAUDE_PROCESSOR_VERSION,
+        )
+    except ApiError as exc:
+        mark_import_failed(
+            session,
+            occurrence_id=occurrence_id,
+            step="candidate_generated",
+            error_code=exc.code,
+            processor_version=claude_evidence.CLAUDE_PROCESSOR_VERSION,
+        )
+        raise
+    coverage = list_coverage(session, stage.id)
+    occurrence_coverage = [item for item in coverage if item["occurrence_id"] == occurrence_id]
+    return {
+        "occurrence": serialize_occurrence(occurrence),
+        "events": events,
+        "coverage": occurrence_coverage,
+    }
+
+
+def _persist_machine_candidates(
     session: Session,
     *,
     occurrence_id: str,
-    evidence: GitEvidence,
+    items: tuple[GitActivityItem | ClaudeActivityItem, ...],
+    origin: str,
+    origins: tuple[str, ...],
+    processor_version: str,
 ) -> list[dict]:
     occurrence = session.get(EvidenceOccurrence, occurrence_id)
     if occurrence is None:
-        raise ApiError(404, "occurrence_not_found", "没有找到这次仓库导入")
+        raise ApiError(404, "occurrence_not_found", "没有找到这次导入")
     stage = require_stage(session, occurrence.stage_id)
     if occurrence.blob is None:
         raise ApiError(500, "missing_evidence_blob", "原始证据没有完成本地保存")
 
     created_events: list[CandidateEvent] = []
-    for item in evidence.items:
+    for item in items:
         event, created = _resolve_machine_event(
             session,
             stage,
@@ -424,8 +490,8 @@ def _persist_git_candidates(
             title=item.title,
             occurred_on=item.occurred_on,
             initial_status=item.initial_status,
-            origin="git",
-            origins=("note", "aggregated", "git"),
+            origin=origin,
+            origins=origins,
         )
         if created:
             created_events.append(event)
@@ -435,7 +501,7 @@ def _persist_git_candidates(
             text=item.claim_text,
             epistemic_status="unknown",
             evidence_role="artifact",
-            processor_version=git_evidence.GIT_PROCESSOR_VERSION,
+            processor_version=processor_version,
             source_title=item.title,
             source_occurred_on=item.occurred_on,
         )
@@ -458,12 +524,12 @@ def _persist_git_candidates(
             CoverageItem(
                 step="parsed_locally",
                 status="completed",
-                processor_version=git_evidence.GIT_PROCESSOR_VERSION,
+                processor_version=processor_version,
             ),
             CoverageItem(
                 step="candidate_generated",
                 status="completed",
-                processor_version=git_evidence.GIT_PROCESSOR_VERSION,
+                processor_version=processor_version,
             ),
         ]
     )

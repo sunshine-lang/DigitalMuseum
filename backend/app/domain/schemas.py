@@ -97,7 +97,7 @@ class EventOut(BaseModel):
     status: EventStatus
     revision: int
     is_formal: bool
-    origin: Literal["note", "aggregated", "merged", "split", "git", "photo"]
+    origin: Literal["note", "aggregated", "merged", "split", "git", "photo", "claude"]
     source_count: int
     claims: list[ClaimOut]
     latest_review: ReviewOut | None
@@ -168,6 +168,23 @@ class GitRepoPreviewOut(BaseModel):
 
 
 class GitImportOut(BaseModel):
+    occurrence: OccurrenceOut
+    events: list[EventOut]
+    coverage: list[CoverageOut]
+
+
+class ClaudeSessionCreate(BaseModel):
+    path: str = Field(min_length=1, max_length=1024)
+
+
+class ClaudeSessionPreviewOut(BaseModel):
+    project_label: str
+    first_session_on: date
+    last_session_on: date
+    session_count: int
+
+
+class ClaudeSessionImportOut(BaseModel):
     occurrence: OccurrenceOut
     events: list[EventOut]
     coverage: list[CoverageOut]

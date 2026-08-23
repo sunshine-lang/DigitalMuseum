@@ -10,10 +10,12 @@ import {
   ReviewDecision,
   Stage,
   blobUrl,
+  claudeProjectLabel,
   createStage,
   getCoverage,
   getEvents,
   getStage,
+  importClaudeSessions,
   importGitRepo,
   importNote,
   importPhoto,
@@ -80,6 +82,7 @@ function isVisibleExperience(event: CandidateEvent): boolean {
 function originChipLabel(event: CandidateEvent): string {
   if (event.origin === "git") return "来自 Git 仓库";
   if (event.origin === "photo") return "来自照片";
+  if (event.origin === "claude") return "来自 Claude Code 会话";
   if (event.origin === "aggregated") return `聚合自 ${event.source_count} 份`;
   if (event.origin === "merged") return "合并产生";
   return "拆分产生";
@@ -92,6 +95,9 @@ function evidenceSummary(event: CandidateEvent): string {
     }
     if (event.origin === "git") {
       return "这段经历由系统从确定性记录（Git 提交日期与提交说明）自动核实：没有请模型推断，也无需你确认。如果与事实不符，点下方「对这段记录提出异议」随时纠正。";
+    }
+    if (event.origin === "claude") {
+      return "这段经历由系统从 Claude Code 会话的机器读数（会话时间戳与消息计数）自动核实：系统只读取时间戳、计数与你的消息原文，没有解读对话内容，也无需你确认。如果与事实不符，点下方「对这段记录提出异议」随时纠正。";
     }
     return `系统发现 ${event.source_count} 份标题和日期都相同的确定性记录，把它们整理在同一段经历里并自动核实：没有请模型推断，也无需你确认；如果与事实不符，点下方「对这段记录提出异议」随时纠正。`;
   }
@@ -143,6 +149,8 @@ export default function MuseumMvpWorkspace() {
   // Git 导入输入框受控值：建馆成功后由主路径预填，chips 点击时回填。
   const [gitPath, setGitPath] = useState("");
   const [recentGitPaths, setRecentGitPaths] = useState<string[]>([]);
+  // Claude Code 会话导入输入框受控值：用户直接填项目路径或 ~/.claude/projects 下的会话目录。
+  const [claudePath, setClaudePath] = useState("");
 
   const visibleEvents = useMemo(
     () => events.filter(isVisibleExperience),
@@ -443,6 +451,33 @@ export default function MuseumMvpWorkspace() {
         message: result.events.length
           ? `已从 Git 仓库整理出 ${result.events.length} 段经历，等待你核对。`
           : "这个仓库的活动已并入既有经历草稿，没有产生重复事件。",
+      });
+    } catch (error) {
+      setNotice({ kind: "error", message: errorMessage(error) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleImportClaude(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!stage) return;
+    const projectPath = claudePath.trim();
+    if (!projectPath) {
+      setNotice({ kind: "error", message: "请先填写项目路径或 Claude Code 会话目录。" });
+      return;
+    }
+    setBusy(true);
+    setNotice(null);
+    try {
+      const result = await importClaudeSessions(stage.id, projectPath);
+      await refreshStage(stage.id);
+      const label = claudeProjectLabel(result.occurrence.original_filename);
+      setNotice({
+        kind: "success",
+        message: result.events.length
+          ? `已从项目 ${label} 整理出 ${result.events.length} 段经历。`
+          : "这个项目的会话已并入既有经历，没有产生重复事件。",
       });
     } catch (error) {
       setNotice({ kind: "error", message: errorMessage(error) });
@@ -757,7 +792,7 @@ export default function MuseumMvpWorkspace() {
         <>
           <StageSummary stage={stage} experienceCount={visibleEvents.length} pendingCount={candidateEvents.length} onSwitch={openStageLibrary} />
           {view === "import" && (
-            <ImportView busy={busy} coverage={coverage} files={selectedFiles} photoFiles={selectedPhotos} results={importResults} gitPath={gitPath} recentGitPaths={recentGitPaths} onGitPathChange={setGitPath} onPickRecentGitPath={setGitPath} onFileSelection={handleFileSelection} onPhotoSelection={handlePhotoSelection} onSubmit={handleImport} onPhotoSubmit={handleImportPhotos} onGitSubmit={handleImportGit} />
+            <ImportView busy={busy} coverage={coverage} files={selectedFiles} photoFiles={selectedPhotos} results={importResults} gitPath={gitPath} recentGitPaths={recentGitPaths} claudePath={claudePath} onGitPathChange={setGitPath} onPickRecentGitPath={setGitPath} onClaudePathChange={setClaudePath} onFileSelection={handleFileSelection} onPhotoSelection={handlePhotoSelection} onSubmit={handleImport} onPhotoSubmit={handleImportPhotos} onGitSubmit={handleImportGit} onClaudeSubmit={handleImportClaude} />
           )}
           {view === "discover" && (
             <DiscoverView
@@ -1026,7 +1061,7 @@ function StageSummary({ stage, experienceCount, pendingCount, onSwitch }: {
   );
 }
 
-function ImportView({ busy, coverage, files, photoFiles, results, gitPath, recentGitPaths, onGitPathChange, onPickRecentGitPath, onFileSelection, onPhotoSelection, onSubmit, onPhotoSubmit, onGitSubmit }: {
+function ImportView({ busy, coverage, files, photoFiles, results, gitPath, recentGitPaths, claudePath, onGitPathChange, onPickRecentGitPath, onClaudePathChange, onFileSelection, onPhotoSelection, onSubmit, onPhotoSubmit, onGitSubmit, onClaudeSubmit }: {
   busy: boolean;
   coverage: CoverageItem[];
   files: File[];
@@ -1034,20 +1069,23 @@ function ImportView({ busy, coverage, files, photoFiles, results, gitPath, recen
   results: ImportResult[];
   gitPath: string;
   recentGitPaths: string[];
+  claudePath: string;
   onGitPathChange: (value: string) => void;
   onPickRecentGitPath: (path: string) => void;
+  onClaudePathChange: (value: string) => void;
   onFileSelection: (files: FileList | null) => void;
   onPhotoSelection: (files: FileList | null) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onPhotoSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onGitSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onClaudeSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   const totalPhotoBytes = photoFiles.reduce((sum, file) => sum + file.size, 0);
   return (
     <section className="mvp-view mvp-import-view">
       <article className="mvp-panel mvp-import-panel">
-        <header className="mvp-section-heading"><span>01 · 导入</span><div><h2>一次导入这段时间的记录</h2><p>现在支持整理过的 Markdown/TXT、JPEG/PNG 照片与本地 Git 仓库。ChatGPT、Codex、WorkBuddy 原生导出文件将在后续适配。</p></div></header>
+        <header className="mvp-section-heading"><span>01 · 导入</span><div><h2>一次导入这段时间的记录</h2><p>现在支持整理过的 Markdown/TXT、JPEG/PNG 照片、本地 Git 仓库与 Claude Code 会话。Codex、ChatGPT、WorkBuddy 原生导出文件将在后续适配。</p></div></header>
         <form onSubmit={onSubmit}>
           <label className="mvp-dropzone">
             <input name="notes" type="file" multiple onChange={(event) => onFileSelection(event.target.files)} />
@@ -1099,6 +1137,15 @@ function ImportView({ busy, coverage, files, photoFiles, results, gitPath, recen
           )}
           <button className="mvp-secondary" disabled={busy} type="submit">{busy ? "正在读取仓库…" : "读取仓库提交记录"}</button>
           <small>系统只读取建馆阶段内的提交日期与提交说明，不会修改仓库内容。</small>
+        </form>
+        <form className="mvp-git-import" onSubmit={onClaudeSubmit}>
+          <span className="mvp-git-divider">或</span>
+          <label>
+            <span>导入 Claude Code 会话（只读本地会话记录）</span>
+            <input name="claudePath" value={claudePath} placeholder="/Users/you/Projects/your-project 或 ~/.claude/projects 下的会话目录" autoComplete="off" onChange={(changeEvent) => onClaudePathChange(changeEvent.target.value)} />
+          </label>
+          <button className="mvp-secondary" disabled={busy} type="submit">{busy ? "正在读取会话…" : "读取 Claude Code 会话"}</button>
+          <small>系统只读取建馆阶段内的会话时间戳、消息计数与你的消息原文；不会修改 ~/.claude 下的任何内容，也不会解读对话。</small>
         </form>
         <div className="mvp-privacy-note"><strong>本地优先</strong><p>当前版本不调用模型，也不会把文件发送到云端。请仍只使用非敏感测试资料。</p></div>
       </article>
@@ -1155,7 +1202,7 @@ function DiscoverView({ events, selectedEvent, pendingCount, noteCandidateCount,
   return (
     <section className="mvp-view mvp-discover-view">
       <div className="mvp-discover-main">
-        <header className="mvp-section-heading"><span>02 · 发现</span><div><h2>系统整理出 {events.length} 段可能的经历</h2><p>先浏览结果。带“等待你核对”的内容仍是草稿；带“系统核实”的内容来自确定性记录（Git 提交、照片元数据），无需你逐条确认。</p></div></header>
+        <header className="mvp-section-heading"><span>02 · 发现</span><div><h2>系统整理出 {events.length} 段可能的经历</h2><p>先浏览结果。带“等待你核对”的内容仍是草稿；带“系统核实”的内容来自确定性记录（Git 提交、照片元数据、Claude Code 会话时间戳），无需你逐条确认。</p></div></header>
         <div className="mvp-legend" aria-label="卡片状态图例">
           <span><i className="ai" aria-hidden="true" />虚线半透明 · AI 整理的草稿</span>
           <span><i className="sys" aria-hidden="true" />实线纹理 · 系统核实的确定性记录</span>

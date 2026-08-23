@@ -8,6 +8,9 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import ApiError
 from app.domain.schemas import (
+    ClaudeSessionCreate,
+    ClaudeSessionImportOut,
+    ClaudeSessionPreviewOut,
     CoverageOut,
     DataEnvelope,
     EventOut,
@@ -25,7 +28,11 @@ from app.domain.schemas import (
     StageOut,
     StageUpdate,
 )
-from app.services import git_evidence_service, museum_service
+from app.services import (
+    claude_session_evidence_service,
+    git_evidence_service,
+    museum_service,
+)
 from app.services.note_parser import parse_note
 
 ALLOWED_SUFFIXES = {".md": "text/markdown", ".txt": "text/plain"}
@@ -230,6 +237,43 @@ def create_api_router(session_provider) -> APIRouter:
                 repo_path=payload.path,
                 upload_dir=request.app.state.settings.upload_dir,
                 allowed_repo_roots=request.app.state.settings.allowed_repo_roots,
+            )
+        }
+
+    @router.get(
+        "/claude-sessions/preview",
+        response_model=DataEnvelope[ClaudeSessionPreviewOut],
+    )
+    def preview_claude_sessions(request: Request, path: str = "") -> dict:
+        # 只读预览项目的会话最早/最晚日期与数量，帮用户预填建馆表单。
+        # 目录定位、解析与安全约束与 claude-code-evidence-v1 导入完全一致，不落库。
+        return {
+            "data": claude_session_evidence_service.preview_claude_sessions(
+                path,
+                allowed_roots=request.app.state.settings.allowed_repo_roots,
+                projects_root=request.app.state.settings.claude_projects_root,
+            )
+        }
+
+    @router.post(
+        "/stages/{stage_id}/claude-sessions",
+        status_code=201,
+        response_model=DataEnvelope[ClaudeSessionImportOut],
+    )
+    def import_claude_sessions(
+        stage_id: str,
+        payload: ClaudeSessionCreate,
+        request: Request,
+        session: SessionDependency,
+    ) -> dict:
+        return {
+            "data": museum_service.import_claude_sessions(
+                session,
+                stage_id=stage_id,
+                path=payload.path,
+                upload_dir=request.app.state.settings.upload_dir,
+                allowed_repo_roots=request.app.state.settings.allowed_repo_roots,
+                claude_projects_root=request.app.state.settings.claude_projects_root,
             )
         }
 

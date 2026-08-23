@@ -44,7 +44,14 @@ export type Claim = {
 
 export type ReviewDecision = "confirmed" | "disputed" | "unknown" | "rejected";
 
-export type EventOrigin = "note" | "aggregated" | "merged" | "split" | "git" | "photo";
+export type EventOrigin =
+  | "note"
+  | "aggregated"
+  | "merged"
+  | "split"
+  | "git"
+  | "photo"
+  | "claude";
 
 export type AuditDecision = ReviewDecision | "merged" | "split";
 
@@ -237,5 +244,20 @@ export function importGitRepo(
   return apiRequest(`/api/v1/stages/${stageId}/git-repos`, {
     method: "POST",
     body: JSON.stringify({ path: repoPath }),
+  });
+}
+
+/** occurrence.original_filename 形如 "MyProject-claude-sessions.txt"，项目标签是确定性前缀。 */
+export function claudeProjectLabel(originalFilename: string): string {
+  return originalFilename.replace(/-claude-sessions\.txt$/, "");
+}
+
+export function importClaudeSessions(
+  stageId: string,
+  projectPath: string,
+): Promise<{ occurrence: { original_filename: string }; events: CandidateEvent[] }> {
+  return apiRequest(`/api/v1/stages/${stageId}/claude-sessions`, {
+    method: "POST",
+    body: JSON.stringify({ path: projectPath }),
   });
 }
