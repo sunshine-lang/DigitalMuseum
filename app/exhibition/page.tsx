@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import {
   CandidateEvent,
   Phase0ApiError,
@@ -402,11 +403,6 @@ export default function ExhibitionWorkspace() {
       </section>
 
       <section className="expo-section" id="expo-prologue">
-        <p className="expo-prologue expo-reveal">
-          你把 {stage?.starts_on} 到 {stage?.ends_on} 这 {spanMonths} 个月里的 {stage?.evidence_count ?? 0} 份记录，
-          整理成 {selectedEvents.length} 段经历；其中 {confirmedCount} 段由你亲自确认。
-          下面，按时间走进它们。
-        </p>
         <div className="expo-timeline expo-reveal" aria-label="展览时间线">
           {groups
             .filter(([, groupEvents]) => groupEvents.some((event) => selectedIds.has(event.id)))
@@ -438,7 +434,8 @@ export default function ExhibitionWorkspace() {
                     className={`expo-card expo-reveal${event.status === "confirmed" ? "" : " draft"}`}
                     key={event.id}
                   >
-                    <header>
+                    <figure className="expo-art">
+                      <SpecimenArt seed={event.claims[0]?.anchors[0]?.blob_sha256 ?? event.id} />
                       <span className="expo-card-no">No. {String(chapterIndex + 1).padStart(2, "0")}{String(exhibitIndex + 1).padStart(2, "0")}</span>
                       {event.status === "confirmed" ? (
                         <span className="expo-seal">已入馆</span>
@@ -447,16 +444,17 @@ export default function ExhibitionWorkspace() {
                           {statusLabels[event.status] ?? "等待核对"}
                         </span>
                       )}
-                    </header>
-                    <time>{event.occurred_on ?? "时间待定"}</time>
-                    <h3>{event.title}</h3>
-                    <p className="expo-card-text">{event.claims[0]?.text ?? "原始描述保留在关联记录中。"}</p>
+                    </figure>
+                    <div className="expo-card-caption">
+                      <time>{event.occurred_on ?? "时间待定"}</time>
+                      <h3>{event.title}</h3>
+                    </div>
                     <div className="expo-labels">
                       {event.claims.map((claim, claimIndex) => (
-                        <details className="expo-label" key={claim.id} open={claimIndex === 0 && event.claims.length === 1}>
+                        <details className="expo-label" key={claim.id}>
                           <summary>
                             <span>展品标签{event.claims.length > 1 ? ` ${claimIndex + 1}` : ""}</span>
-                            <small>{claim.anchors.length} 个来源位置</small>
+                            <small>{event.source_count ?? 1} 份来源 · {claim.anchors.length} 个证据位置</small>
                           </summary>
                           <blockquote>{claim.text}</blockquote>
                           {claim.anchors.map((anchor) => (
@@ -471,7 +469,6 @@ export default function ExhibitionWorkspace() {
                         </details>
                       ))}
                     </div>
-                    <footer>{event.source_count ?? 1} 份来源记录 · 内容来自本地档案，未经过模型改写</footer>
                   </article>
                 ))}
               </div>
@@ -483,7 +480,7 @@ export default function ExhibitionWorkspace() {
         <div className="expo-reveal">
           <span className="expo-kicker">EPILOGUE · 尾声</span>
           <h2>{closingLine}</h2>
-          <p>展览基于你本地的真实档案生成：数字、日期与核对状态均为确定性记录，没有内容由模型补写。</p>
+          <p>所有展品由本地真实档案确定性生成，未经模型补写。</p>
           <div className="expo-show-actions">
             <button className="expo-button ghost" type="button" onClick={() => setPhase("style")}>
               换一种风格再看一次
@@ -526,4 +523,82 @@ function CountUp({ value }: { value: number }) {
   }, [value]);
 
   return <>{display}</>;
+}
+
+/**
+ * 证据标本版画：从证据指纹（blob sha256）确定性生成的 SVG 图形。
+ * 同一证据永远得到同一幅画，不含任何随机数；主题色经 CSS 变量注入。
+ */
+function SpecimenArt({ seed }: { seed: string }) {
+  const hex = (seed.match(/[0-9a-f]/g) ?? ["0"]).join("").padEnd(24, "0");
+  const byte = (index: number) => parseInt(hex.slice((index % 12) * 2, (index % 12) * 2 + 2), 16);
+  const variant = byte(0) % 4;
+  const ink = "var(--e-ink)";
+  const accent = "var(--e-accent)";
+
+  const marks: ReactNode[] = [];
+  if (variant === 0) {
+    const cx = 110 + (byte(1) % 180);
+    const cy = 80 + (byte(2) % 130);
+    const count = 6 + (byte(3) % 5);
+    for (let i = 0; i < count; i++) {
+      const r = 16 + i * (13 + (byte(4) % 9));
+      marks.push(
+        <circle key={`arc-${i}`} cx={cx} cy={cy} r={r} fill="none"
+          stroke={i === count - 1 ? accent : ink} strokeWidth={i % 3 === 0 ? 1.4 : 0.7}
+          opacity={i === count - 1 ? 0.85 : 0.28 + (i % 3) * 0.14} />,
+      );
+    }
+  } else if (variant === 1) {
+    for (let i = 0; i < 40; i++) {
+      const b = byte(i);
+      if (b % 5 === 4) continue;
+      const x = 36 + (i % 8) * 42;
+      const y = 30 + Math.floor(i / 8) * 36;
+      if (b % 5 === 0) {
+        marks.push(<rect key={`cell-${i}`} x={x} y={y} width={26} height={24} fill={accent} opacity={0.16 + (b % 3) * 0.07} />);
+      } else if (b % 5 === 1) {
+        marks.push(<rect key={`cell-${i}`} x={x} y={y} width={26} height={24} fill="none" stroke={ink} strokeWidth={0.7} opacity={0.4} />);
+      } else if (b % 5 === 2) {
+        marks.push(<circle key={`cell-${i}`} cx={x + 13} cy={y + 12} r={2.4} fill={ink} opacity={0.5} />);
+      }
+    }
+  } else if (variant === 2) {
+    const angle = -30 + (byte(1) % 14);
+    for (let i = 0; i < 7; i++) {
+      const w = 10 + (byte(i + 2) % 34);
+      marks.push(
+        <rect key={`band-${i}`} x={-80 + i * 82} y={-60} width={w} height={420}
+          transform={`rotate(${angle} 200 150)`}
+          fill={i === (byte(3) % 7) ? accent : ink}
+          opacity={i === (byte(3) % 7) ? 0.18 : 0.05 + (byte(i + 5) % 4) * 0.045} />,
+      );
+    }
+    marks.push(<line key="axis" x1={24} y1={252} x2={376} y2={252} stroke={ink} strokeWidth={0.8} opacity={0.5} />);
+  } else {
+    for (let i = 0; i < 26; i++) {
+      const b = byte(i);
+      const cx = 24 + (b * 3 + byte(i + 4) * 2) % 352;
+      const cy = 20 + (byte(i + 6) + b) % 244;
+      const accentDot = i % 9 === (byte(2) % 9);
+      marks.push(
+        <circle key={`dot-${i}`} cx={cx} cy={cy} r={2 + (b % 6)}
+          fill={accentDot ? accent : "none"} stroke={accentDot ? "none" : ink}
+          strokeWidth={0.9} opacity={accentDot ? 0.8 : 0.4} />,
+      );
+    }
+    marks.push(<circle key={`ring-${marks.length}`} cx={200} cy={150} r={104} fill="none" stroke={accent} strokeWidth={0.7} opacity={0.35} />);
+  }
+
+  return (
+    <svg viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      {marks}
+      <g stroke="var(--e-ink)" strokeWidth={0.9} opacity={0.55}>
+        <line x1={16} y1={16} x2={16} y2={28} /><line x1={16} y1={16} x2={28} y2={16} />
+        <line x1={384} y1={16} x2={384} y2={28} /><line x1={384} y1={16} x2={372} y2={16} />
+        <line x1={16} y1={284} x2={16} y2={272} /><line x1={16} y1={284} x2={28} y2={284} />
+        <line x1={384} y1={284} x2={384} y2={272} /><line x1={384} y1={284} x2={372} y2={284} />
+      </g>
+    </svg>
+  );
 }

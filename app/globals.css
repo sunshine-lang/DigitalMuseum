@@ -6305,3 +6305,34 @@ a.mvp-primary {
   .expo-show .expo-chapter-num { font-size: clamp(96px, 30vw, 180px); }
   .expo-show .expo-seal { width: 54px; height: 54px; font-size: 9px; }
 }
+
+/* —— 视觉优先改版：证据标本版画 + 铭牌式卡面（少文字，多视觉） —— */
+.expo-show .expo-card { padding: 0; display: flex; flex-direction: column; }
+.expo-show .expo-art { position: relative; margin: 0; aspect-ratio: 4 / 3; background: var(--e-bg-soft); border-bottom: var(--e-card-border); }
+.expo-show .expo-hall > .expo-card:first-child .expo-art { aspect-ratio: 21 / 9; }
+.expo-show .expo-art svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.expo-show .expo-art .expo-card-no {
+  position: absolute; top: 14px; left: 16px; z-index: 2;
+  padding: 3px 9px;
+  background: color-mix(in srgb, var(--e-card) 82%, transparent);
+  border: 1px solid var(--e-line);
+}
+.expo-show .expo-art .expo-seal {
+  position: absolute; top: 12px; right: 12px; z-index: 2;
+  background: color-mix(in srgb, var(--e-card) 82%, transparent);
+}
+.expo-show .expo-art .expo-card-status { position: absolute; top: 14px; right: 14px; z-index: 2; }
+.expo-show .expo-card-caption { padding: 14px 18px 2px; }
+.expo-show .expo-card-caption time {
+  display: block; margin-bottom: 5px;
+  font-family: var(--e-mono); font-size: 10px;
+  letter-spacing: 0.18em; text-transform: uppercase; color: var(--e-muted);
+}
+.expo-show .expo-card-caption h3 { margin: 0; }
+.expo-show .expo-labels { padding: 8px 18px 16px; margin-top: auto; }
+.expo-show .expo-card.draft .expo-art { opacity: 0.78; }
+
+@media (max-width: 760px) {
+  .expo-show .expo-art,
+  .expo-show .expo-hall > .expo-card:first-child .expo-art { aspect-ratio: 16 / 10; }
+}
