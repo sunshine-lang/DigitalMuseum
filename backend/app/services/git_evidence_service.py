@@ -42,6 +42,41 @@ class GitEvidence:
     items: tuple[GitActivityItem, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class GitRepoPreview:
+    repo_name: str
+    first_commit_on: date
+    last_commit_on: date
+    commit_count: int
+
+
+def preview_git_repository(repo_path_raw: str, *, allowed_roots: str) -> GitRepoPreview:
+    """只读预览：读全部提交的最早/最晚日期与数量，不落库、不做阶段过滤。
+
+    路径校验、只读子命令与超时约束与 git-evidence-v1 导入链路完全一致，
+    仅用于建馆前帮用户预填表单，确认权留给用户。
+    """
+    repo_path = _resolve_repo_path(repo_path_raw, allowed_roots)
+    _require_git_repository(repo_path)
+    # 空仓库里 git log 会以非零退出（git_command_failed），先用只读计数命令
+    # rev-list --count --all 判空：空仓库返回 "0" 且退出码为 0。
+    if _git(repo_path, "rev-list", "--count", "--all").strip() == "0":
+        raise ApiError(422, "no_commits", "这个仓库还没有任何提交")
+    log_output = _git(repo_path, "log", "--date=short", "--pretty=format:%cd")
+    # 与导入链路同口径：用 committer date（%cd），cherry-pick/rebase 后不被
+    # author date 误导。
+    days = [line.strip() for line in log_output.splitlines() if line.strip()]
+    if not days:
+        raise ApiError(422, "no_commits", "这个仓库还没有任何提交")
+    commit_dates = [date.fromisoformat(day) for day in days]
+    return GitRepoPreview(
+        repo_name=repo_path.name,
+        first_commit_on=min(commit_dates),
+        last_commit_on=max(commit_dates),
+        commit_count=len(commit_dates),
+    )
+
+
 def import_git_repository(
     repo_path_raw: str,
     *,

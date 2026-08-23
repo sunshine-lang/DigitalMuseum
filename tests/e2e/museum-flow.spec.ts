@@ -173,6 +173,59 @@ test("坏文件单独失败：PDF 不影响其他记录导入", async ({ page })
   ).toContainText("只支持 Markdown 或 TXT 文件");
 });
 
+test("十秒开馆：从一个 Git 仓库路径开始，全程不手填任何日期", async ({ page }) => {
+  // 用本仓库真实路径作为零门槛入口；E2E 后端 allowed_repo_roots 默认 "~" 覆盖它。
+  const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
+  await page.goto("/");
+
+  await expect(
+    page
+      .getByRole("button", { name: "切换回顾范围" })
+      .or(page.getByRole("heading", { name: "选择回顾时间" })),
+  ).toBeVisible();
+  const exitButton = page.getByRole("button", { name: "切换回顾范围" });
+  if (await exitButton.isVisible()) {
+    await exitButton.click();
+    await page.getByRole("button", { name: "＋ 新建回顾阶段" }).click();
+  }
+
+  // 主路径：贴仓库路径 → 预览 → 结果摘要（仓库名 / 提交数 / 日期跨度）。
+  await page.locator('input[name="gateRepoPath"]').fill(repoRoot);
+  await page.getByRole("button", { name: "预览这个仓库" }).click();
+  const previewCard = page.locator(".mvp-gate-preview");
+  await expect(previewCard).toBeVisible();
+  await expect(previewCard).toContainText("DigitalMuseum");
+  await expect(previewCard).toContainText(/个提交/);
+
+  // 阶段名与日期全部来自预览自动填充（不足 3 个月的跨度被自动修正），用户不手填。
+  await expect(page.locator('input[name="name"]')).toHaveValue("DigitalMuseum");
+  await expect(page.locator('input[name="starts_on"]')).not.toHaveValue("");
+  await expect(page.locator('input[name="ends_on"]')).not.toHaveValue("");
+
+  // 保存：本用例从未对日期输入框执行过 fill。
+  await page.getByRole("button", { name: "保存范围，开始导入" }).click();
+  await expect(page.getByText("正在回顾")).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("读取仓库提交记录");
+
+  // 建馆成功后 Git 导入框已预填该路径，最近仓库 chips 也已记录。
+  await expect(page.locator('input[name="gitPath"]')).toHaveValue(repoRoot);
+  await expect(
+    page.getByRole("button", { name: "…/Documents/DigitalMuseum" }),
+  ).toBeVisible();
+
+  // 一键完成首次导入，出现事件。
+  await page.getByRole("button", { name: "读取仓库提交记录" }).click();
+  await expect(page.getByRole("status")).toContainText("已从 Git 仓库整理出");
+  await page.getByRole("button", { name: /发现经历/ }).click();
+  await expect(
+    page.getByRole("heading", { name: /系统整理出 \d+ 段可能的经历/ }),
+  ).toBeVisible();
+  // 每个提交日一段 verified 经历（4 天提交 → 4 段），卡带「来自 Git 仓库」来源标。
+  await expect(
+    page.locator(".mvp-origin-chip", { hasText: "来自 Git 仓库" }).first(),
+  ).toBeVisible();
+});
+
 test("阶段管理：创建两个阶段可互相切换、重命名、删除", async ({ page }) => {
   await page.goto("/");
   await createStage(page, "E2E 阶段管理·甲");

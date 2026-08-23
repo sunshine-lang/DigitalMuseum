@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import type { CSSProperties, MouseEvent } from "react";
 import {
   CoverageItem,
+  GitRepoPreview,
   Phase0ApiError,
   ReviewDecision,
   Stage,
@@ -18,12 +19,16 @@ import {
   importPhoto,
   listStages,
   mergeEvents,
+  previewGitRepo,
   reviewEvent,
   splitEvent,
 } from "./phase0-api";
 import type { CandidateEvent } from "./phase0-api";
 
 const STAGE_STORAGE_KEY = "digital-museum-phase0-stage-id";
+const RECENT_GIT_PATHS_KEY = "digital-museum-recent-git-paths";
+const RECENT_GIT_PATHS_LIMIT = 3;
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_BATCH_FILES = 20;
 const MAX_BATCH_BYTES = 20 * 1024 * 1024;
 const MAX_BATCH_BYTES_LABEL = "20 MiB";
@@ -135,6 +140,9 @@ export default function MuseumMvpWorkspace() {
     kind: "error" | "success";
     message: string;
   } | null>(null);
+  // Git 导入输入框受控值：建馆成功后由主路径预填，chips 点击时回填。
+  const [gitPath, setGitPath] = useState("");
+  const [recentGitPaths, setRecentGitPaths] = useState<string[]>([]);
 
   const visibleEvents = useMemo(
     () => events.filter(isVisibleExperience),
@@ -238,6 +246,42 @@ export default function MuseumMvpWorkspace() {
   }, [loadingSavedStage, stage]);
 
   useEffect(() => {
+    // 十秒开馆：最近 3 个预览/导入成功的仓库路径，纯本地便利功能，
+    // 读取失败或记录损坏时静默忽略。
+    try {
+      const raw = window.localStorage.getItem(RECENT_GIT_PATHS_KEY);
+      if (!raw) return;
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setRecentGitPaths(
+          parsed
+            .filter((item): item is string => typeof item === "string" && item.trim() !== "")
+            .slice(0, RECENT_GIT_PATHS_LIMIT),
+        );
+      }
+    } catch {
+      // 本地记录不可读时按空处理。
+    }
+  }, []);
+
+  function recordRecentGitPath(path: string) {
+    const cleaned = path.trim();
+    if (!cleaned) return;
+    setRecentGitPaths((current) => {
+      const next = [cleaned, ...current.filter((item) => item !== cleaned)].slice(
+        0,
+        RECENT_GIT_PATHS_LIMIT,
+      );
+      try {
+        window.localStorage.setItem(RECENT_GIT_PATHS_KEY, JSON.stringify(next));
+      } catch {
+        // localStorage 不可写只影响 chips，不影响导入本身。
+      }
+      return next;
+    });
+  }
+
+  useEffect(() => {
     if (view !== "review") return;
     function onKeyDown(keyboardEvent: KeyboardEvent) {
       if (keyboardEvent.metaKey || keyboardEvent.ctrlKey || keyboardEvent.altKey) return;
@@ -258,26 +302,41 @@ export default function MuseumMvpWorkspace() {
     return () => window.removeEventListener("keydown", onKeyDown);
   });
 
-  async function handleCreateStage(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
+  async function handleCreateStage(payload: {
+    name: string;
+    starts_on: string;
+    ends_on: string;
+    import_git_path: string | null;
+  }) {
     setBusy(true);
     setNotice(null);
     try {
       const nextStage = await createStage({
-        name: String(form.get("name") ?? ""),
-        starts_on: String(form.get("starts_on") ?? ""),
-        ends_on: String(form.get("ends_on") ?? ""),
+        name: payload.name,
+        starts_on: payload.starts_on,
+        ends_on: payload.ends_on,
       });
       window.localStorage.setItem(STAGE_STORAGE_KEY, nextStage.id);
       setStage(nextStage);
       setEvents([]);
       setCoverage([]);
       setView("import");
-      setNotice({
-        kind: "success",
-        message: "回顾范围已保存。现在可以一次导入多份 AI 协作记录。",
-      });
+      if (payload.import_git_path) {
+        // 十秒开馆：把主路径预览过的仓库直接预填进 Git 导入框，
+        // 用户点一下「读取仓库提交记录」即完成首次导入。
+        setGitPath(payload.import_git_path);
+        recordRecentGitPath(payload.import_git_path);
+        setNotice({
+          kind: "success",
+          message:
+            "回顾范围已保存。下方 Git 导入框已填好这个仓库的路径，点一下「读取仓库提交记录」即可完成首次导入。",
+        });
+      } else {
+        setNotice({
+          kind: "success",
+          message: "回顾范围已保存。现在可以一次导入多份 AI 协作记录。",
+        });
+      }
     } catch (error) {
       setNotice({ kind: "error", message: errorMessage(error) });
     } finally {
@@ -368,8 +427,7 @@ export default function MuseumMvpWorkspace() {
   async function handleImportGit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!stage) return;
-    const form = new FormData(event.currentTarget);
-    const repoPath = String(form.get("gitPath") ?? "").trim();
+    const repoPath = gitPath.trim();
     if (!repoPath) {
       setNotice({ kind: "error", message: "请先填写本地 Git 仓库的路径。" });
       return;
@@ -378,6 +436,7 @@ export default function MuseumMvpWorkspace() {
     setNotice(null);
     try {
       const result = await importGitRepo(stage.id, repoPath);
+      recordRecentGitPath(repoPath);
       await refreshStage(stage.id);
       setNotice({
         kind: "success",
@@ -687,13 +746,18 @@ export default function MuseumMvpWorkspace() {
           {recentStages.length > 0 && (
             <ResumeStages stages={recentStages} onEnter={enterRecentStage} />
           )}
-          <StageForm busy={busy} onSubmit={handleCreateStage} />
+          <StageGate
+            busy={busy}
+            onSubmit={handleCreateStage}
+            onNotice={setNotice}
+            onRecentGitPath={recordRecentGitPath}
+          />
         </>
       ) : (
         <>
           <StageSummary stage={stage} experienceCount={visibleEvents.length} pendingCount={candidateEvents.length} onSwitch={openStageLibrary} />
           {view === "import" && (
-            <ImportView busy={busy} coverage={coverage} files={selectedFiles} photoFiles={selectedPhotos} results={importResults} onFileSelection={handleFileSelection} onPhotoSelection={handlePhotoSelection} onSubmit={handleImport} onPhotoSubmit={handleImportPhotos} onGitSubmit={handleImportGit} />
+            <ImportView busy={busy} coverage={coverage} files={selectedFiles} photoFiles={selectedPhotos} results={importResults} gitPath={gitPath} recentGitPaths={recentGitPaths} onGitPathChange={setGitPath} onPickRecentGitPath={setGitPath} onFileSelection={handleFileSelection} onPhotoSelection={handlePhotoSelection} onSubmit={handleImport} onPhotoSubmit={handleImportPhotos} onGitSubmit={handleImportGit} />
           )}
           {view === "discover" && (
             <DiscoverView
@@ -839,18 +903,107 @@ function ResumeStages({ stages, onEnter }: {
   );
 }
 
-function StageForm({ busy, onSubmit }: { busy: boolean; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+// 十秒开馆 · 冷启动：主路径「从一个 Git 仓库开始」只读预览帮填表，次路径
+// 「手动选择时间范围」与主路径共用同一张建馆表单（一套受控 state），确认权
+// 始终留给用户——预览只做预填，不自动保存。
+function StageGate({ busy, onSubmit, onNotice, onRecentGitPath }: {
+  busy: boolean;
+  onSubmit: (payload: {
+    name: string;
+    starts_on: string;
+    ends_on: string;
+    import_git_path: string | null;
+  }) => Promise<void> | void;
+  onNotice: (notice: { kind: "error" | "success"; message: string } | null) => void;
+  onRecentGitPath: (path: string) => void;
+}) {
+  const [repoPath, setRepoPath] = useState("");
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [preview, setPreview] = useState<GitRepoPreview | null>(null);
+  const [previewedPath, setPreviewedPath] = useState<string | null>(null);
+  const [adjustNote, setAdjustNote] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [startsOn, setStartsOn] = useState("");
+  const [endsOn, setEndsOn] = useState("");
+
+  // 与服务端 invalid_stage_range 同口径的 3–12 个月即时校验。
+  const rangeError = stageRangeError(startsOn, endsOn);
+  const saveDisabled = busy || Boolean(rangeError) || !name.trim() || !startsOn || !endsOn;
+
+  async function handlePreview(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const path = repoPath.trim();
+    if (!path) {
+      onNotice({ kind: "error", message: "请先填写本地 Git 仓库的路径。" });
+      return;
+    }
+    setPreviewBusy(true);
+    setPreview(null);
+    setAdjustNote(null);
+    setPreviewedPath(null);
+    onNotice(null);
+    try {
+      const result = await previewGitRepo(path);
+      const fitted = fitStageRangeToPolicy(result.first_commit_on, result.last_commit_on);
+      setPreview(result);
+      setPreviewedPath(path);
+      setStartsOn(fitted.starts_on);
+      setEndsOn(fitted.ends_on);
+      setName((current) => (current.trim() ? current : result.repo_name));
+      setAdjustNote(fitted.adjusted);
+      onRecentGitPath(path);
+    } catch (error) {
+      onNotice({ kind: "error", message: errorMessage(error) });
+    } finally {
+      setPreviewBusy(false);
+    }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (saveDisabled) return;
+    await onSubmit({
+      name: name.trim(),
+      starts_on: startsOn,
+      ends_on: endsOn,
+      import_git_path: previewedPath,
+    });
+  }
+
   return (
-    <form className="mvp-stage-form" onSubmit={onSubmit}>
-      <header><span>第一步</span><div><h2>选择回顾时间</h2><p>只整理这段时间的记录，减少无关内容和隐私负担。</p></div></header>
-      <label><span>给这段时间取个名字</span><input name="name" required maxLength={120} placeholder="例如：我的 AI 产品半年" /></label>
-      <div className="mvp-date-grid">
-        <label><span>从哪一天开始</span><input name="starts_on" required type="date" /></label>
-        <label><span>到哪一天结束</span><input name="ends_on" required type="date" /></label>
-      </div>
-      <p className="mvp-form-help">当前研究原型支持 3–12 个月范围，不会自动扫描你的电脑。</p>
-      <button className="mvp-primary" disabled={busy} type="submit">{busy ? "正在保存…" : "保存范围，开始导入"}</button>
-    </form>
+    <section className="mvp-stage-form">
+      <header><span>第一步</span><div><h2>选择回顾时间</h2><p>从一个本地 Git 仓库开始最快：贴上路径，系统只读提交记录帮你预填；也可以手动选择时间范围。</p></div></header>
+      <form className="mvp-gate-git" onSubmit={handlePreview}>
+        <label>
+          <span>从一个 Git 仓库开始（推荐）</span>
+          <input name="gateRepoPath" value={repoPath} placeholder="/Users/you/Projects/your-repo" autoComplete="off" onChange={(changeEvent) => setRepoPath(changeEvent.target.value)} />
+        </label>
+        <div className="mvp-gate-git-actions">
+          <button className="mvp-secondary" type="submit" disabled={previewBusy || !repoPath.trim()}>{previewBusy ? "正在读取仓库…" : "预览这个仓库"}</button>
+          <small>只读取提交日期与提交说明来帮填下方表单，确认权在你；不会修改仓库内容。</small>
+        </div>
+        {preview && (
+          <div className="mvp-gate-preview">
+            <div><strong>{preview.repo_name}</strong><small>{preview.commit_count} 个提交 · {preview.first_commit_on} — {preview.last_commit_on}</small></div>
+            <p>已按最早与最近提交预填下方表单{adjustNote ? `（${adjustNote}）` : ""}，可再手动调整后保存。</p>
+          </div>
+        )}
+      </form>
+      <form onSubmit={handleSubmit}>
+        <p className="mvp-gate-divider"><span>或手动选择时间范围</span></p>
+        <label><span>给这段时间取个名字</span><input name="name" required maxLength={120} value={name} placeholder="例如：我的 AI 产品半年" onChange={(changeEvent) => setName(changeEvent.target.value)} /></label>
+        <div className="mvp-date-grid">
+          <label><span>从哪一天开始</span><input name="starts_on" required type="date" value={startsOn} onChange={(changeEvent) => setStartsOn(changeEvent.target.value)} /></label>
+          <label><span>到哪一天结束</span><input name="ends_on" required type="date" value={endsOn} onChange={(changeEvent) => setEndsOn(changeEvent.target.value)} /></label>
+        </div>
+        {rangeError ? (
+          <p className="mvp-gate-error" role="alert">{rangeError}</p>
+        ) : (
+          <p className="mvp-form-help">当前研究原型支持 3–12 个月范围，不会自动扫描你的电脑。</p>
+        )}
+        <button className="mvp-primary" disabled={saveDisabled} type="submit">{busy ? "正在保存…" : "保存范围，开始导入"}</button>
+      </form>
+    </section>
   );
 }
 
@@ -873,12 +1026,16 @@ function StageSummary({ stage, experienceCount, pendingCount, onSwitch }: {
   );
 }
 
-function ImportView({ busy, coverage, files, photoFiles, results, onFileSelection, onPhotoSelection, onSubmit, onPhotoSubmit, onGitSubmit }: {
+function ImportView({ busy, coverage, files, photoFiles, results, gitPath, recentGitPaths, onGitPathChange, onPickRecentGitPath, onFileSelection, onPhotoSelection, onSubmit, onPhotoSubmit, onGitSubmit }: {
   busy: boolean;
   coverage: CoverageItem[];
   files: File[];
   photoFiles: File[];
   results: ImportResult[];
+  gitPath: string;
+  recentGitPaths: string[];
+  onGitPathChange: (value: string) => void;
+  onPickRecentGitPath: (path: string) => void;
   onFileSelection: (files: FileList | null) => void;
   onPhotoSelection: (files: FileList | null) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -926,8 +1083,20 @@ function ImportView({ busy, coverage, files, photoFiles, results, onFileSelectio
           <span className="mvp-git-divider">或</span>
           <label>
             <span>导入一个本地 Git 仓库（只读提交记录）</span>
-            <input name="gitPath" placeholder="/Users/you/Projects/your-repo" autoComplete="off" />
+            <input name="gitPath" value={gitPath} placeholder="/Users/you/Projects/your-repo" autoComplete="off" onChange={(changeEvent) => onGitPathChange(changeEvent.target.value)} />
           </label>
+          {recentGitPaths.length > 0 && (
+            <div className="mvp-git-recent">
+              <span>最近仓库</span>
+              <ul>
+                {recentGitPaths.map((recentPath) => (
+                  <li key={recentPath}>
+                    <button type="button" title={recentPath} onClick={() => onPickRecentGitPath(recentPath)}>{displayRepoPath(recentPath)}</button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <button className="mvp-secondary" disabled={busy} type="submit">{busy ? "正在读取仓库…" : "读取仓库提交记录"}</button>
           <small>系统只读取建馆阶段内的提交日期与提交说明，不会修改仓库内容。</small>
         </form>
@@ -1370,6 +1539,75 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
+// ---- 十秒开馆 · 日期工具（与后端 _add_months/_validate_stage_range 同口径） ----
+
+function addMonthsISO(iso: string, months: number): string {
+  const [year, month, day] = iso.split("-").map(Number);
+  const zeroBased = month - 1 + months;
+  const nextYear = year + Math.floor(zeroBased / 12);
+  const nextMonth = (((zeroBased % 12) + 12) % 12) + 1;
+  // 与 calendar.monthrange 一致：本月天数按公历取，day 超长时截断到月末。
+  const daysInMonth = new Date(Date.UTC(nextYear, nextMonth, 0)).getUTCDate();
+  const nextDay = Math.min(day, daysInMonth);
+  return `${nextYear}-${String(nextMonth).padStart(2, "0")}-${String(nextDay).padStart(2, "0")}`;
+}
+
+function shiftDaysISO(iso: string, days: number): string {
+  const [year, month, day] = iso.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
+
+// 3–12 个月即时校验：不合法时给出可操作的原因；空值交给 required 与服务端。
+function stageRangeError(startsOn: string, endsOn: string): string | null {
+  if (!ISO_DATE_RE.test(startsOn) || !ISO_DATE_RE.test(endsOn)) return null;
+  if (endsOn < startsOn) return "结束日期不能早于开始日期。";
+  const earliestEnd = shiftDaysISO(addMonthsISO(startsOn, 3), -1);
+  const latestEnd = shiftDaysISO(addMonthsISO(startsOn, 12), -1);
+  if (endsOn < earliestEnd) {
+    return `回顾范围不足 3 个月：请把结束日期改到 ${earliestEnd} 或之后。`;
+  }
+  if (endsOn > latestEnd) {
+    const earliestStart = shiftDaysISO(addMonthsISO(endsOn, -12), 1);
+    return `回顾范围不能超过 12 个月：请把开始日期改到 ${earliestStart} 或之后。`;
+  }
+  return null;
+}
+
+// 预览自动填充的日期修正：不足 3 个月把 ends_on 延长到合法下限（保留最早
+// 提交日）；超过 12 个月把 starts_on 后移到合法上限（保留最近提交日）。
+// 修正后允许用户再手动调整，不自动保存。
+function fitStageRangeToPolicy(firstCommitOn: string, lastCommitOn: string): {
+  starts_on: string;
+  ends_on: string;
+  adjusted: string | null;
+} {
+  const minimumEnd = shiftDaysISO(addMonthsISO(firstCommitOn, 3), -1);
+  if (lastCommitOn < minimumEnd) {
+    return {
+      starts_on: firstCommitOn,
+      ends_on: minimumEnd,
+      adjusted: `仓库跨度不足 3 个月，结束日期已延长到 ${minimumEnd}`,
+    };
+  }
+  const latestEnd = shiftDaysISO(addMonthsISO(firstCommitOn, 12), -1);
+  if (lastCommitOn > latestEnd) {
+    const maximumStart = shiftDaysISO(addMonthsISO(lastCommitOn, -12), 1);
+    return {
+      starts_on: maximumStart,
+      ends_on: lastCommitOn,
+      adjusted: `仓库跨度超过 12 个月，开始日期已后移到 ${maximumStart}`,
+    };
+  }
+  return { starts_on: firstCommitOn, ends_on: lastCommitOn, adjusted: null };
+}
+
+// chips 上只显示路径尾部两级，完整路径放在 title 里。
+function displayRepoPath(path: string): string {
+  const parts = path.replace(/\/+$/, "").split("/").filter(Boolean);
+  if (parts.length <= 2) return path;
+  return `…/${parts.slice(-2).join("/")}`;
 }
 
 function errorMessage(error: unknown): string {

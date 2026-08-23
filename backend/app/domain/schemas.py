@@ -160,6 +160,13 @@ class GitRepoCreate(BaseModel):
     path: str = Field(min_length=1, max_length=1024)
 
 
+class GitRepoPreviewOut(BaseModel):
+    repo_name: str
+    first_commit_on: date
+    last_commit_on: date
+    commit_count: int
+
+
 class GitImportOut(BaseModel):
     occurrence: OccurrenceOut
     events: list[EventOut]

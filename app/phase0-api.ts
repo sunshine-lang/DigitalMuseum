@@ -1,3 +1,10 @@
+export type GitRepoPreview = {
+  repo_name: string;
+  first_commit_on: string;
+  last_commit_on: string;
+  commit_count: number;
+};
+
 export type Stage = {
   id: string;
   name: string;
@@ -214,6 +221,13 @@ export function splitEvent(
     method: "POST",
     body: JSON.stringify({}),
   });
+}
+
+/** 十秒开馆冷启动：只读预览仓库的最早/最晚提交与提交数，帮填建馆表单，不落库。 */
+export function previewGitRepo(repoPath: string): Promise<GitRepoPreview> {
+  return apiRequest(
+    `/api/v1/git-repos/preview?path=${encodeURIComponent(repoPath)}`,
+  );
 }
 
 export function importGitRepo(

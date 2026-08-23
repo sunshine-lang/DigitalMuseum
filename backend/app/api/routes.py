@@ -13,6 +13,7 @@ from app.domain.schemas import (
     EventOut,
     GitImportOut,
     GitRepoCreate,
+    GitRepoPreviewOut,
     HealthOut,
     MergeCreate,
     MergeOut,
@@ -24,7 +25,7 @@ from app.domain.schemas import (
     StageOut,
     StageUpdate,
 )
-from app.services import museum_service
+from app.services import git_evidence_service, museum_service
 from app.services.note_parser import parse_note
 
 ALLOWED_SUFFIXES = {".md": "text/markdown", ".txt": "text/plain"}
@@ -196,6 +197,20 @@ def create_api_router(session_provider) -> APIRouter:
                 )
             raise
         return {"data": result}
+
+    @router.get(
+        "/git-repos/preview",
+        response_model=DataEnvelope[GitRepoPreviewOut],
+    )
+    def preview_git_repo(request: Request, path: str = "") -> dict:
+        # 十秒开馆冷启动：只读预览仓库的最早/最晚提交与数量，帮用户预填建馆
+        # 表单。路径安全与只读约束与 git-evidence-v1 完全一致，且不落库。
+        return {
+            "data": git_evidence_service.preview_git_repository(
+                path,
+                allowed_roots=request.app.state.settings.allowed_repo_roots,
+            )
+        }
 
     @router.post(
         "/stages/{stage_id}/git-repos",
