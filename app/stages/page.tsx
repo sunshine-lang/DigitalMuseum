@@ -223,7 +223,7 @@ export default function StageLibraryPage() {
 
       <footer className="mvp-footer">
         <span>当前体验：本地 Markdown/TXT → 经历草稿 → 关键核对 → 私人回顾</span>
-        <span>阶段删除只清理整理结果，原始证据文件始终保留</span>
+        <span>删除阶段会一并清理仅该阶段使用的原始文件；被其他阶段共享的按内容寻址保留</span>
       </footer>
     </main>
   );
