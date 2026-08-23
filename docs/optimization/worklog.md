@@ -33,3 +33,12 @@
 - 真实数据验收（临时 DB，只读 `~/.codex/sessions`）：DigitalMuseum 项目 4 个用户线程 → 2 天 verified 事件（32 个 cwd 命中文件中 subagent 全部正确排除）；锚点逐字；重复导入聚合；`~/.codex` 前后 mtime/size 未变。
 - 验证：typecheck ✅ lint ✅ test:local 3/3 ✅ test:backend 93/93 ✅ ruff ✅（E2E 仍被端口监管环境阻断，见切片 0）
 - 提交：见 git log（stage-7 分支），已推送。
+
+## 切片 S8a：最小静态展览导出 ✅
+
+- 选展是纯前端状态（默认 confirmed+verified）→ 导出做成 `/exhibition` 开展页「导出静态展览（HTML）」按钮，当前勾选序列化为自包含单文件 HTML（下载到本机）。
+- 纯函数 `app/exhibition/export-html.ts`：按月分组、组内按日期排序、未定日期殿后；状态徽标（本人确认/系统核实/等待核对/本人存疑/暂不确定）；全部用户文本 HTML 转义；零脚本零外部资源、viewport 适配 390px；页脚诚实声明（静态快照日期、"系统核实"口径、证据链细节未随导出）。
+- 测试：`tests/exhibition-export.test.mts`（node --experimental-strip-types，4 用例：自包含/分组排序/诚实统计/注入转义），挂入 `npm run test:export` 并链入 `test:local`；tsconfig 开 `allowImportingTsExtensions`（noEmit 前提已满足）。Linux `npm test` 不受影响。
+- **对抗性审查发现与处理**：① disputed/unknown 事件也可被勾选展出但徽标缺文案 → 补「本人存疑/暂不确定」；② 首次 typecheck TS5097（.ts 扩展导入）→ tsconfig 允许（noEmit 已开）；③ 实际生成样例文件核验统计/徽标/页脚内容正确、无脚本无外链。
+- 验证：typecheck ✅ lint ✅ test:local（3+4）✅；样例导出 3.8KB 断网可开（结构性验证；浏览器视觉终验留给 E2E 补跑）。
+- 明确不做（留给 Stage 8 正式切片）：视觉重设计、多主题样式、导出内容选项（含证据链开关）、一条 npm 命令行导出。

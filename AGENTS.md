@@ -26,7 +26,7 @@ npm run backend:sync      # 安装后端依赖（uv）
 npm run backend:dev       # 启动本地 API（127.0.0.1:8010）
 npm run dev:phase0        # 启动前端工作台（127.0.0.1:3001）
 npm run test:backend      # 后端 pytest（93 个用例，必须全绿；含评测基线护栏）
-npm run test:local        # 前端构建 + 渲染冒烟（macOS 用这个，npm test 需要 GNU timeout）
+npm run test:local        # 前端构建 + 渲染冒烟 + 静态展览导出单测（macOS 用这个，npm test 需要 GNU timeout）
 npm run test:e2e          # Playwright 端到端（需先停止 backend:dev；后端占用 8010、前端 3002，数据隔离在 .e2e/）
 npm run typecheck         # tsc --noEmit
 npm run lint              # eslint
@@ -38,7 +38,7 @@ npm run lint              # eslint
 
 - Phase 0 是本地优先单用户原型：不引入云数据库、不引入模型调用、不把数据默认送云端。D1/Drizzle 链路已在 2026-08 移除；Cloudflare Worker 部署目标已按 PRD v0.2 废弃，不要重新引入。将来若引入模型，输出只能产生 candidate 与逐字锚定的草稿，永不产生 verified（PRD v0.2 第 8 节）。
 - 首页的批量选择当前通过前端顺序调用单文件 API 实现；不要把它表述为已完成可恢复的服务端 Import Batch。
-- 首页“查看回顾”只是真实 Event 状态的本地草稿预览，不是 Story/Exhibition 生成、导出或分享能力。
+- 首页“查看回顾”只是真实 Event 状态的本地草稿预览，不是 Story/Exhibition 生成、导出或分享能力。`/exhibition` 的「导出静态展览（HTML）」是最小静态导出：只含用户勾选展出的事件，证据链细节（锚点、blob 指纹）默认不随导出，产物为无脚本自包含单文件；不要把它表述为已完成 Stage 8 的视觉重设计。
 - 原始 Note 是不可原地改写的 Evidence Blob：以 SHA-256 内容哈希落盘在 `data/uploads/`。对外只经 `GET /api/v1/blobs/{sha256}` 只读访问：哈希必须匹配 `^[0-9a-f]{64}$`（fail closed 防路径穿越）、文件路径只从 DB 的 `relative_path` 解析、无列举无删除、响应可永久缓存（内容寻址不变）。
 - API 错误统一返回 `{"error":{"code","message"}}`，不向页面输出堆栈。
 - 解析器 `note-development-v1` 是确定性的：只生成 Candidate，不推断因果与动机，不用确定性结果冒充模型效果。

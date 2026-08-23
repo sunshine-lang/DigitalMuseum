@@ -11,6 +11,7 @@ import {
   getEvents,
   getStage,
 } from "../phase0-api";
+import { buildExhibitionHtml } from "./export-html";
 
 const STAGE_STORAGE_KEY = "digital-museum-phase0-stage-id";
 const THEME_STORAGE_KEY = "digital-museum-expo-theme";
@@ -249,6 +250,31 @@ export default function ExhibitionWorkspace() {
     const pool = themes.filter((theme) => theme.id !== themeId);
     const picked = pool[Math.floor(Math.random() * pool.length)];
     beginExhibition(picked.id, true);
+  }
+
+  function exportStaticExhibition() {
+    if (!stage || selectedEvents.length === 0) return;
+    const html = buildExhibitionHtml({
+      stageName: stage.name,
+      startsOn: stage.starts_on,
+      endsOn: stage.ends_on,
+      events: selectedEvents.map((event) => ({
+        title: event.title,
+        occurred_on: event.occurred_on,
+        status: event.status,
+        claims: event.claims.map((claim) => ({ text: claim.text })),
+      })),
+      exportedAt: new Date().toISOString(),
+    });
+    // 只含展出内容、不含证据链细节；文件名取阶段名，去除文件系统危险字符。
+    const safeName = stage.name.replace(/[\\/:*?"<>|\s]+/g, "-").slice(0, 60) || "exhibition";
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `digital-museum-${safeName}.html`;
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
   if (status === "loading") {
@@ -509,6 +535,14 @@ export default function ExhibitionWorkspace() {
           <div className="expo-show-actions">
             <button className="expo-button ghost" type="button" onClick={() => setPhase("style")}>
               换一种风格再看一次
+            </button>
+            <button
+              className="expo-button ghost"
+              type="button"
+              title="把当前勾选展出的经历导出为一个自包含 HTML 文件：断网可双击打开、可发给朋友；不含证据链细节（原文锚点与文件指纹留在本机）。"
+              onClick={exportStaticExhibition}
+            >
+              导出静态展览（HTML）
             </button>
             <Link className="expo-button" href="/">回到工作台</Link>
           </div>
