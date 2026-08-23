@@ -58,20 +58,27 @@ test("renders the value-first AI records MVP workspace", async () => {
   assert.doesNotMatch(html, /Unknown/);
 });
 
-test("keeps the previous exhibition experience under the demo route", async () => {
+test("retires the static demo route and serves the real exhibition", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("demo", `${process.pid}-${Date.now()}`);
+  workerUrl.searchParams.set("expo", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
 
-  const response = await worker.fetch(
+  const demo = await worker.fetch(
     new Request("http://localhost/demo", { headers: { accept: "text/html" } }),
     testEnvironment,
     testExecutionContext,
   );
-  const html = await response.text();
+  assert.equal(demo.status, 404);
 
-  assert.equal(response.status, 200);
-  assert.match(html, /开始 3 分钟演示/);
+  const exhibition = await worker.fetch(
+    new Request("http://localhost/exhibition", { headers: { accept: "text/html" } }),
+    testEnvironment,
+    testExecutionContext,
+  );
+  const html = await exhibition.text();
+
+  assert.equal(exhibition.status, 200);
+  assert.match(html, /正在读取本地回顾档案/);
 });
 
 const testEnvironment = {

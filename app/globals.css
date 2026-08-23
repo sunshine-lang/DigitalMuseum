@@ -834,21 +834,6 @@ button:focus-visible {
   background: #69a17e;
 }
 
-.demo-help {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  border: 0;
-  color: #888a88;
-  background: transparent;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.demo-help::first-letter {
-  font-weight: 700;
-}
-
 .app-content {
   min-width: 0;
   flex: 1;
@@ -4029,8 +4014,6 @@ button:focus-visible {
   .preview-exhibition span { font-size: 16px; }
   .preview-exhibition b { display: none; }
   .local-state { justify-content: center; font-size: 0; }
-  .demo-help { justify-content: center; width: 100%; }
-  .demo-help span { display: none; }
   .journey-steps { grid-template-columns: repeat(4, 1fr); gap: 7px; }
   .journey-steps > b { display: none; }
   .journey-steps > button { flex-direction: column; align-items: flex-start; }

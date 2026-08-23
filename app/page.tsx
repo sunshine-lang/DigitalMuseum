@@ -683,7 +683,6 @@ function MvpHeader() {
       </Link>
       <div className="mvp-header-actions">
         <span className="mvp-local-badge"><i /> 原始记录保存在本地</span>
-        <Link href="/demo">查看视觉方向 ↗</Link>
       </div>
     </header>
   );

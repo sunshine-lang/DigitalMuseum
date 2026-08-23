@@ -4,7 +4,7 @@
 
 ## 项目是什么
 
-Digital Museum · AI 人生档案馆。底层仍是 PRD Phase 0 的 Note → Event Review 本地纵向切片；首页 `/` 已改为“导入记录 → 发现经历（含合并/拆分整理）→ 核对关键内容 → 私人回顾草稿”的价值先行 MVP。当前接受整理过的 `.md/.txt` 笔记、本地 Git 仓库（只读提交记录）与 JPEG/PNG 照片（EXIF），不代表已支持 ChatGPT/Codex/WorkBuddy 原生 Session。`/demo` 是早期策展演示，仅保留视觉方向。
+Digital Museum · AI 人生档案馆。底层仍是 PRD Phase 0 的 Note → Event Review 本地纵向切片；首页 `/` 已改为“导入记录 → 发现经历（含合并/拆分整理）→ 核对关键内容 → 私人回顾草稿”的价值先行 MVP。当前接受整理过的 `.md/.txt` 笔记、本地 Git 仓库（只读提交记录）与 JPEG/PNG 照片（EXIF），不代表已支持 ChatGPT/Codex/WorkBuddy 原生 Session。`/demo` 静态演示已于 2026-08 移除；站内 `/` 与 `/exhibition` 均读取真实档案数据。
 
 文档阅读顺序：`docs/prd/digital-museum-prd-v0.1.md` → `docs/mvp-value-first-ai-records-flow.md` → `docs/technical-adaptation.md` → `docs/phase-0-stage-1-note-event-review.md`。`docs/references/` 下的三份手册是通用外部方法论参考资料，不是本项目规范。
 
