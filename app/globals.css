@@ -6076,3 +6076,232 @@ a.mvp-primary {
   .expo-reveal { opacity: 1; transform: none; transition: none; }
   .expo-card, .expo-cover-cta, .expo-theme-card { transition: none; }
 }
+
+/* ============================================================
+   P2 · 展厅视觉升级（依据 docs/frontend-design-research-v0.1.md §4/§5.4
+   与 DESIGN.md / DESIGN (1).md 风格参考落地：纪念碑封面 / 幽灵厅号 /
+   错落展墙 / 圆形钢印 / 六边形导览 / 射灯氛围；动效只动 transform/opacity）
+   ============================================================ */
+
+.expo-show {
+  --e-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --e-display: "Playfair Display", "Noto Serif SC", Georgia, serif;
+}
+
+/* —— 封面：纪念碑海报 + 双束射灯 + 巨幅幽灵年份 —— */
+.expo-show .expo-cover { position: relative; min-height: 100svh; overflow: hidden; }
+.expo-show .expo-cover::before {
+  content: "";
+  position: absolute;
+  inset: -22%;
+  background:
+    radial-gradient(38% 52% at 24% 16%, color-mix(in srgb, var(--e-accent) 15%, transparent), transparent 70%),
+    radial-gradient(30% 44% at 78% 6%, color-mix(in srgb, var(--e-accent) 10%, transparent), transparent 72%),
+    radial-gradient(64% 32% at 50% 110%, color-mix(in srgb, var(--e-ink) 9%, transparent), transparent 72%);
+  animation: expo-light-drift 26s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+.expo-show .expo-cover-inner { position: relative; z-index: 2; }
+.expo-show .expo-cover-ghost {
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  right: 0;
+  bottom: 4vh;
+  font-family: var(--e-display);
+  font-weight: 900;
+  font-size: clamp(180px, 34vw, 540px);
+  line-height: 0.8;
+  letter-spacing: -0.04em;
+  text-align: center;
+  color: transparent;
+  -webkit-text-stroke: 1px color-mix(in srgb, var(--e-ink) 24%, transparent);
+  opacity: 0.55;
+  pointer-events: none;
+  user-select: none;
+}
+.expo-show .expo-cover h1 {
+  font-family: var(--e-display);
+  font-weight: 900;
+  font-size: clamp(46px, 8.2vw, 116px);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+  max-width: 13ch;
+}
+.expo-show .expo-cover-kicker,
+.expo-show .expo-cover-dates {
+  font-family: var(--e-mono);
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+.expo-show .expo-cover-stats {
+  border-top: 1px solid var(--e-line);
+  border-bottom: 1px solid var(--e-line);
+  padding: 18px 0;
+}
+.expo-show .expo-cover-stats dt {
+  font-family: var(--e-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.expo-show .expo-cover-stats dd {
+  font-family: var(--e-display);
+  font-weight: 700;
+  font-size: clamp(28px, 3.4vw, 44px);
+  line-height: 1;
+}
+.expo-show .expo-cover-cta { font-family: var(--e-mono); letter-spacing: 0.16em; text-transform: uppercase; }
+@keyframes expo-light-drift {
+  from { transform: translate3d(-1.6%, -1%, 0) scale(1); }
+  to { transform: translate3d(1.6%, 1.4%, 0) scale(1.05); }
+}
+
+/* —— 序言：首字下沉 —— */
+.expo-show .expo-prologue::first-letter {
+  font-family: var(--e-display);
+  font-weight: 900;
+  font-size: 3.1em;
+  line-height: 0.9;
+  float: left;
+  padding: 6px 12px 0 0;
+  color: var(--e-accent);
+}
+
+/* —— 六边形章节导览 —— */
+.expo-show .expo-timeline button {
+  font-family: var(--e-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+.expo-show .expo-timeline button::before {
+  content: "";
+  display: inline-block;
+  width: 9px;
+  height: 10px;
+  margin-right: 8px;
+  vertical-align: -1px;
+  background: currentColor;
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+}
+
+/* —— 展厅：幽灵厅号 + 铭牌 —— */
+.expo-show .expo-chapter { position: relative; }
+.expo-show .expo-chapter-num {
+  position: absolute;
+  top: -18px;
+  left: -6px;
+  z-index: 0;
+  font-family: var(--e-display);
+  font-weight: 900;
+  font-size: clamp(140px, 21vw, 300px);
+  line-height: 0.8;
+  color: transparent;
+  -webkit-text-stroke: 1px var(--e-chapter-color);
+  pointer-events: none;
+  user-select: none;
+}
+.expo-show .expo-chapter > header { position: relative; z-index: 1; }
+.expo-show .expo-chapter h2 {
+  font-family: var(--e-heading-font);
+  font-weight: 900;
+  font-size: clamp(34px, 5.2vw, 68px);
+  line-height: 1.06;
+  letter-spacing: var(--e-heading-track);
+}
+.expo-show .expo-chapter header p {
+  font-family: var(--e-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+}
+
+/* —— 展墙：首展通栏 + 7/5 错落 —— */
+.expo-show .expo-hall { display: grid; grid-template-columns: repeat(12, 1fr); gap: 26px; }
+.expo-show .expo-card { grid-column: span 6; position: relative; }
+.expo-show .expo-hall > .expo-card:nth-child(odd) { grid-column: span 7; }
+.expo-show .expo-hall > .expo-card:nth-child(even) { grid-column: span 5; }
+.expo-show .expo-hall > .expo-card:first-child { grid-column: 1 / -1; }
+
+/* —— 展签：铭牌字体 + 圆形钢印 + 拾升聚光 —— */
+.expo-show .expo-card h3 {
+  font-family: var(--e-heading-font);
+  font-weight: 800;
+  font-size: clamp(21px, 2.4vw, 30px);
+  line-height: 1.35;
+}
+.expo-show .expo-card-no,
+.expo-show .expo-card > time,
+.expo-show .expo-card > footer,
+.expo-show .expo-label summary,
+.expo-show .expo-anchor dt,
+.expo-show .expo-anchor dd { font-family: var(--e-mono); }
+.expo-show .expo-card > time { letter-spacing: 0.16em; text-transform: uppercase; }
+.expo-show .expo-card > footer { letter-spacing: 0.12em; text-transform: uppercase; }
+.expo-show .expo-seal {
+  display: inline-grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--e-accent) 78%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--e-accent) 32%, transparent);
+  outline-offset: 3px;
+  color: var(--e-accent);
+  font-family: var(--e-mono);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: 0.16em;
+  text-align: center;
+  transform: rotate(-8deg);
+  padding: 4px;
+}
+.expo-show .expo-card { transition: transform 0.35s ease; }
+.expo-show .expo-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  background: radial-gradient(60% 46% at 50% 0%, color-mix(in srgb, var(--e-accent) 13%, transparent), transparent 70%);
+  pointer-events: none;
+}
+.expo-show .expo-card:hover { transform: translateY(-5px); }
+.expo-show .expo-card:hover::after { opacity: 1; }
+
+/* —— 入场节奏：展墙内错落 60ms —— */
+.expo-show .expo-hall > .expo-reveal { transition: opacity 0.5s ease, transform 0.5s ease; }
+.expo-show .expo-hall > .expo-reveal:nth-child(2) { transition-delay: 0.06s; }
+.expo-show .expo-hall > .expo-reveal:nth-child(3) { transition-delay: 0.12s; }
+.expo-show .expo-hall > .expo-reveal:nth-child(4) { transition-delay: 0.18s; }
+.expo-show .expo-hall > .expo-reveal:nth-child(5) { transition-delay: 0.24s; }
+
+/* —— 尾声：大字收束 —— */
+.expo-show .expo-epilogue { border-top: 1px solid var(--e-line); }
+.expo-show .expo-epilogue h2 {
+  font-family: var(--e-display);
+  font-weight: 900;
+  font-size: clamp(30px, 4.4vw, 58px);
+  line-height: 1.18;
+  text-wrap: balance;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .expo-show .expo-cover::before { animation: none; }
+  .expo-show .expo-card,
+  .expo-show .expo-card::after,
+  .expo-show .expo-hall > .expo-reveal { transition: none; }
+}
+
+@media (max-width: 760px) {
+  .expo-show .expo-hall { grid-template-columns: 1fr; gap: 18px; }
+  .expo-show .expo-hall > .expo-card,
+  .expo-show .expo-hall > .expo-card:first-child,
+  .expo-show .expo-hall > .expo-card:nth-child(odd),
+  .expo-show .expo-hall > .expo-card:nth-child(even) { grid-column: auto; }
+  .expo-show .expo-cover-ghost { font-size: clamp(120px, 42vw, 240px); bottom: 8vh; }
+  .expo-show .expo-chapter-num { font-size: clamp(96px, 30vw, 180px); }
+  .expo-show .expo-seal { width: 54px; height: 54px; font-size: 9px; }
+}

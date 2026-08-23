@@ -382,6 +382,9 @@ export default function ExhibitionWorkspace() {
       </header>
 
       <section className="expo-cover">
+        <span className="expo-cover-ghost" aria-hidden="true">
+          {(stage?.ends_on ?? "").slice(0, 4) || "EXPO"}
+        </span>
         <div className="expo-cover-inner">
           <p className="expo-cover-kicker">PRIVATE EXHIBITION · 未公开</p>
           <h1>{stage?.name ?? "我的回顾"}</h1>
