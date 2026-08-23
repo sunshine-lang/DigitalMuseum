@@ -1,8 +1,9 @@
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -32,6 +33,7 @@ from app.domain.schemas import (
     StageUpdate,
 )
 from app.services import (
+    archive_service,
     claude_session_evidence_service,
     codex_session_evidence_service,
     git_evidence_service,
@@ -74,6 +76,47 @@ def create_api_router(session_provider) -> APIRouter:
     @router.get("/health", response_model=DataEnvelope[HealthOut])
     def health() -> dict:
         return {"data": {"status": "ok", "phase": "phase-0-aggregation"}}
+
+    @router.get("/archive/export")
+    def export_archive(request: Request, session: SessionDependency):
+        # 整库只读快照（ZIP：archive.json + blobs/ 原文），本地下载留存，
+        # 对抗阶段级联删除的不可逆丢失。
+        zip_bytes = archive_service.export_archive(
+            session, upload_dir=request.app.state.settings.upload_dir
+        )
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        return Response(
+            content=zip_bytes,
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="digital-museum-archive-{stamp}.zip"'
+                )
+            },
+        )
+
+    @router.post(
+        "/archive/import",
+        status_code=201,
+    )
+    async def import_archive(
+        request: Request,
+        file: FileDependency,
+        session: SessionDependency,
+    ) -> dict:
+        # 恢复为全新数据：所有行换新 id，blob 按内容哈希校验后写回或复用，
+        # 绝不覆盖或合并既有内容。
+        if file.size is not None and file.size > archive_service.MAX_ARCHIVE_BYTES:
+            raise ApiError(
+                422, "archive_too_large", "备份文件超过 200 MiB 上限"
+            )
+        archive_bytes = await file.read()
+        summary = archive_service.import_archive(
+            session,
+            archive_bytes,
+            upload_dir=request.app.state.settings.upload_dir,
+        )
+        return {"data": summary}
 
     @router.post("/stages", status_code=201, response_model=DataEnvelope[StageOut])
     def create_stage(
