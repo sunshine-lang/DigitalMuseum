@@ -25,7 +25,7 @@ docs/       全部项目文档（PRD 在 docs/prd/，参考手册在 docs/refere
 npm run backend:sync      # 安装后端依赖（uv）
 npm run backend:dev       # 启动本地 API（127.0.0.1:8010）
 npm run dev:phase0        # 启动前端工作台（127.0.0.1:3001）
-npm run test:backend      # 后端 pytest（57 个用例，必须全绿；含评测基线护栏）
+npm run test:backend      # 后端 pytest（70 个用例，必须全绿；含评测基线护栏）
 npm run test:local        # 前端构建 + 渲染冒烟（macOS 用这个，npm test 需要 GNU timeout）
 npm run test:e2e          # Playwright 端到端（需先停止 backend:dev；后端占用 8010、前端 3002，数据隔离在 .e2e/）
 npm run typecheck         # tsc --noEmit
@@ -39,13 +39,13 @@ npm run lint              # eslint
 - Phase 0 是本地优先单用户原型：不引入云数据库、不引入模型调用、不把数据默认送云端。D1/Drizzle 链路已在 2026-08 移除，不要重新引入。
 - 首页的批量选择当前通过前端顺序调用单文件 API 实现；不要把它表述为已完成可恢复的服务端 Import Batch。
 - 首页“查看回顾”只是真实 Event 状态的本地草稿预览，不是 Story/Exhibition 生成、导出或分享能力。
-- 原始 Note 是不可原地改写的 Evidence Blob：以 SHA-256 内容哈希落盘在 `data/uploads/`。
+- 原始 Note 是不可原地改写的 Evidence Blob：以 SHA-256 内容哈希落盘在 `data/uploads/`。对外只经 `GET /api/v1/blobs/{sha256}` 只读访问：哈希必须匹配 `^[0-9a-f]{64}$`（fail closed 防路径穿越）、文件路径只从 DB 的 `relative_path` 解析、无列举无删除、响应可永久缓存（内容寻址不变）。
 - API 错误统一返回 `{"error":{"code","message"}}`，不向页面输出堆栈。
 - 解析器 `note-development-v1` 是确定性的：只生成 Candidate，不推断因果与动机，不用确定性结果冒充模型效果。
 - 适配器 `git-evidence-v1` 与 `photo-evidence-v1` 同样是确定性的：Git 只读提交/标签并渲染证据文档；照片只读 EXIF（拍摄时间、相机、GPS 原始坐标），不猜日期、不做 OCR/图像识别，Claim 一律 `evidence_role="artifact"`。
 - 分级信任：确定性读数（Git 提交日按 committer date、照片 EXIF）导入即 `status="verified"`（系统核实），不进人工核对队列，但 UI 必须保留「对这段记录提出异议」入口；推断性标题（如"创建标签"）与用户已 rejected 的同题同日事件一律保持/降级为 `candidate`；用户已审阅过的事件（disputed/unknown/confirmed）重复导入时并入不复制、状态以用户判定为准。不要把确定性"读取"表述成"核实了事实"。
 - 聚合规则 `note-aggregation-v1` 同样是确定性的：仅按规范化标题加日期聚合，不做语义聚类；Merge/Split 产物一律重置为 Candidate 并保留逐字锚点与审计行。
-- 阶段管理：`DELETE /api/v1/stages/{id}` 级联清空该阶段全部数据但**保留 EvidenceBlob 行与文件**（内容寻址、跨阶段共享）；引用回收端点尚未实现，删除阶段会留下不可达的 blob，这是已知待办。
+- 阶段管理：`DELETE /api/v1/stages/{id}` 级联清空该阶段全部数据，随后回收零引用的 EvidenceBlob（occurrences 与 evidence_anchors 都不再引用）——删行并清理文件；被其他阶段共享（仍有引用）的 blob 必须保留。前端展示原图走 `claims[].source_media`（仅 image/jpeg、image/png），加载失败静默回落 SpecimenArt。
 - 样式延续集中式 CSS（`app/globals.css`），Tailwind 仅保留依赖，暂不迁移。
 - `npm run build`（build-verified.sh）需要 GNU timeout，macOS 上用 `npm run build:local`。
 - 前端 dev 模式不会内联 `NEXT_PUBLIC_*` 变量，页面始终请求默认的 8010 端口；E2E 因此必须让隔离后端占用 8010。

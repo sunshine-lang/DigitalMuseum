@@ -118,6 +118,26 @@ test("照片导入：EXIF 时间归入时间线，无拍摄时间的照片单独
   await expect(
     reportRows.filter({ hasText: "screenshot-no-exif.png" }),
   ).toContainText("照片缺少可读的 EXIF 拍摄时间");
+
+  // 照片上墙：展览馆直接渲染原图（本地 blob 端点），而不是抽象版画。
+  await page.goto("/exhibition");
+  await expect(
+    page.getByRole("heading", { name: "第一步 · 选择要展出的经历" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: /下一步 · 选择展览风格/ })
+    .click();
+  await page.getByRole("button", { name: /暖纸档案馆/ }).click();
+  const exhibitPhoto = page.locator(".expo-art img").first();
+  await expect(exhibitPhoto).toBeVisible();
+  await expect(exhibitPhoto).toHaveAttribute("src", /\/api\/v1\/blobs\//);
+  // 图片真实加载成功：blob 端点返回了字节（lazy 图需滚入视口触发加载）。
+  await exhibitPhoto.scrollIntoViewIfNeeded();
+  await expect
+    .poll(async () =>
+      exhibitPhoto.evaluate((element) => (element as HTMLImageElement).naturalWidth),
+    )
+    .toBeGreaterThan(0);
 });
 
 test("坏文件单独失败：PDF 不影响其他记录导入", async ({ page }) => {

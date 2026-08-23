@@ -1,7 +1,9 @@
+import re
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core.errors import ApiError
@@ -49,6 +51,7 @@ KNOWN_BINARY_PREFIXES = (
     b"PK\x03\x04",
     b"\x1f\x8b",
 )
+BLOB_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 def create_api_router(session_provider) -> APIRouter:
@@ -84,9 +87,34 @@ def create_api_router(session_provider) -> APIRouter:
         return {"data": museum_service.rename_stage(session, stage_id, payload)}
 
     @router.delete("/stages/{stage_id}", response_model=DataEnvelope[dict])
-    def delete_stage(stage_id: str, session: SessionDependency) -> dict:
-        museum_service.delete_stage(session, stage_id)
+    def delete_stage(stage_id: str, request: Request, session: SessionDependency) -> dict:
+        museum_service.delete_stage(
+            session,
+            stage_id,
+            upload_dir=request.app.state.settings.upload_dir,
+        )
         return {"data": {"id": stage_id}}
+
+    @router.get("/blobs/{sha256}")
+    def get_blob_media(
+        sha256: str,
+        request: Request,
+        session: SessionDependency,
+    ) -> FileResponse:
+        # 内容寻址只读端点：哈希严格 fail closed 校验（防路径穿越），文件路径
+        # 只从 DB 的 relative_path 解析；无列举、无删除能力。
+        if BLOB_SHA256_RE.fullmatch(sha256) is None:
+            raise ApiError(422, "invalid_blob_id", "文件指纹必须是 64 位小写十六进制")
+        path, media_type = museum_service.resolve_blob_media(
+            session,
+            sha256,
+            request.app.state.settings.upload_dir,
+        )
+        return FileResponse(
+            path,
+            media_type=media_type,
+            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        )
 
     @router.post(
         "/stages/{stage_id}/notes",

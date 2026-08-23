@@ -8,6 +8,7 @@ import {
   Phase0ApiError,
   ReviewDecision,
   Stage,
+  blobUrl,
   createStage,
   getCoverage,
   getEvents,
@@ -1241,6 +1242,28 @@ function EvidenceDetails({ event, activeAnchor, onAnchorActivate }: {
         return (
           <details key={claim.id} open={index === 0}>
             <summary><span>原文摘录 {event.claims.length > 1 ? index + 1 : ""}</span><small>{claim.anchors.length} 个来源位置</small></summary>
+            {claim.source_media && (
+              <a
+                className="mvp-source-media"
+                href={blobUrl(claim.source_media.sha256)}
+                target="_blank"
+                rel="noreferrer"
+                title="在新窗口打开原始照片"
+              >
+                {/* 内容寻址的本地 blob 无法走 next/image 加载器，直接用 img 缩略 */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={blobUrl(claim.source_media.sha256)}
+                  alt="这份经历对应的原始照片"
+                  loading="lazy"
+                  onError={(error) => {
+                    // 文件缺失时静默隐藏缩略图，不阻断核对流。
+                    error.currentTarget.closest("a.mvp-source-media")?.setAttribute("hidden", "");
+                  }}
+                />
+                <span>原始照片 · 点击查看原图</span>
+              </a>
+            )}
             <blockquote>{highlightQuote ? <HighlightedExcerpt text={claim.text} quote={highlightQuote} pulseKey={activeAnchor?.key} /> : claim.text}</blockquote>
             {claim.anchors.map((anchor) => {
               const anchorKey = `${anchor.blob_sha256}-${anchor.char_start}`;

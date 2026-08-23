@@ -100,15 +100,19 @@ def test_rename_stage_updates_name_and_keeps_contract(client: TestClient) -> Non
     assert missing.json()["error"]["code"] == "stage_not_found"
 
 
-def test_delete_stage_cascades_rows_but_keeps_blobs(
+def test_delete_stage_cascades_rows_but_keeps_shared_blobs(
     client: TestClient,
     app_paths: tuple[str, Path],
 ) -> None:
     survivor_stage = create_stage(client, "保留的阶段")
     deleted_stage = create_stage(client, "将被删除的阶段")
 
+    # 两个阶段导入同一份内容 → 内容寻址共享同一个 blob。
+    # 删除其中一个阶段后 blob 仍被幸存阶段引用，必须保留
+    # （零引用回收的边界场景在 test_blob_media.py 覆盖）。
     note = upload_note(client, deleted_stage, "2026-05-20-delete-me.md")
-    survivor_note = upload_note(client, survivor_stage, "2026-05-20-keep.md")
+    survivor_note = upload_note(client, survivor_stage, "2026-05-20-delete-me.md")
+    assert hashlib.sha256(survivor_note).hexdigest() == hashlib.sha256(note).hexdigest()
     events = client.get(f"/api/v1/stages/{deleted_stage}/events").json()["data"]
     assert len(events) == 1
     confirmed = client.post(
@@ -120,7 +124,6 @@ def test_delete_stage_cascades_rows_but_keeps_blobs(
     deleted_hash = hashlib.sha256(note).hexdigest()
     survivor_hash = hashlib.sha256(survivor_note).hexdigest()
     database_url, upload_dir = app_paths
-
     response = client.delete(f"/api/v1/stages/{deleted_stage}")
 
     assert response.status_code == 200
@@ -163,7 +166,7 @@ def test_delete_stage_cascades_rows_but_keeps_blobs(
     finally:
         engine.dispose()
 
-    # 内容寻址的原始文件必须仍然存在（Blob 跨阶段共享，不由阶段删除回收）。
+    # 内容寻址的原始文件必须仍然存在（blob 仍被幸存阶段引用，跨阶段共享保留）。
     assert (upload_dir / deleted_hash[:2] / f"{deleted_hash}.md").read_bytes() == note
     assert (upload_dir / survivor_hash[:2] / f"{survivor_hash}.md").exists()
 

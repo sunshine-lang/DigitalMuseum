@@ -7,7 +7,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, exists, func, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errors import ApiError
@@ -40,6 +40,10 @@ COVERAGE_ORDER = {
     "parsed_locally": 1,
     "candidate_generated": 2,
 }
+
+# claim.source_media 只暴露可直接展示的图片类型；照片事件的 occurrence.blob
+# 是原图，笔记 / Git / 照片元数据文档 blob 均不作为 source_media 返回。
+SOURCE_MEDIA_IMAGE_TYPES = ("image/jpeg", "image/png")
 
 
 def create_stage(session: Session, payload: StageCreate) -> dict:
@@ -79,14 +83,45 @@ def rename_stage(session: Session, stage_id: str, payload: StageUpdate) -> dict:
     return serialize_stage(session, stage)
 
 
-def delete_stage(session: Session, stage_id: str) -> None:
+def delete_stage(session: Session, stage_id: str, *, upload_dir: Path) -> None:
     stage = require_stage(session, stage_id)
     # 走 Core DELETE 让数据库 FK（ondelete=CASCADE）清理 occurrences、
-    # coverage、events、claims、anchors、reviews；EvidenceBlob 不在级联链上，
-    # 原始文件与内容寻址记录全部保留。
+    # coverage、events、claims、anchors、reviews；EvidenceBlob 不在级联链上。
     session.execute(delete(Stage).where(Stage.id == stage.id))
     session.commit()
     session.expire_all()
+    # Blob 引用回收：occurrences 与 evidence_anchors 都不再引用的 blob 删行并
+    # 清理文件；被其他阶段共享（仍有引用）的内容寻址 blob 必须保留。
+    _reclaim_orphan_blobs(session, upload_dir)
+
+
+def _reclaim_orphan_blobs(session: Session, upload_dir: Path) -> None:
+    orphans = session.scalars(
+        select(EvidenceBlob).where(
+            ~exists().where(EvidenceOccurrence.blob_sha256 == EvidenceBlob.sha256),
+            ~exists().where(EvidenceAnchor.blob_sha256 == EvidenceBlob.sha256),
+        )
+    ).all()
+    if not orphans:
+        return
+    orphan_paths = [upload_dir / Path(blob.relative_path) for blob in orphans]
+    for blob in orphans:
+        session.delete(blob)
+    session.commit()
+    # 先删行再清文件：文件不存在时容错跳过（missing_ok）。
+    for path in orphan_paths:
+        path.unlink(missing_ok=True)
+
+
+def resolve_blob_media(session: Session, sha256: str, upload_dir: Path) -> tuple[Path, str]:
+    """按内容哈希只读解析本地 blob；文件路径只来自 DB 的 relative_path。"""
+    blob = session.get(EvidenceBlob, sha256)
+    if blob is None:
+        raise ApiError(404, "blob_not_found", "没有找到这份原始文件")
+    path = upload_dir / Path(blob.relative_path)
+    if not path.is_file():
+        raise ApiError(404, "blob_not_found", "原始文件已不在本地存储中")
+    return path, blob.media_type
 
 
 def serialize_stage(session: Session, stage: Stage) -> dict:
@@ -317,7 +352,7 @@ def persist_note_candidate(
     occurrence_coverage = [item for item in coverage if item["occurrence_id"] == occurrence.id]
     return {
         "occurrence": serialize_occurrence(occurrence),
-        "event": serialize_event(reloaded_event),
+        "event": serialize_event(reloaded_event, session),
         "coverage": occurrence_coverage,
     }
 
@@ -433,7 +468,10 @@ def _persist_git_candidates(
         ]
     )
     session.commit()
-    all_events = [serialize_event(_load_event(session, event.id)) for event in created_events]
+    all_events = [
+        serialize_event(_load_event(session, event.id), session)
+        for event in created_events
+    ]
     return all_events
 
 
@@ -555,7 +593,7 @@ def _persist_photo_candidate(
     occurrence_coverage = [item for item in coverage if item["occurrence_id"] == occurrence.id]
     return {
         "occurrence": serialize_occurrence(occurrence),
-        "event": serialize_event(reloaded_event),
+        "event": serialize_event(reloaded_event, session),
         "coverage": occurrence_coverage,
     }
 
@@ -623,8 +661,11 @@ def merge_events(session: Session, stage_id: str, payload: MergeCreate) -> dict:
     session.commit()
     session.expire_all()
     return {
-        "event": serialize_event(_load_event(session, merged.id)),
-        "sources": [serialize_event(_load_event(session, event_id)) for event_id in source_ids],
+        "event": serialize_event(_load_event(session, merged.id), session),
+        "sources": [
+            serialize_event(_load_event(session, event_id), session)
+            for event_id in source_ids
+        ],
     }
 
 
@@ -682,8 +723,11 @@ def split_event(session: Session, event_id: str) -> dict:
     session.commit()
     session.expire_all()
     return {
-        "event": serialize_event(_load_event(session, event_id)),
-        "events": [serialize_event(_load_event(session, child.id)) for child in children],
+        "event": serialize_event(_load_event(session, event_id), session),
+        "events": [
+            serialize_event(_load_event(session, child.id), session)
+            for child in children
+        ],
     }
 
 
@@ -821,11 +865,11 @@ def list_events(session: Session, stage_id: str) -> list[dict]:
         )
         .order_by(CandidateEvent.created_at)
     ).all()
-    return [serialize_event(event) for event in events]
+    return [serialize_event(event, session) for event in events]
 
 
 def get_event(session: Session, event_id: str) -> dict:
-    return serialize_event(_load_event(session, event_id))
+    return serialize_event(_load_event(session, event_id), session)
 
 
 def review_event(session: Session, event_id: str, payload: ReviewCreate) -> dict:
@@ -872,7 +916,7 @@ def review_event(session: Session, event_id: str, payload: ReviewCreate) -> dict
         )
     )
     session.commit()
-    return serialize_event(_load_event(session, event_id))
+    return serialize_event(_load_event(session, event_id), session)
 
 
 def list_coverage(session: Session, stage_id: str) -> list[dict]:
@@ -920,8 +964,9 @@ def serialize_occurrence(occurrence: EvidenceOccurrence) -> dict:
     }
 
 
-def serialize_event(event: CandidateEvent) -> dict:
+def serialize_event(event: CandidateEvent, session: Session | None = None) -> dict:
     latest_review = event.reviews[-1] if event.reviews else None
+    source_media = _claim_source_media(event, session)
     return {
         "id": event.id,
         "stage_id": event.stage_id,
@@ -951,6 +996,7 @@ def serialize_event(event: CandidateEvent) -> dict:
                     }
                     for anchor in claim.anchors
                 ],
+                "source_media": source_media.get(claim.occurrence_id),
             }
             for claim in event.claims
         ],
@@ -966,6 +1012,39 @@ def serialize_event(event: CandidateEvent) -> dict:
             if latest_review
             else None
         ),
+    }
+
+
+def _claim_source_media(
+    event: CandidateEvent, session: Session | None
+) -> dict[str, dict]:
+    """按事件内 claims 的 occurrence 批量解析一次可展示原图，避免逐 claim 查询。"""
+    occurrence_ids = {claim.occurrence_id for claim in event.claims}
+    if not occurrence_ids:
+        return {}
+    if session is not None:
+        rows = session.execute(
+            select(
+                EvidenceOccurrence.id,
+                EvidenceOccurrence.blob_sha256,
+                EvidenceBlob.media_type,
+            )
+            .join(EvidenceBlob, EvidenceOccurrence.blob_sha256 == EvidenceBlob.sha256)
+            .where(EvidenceOccurrence.id.in_(occurrence_ids))
+        ).all()
+    else:
+        rows = [
+            (
+                claim.occurrence_id,
+                claim.occurrence.blob.sha256 if claim.occurrence else None,
+                claim.occurrence.blob.media_type if claim.occurrence else None,
+            )
+            for claim in event.claims
+        ]
+    return {
+        occurrence_id: {"sha256": sha256, "media_type": media_type}
+        for occurrence_id, sha256, media_type in rows
+        if sha256 is not None and media_type in SOURCE_MEDIA_IMAGE_TYPES
     }
 
 

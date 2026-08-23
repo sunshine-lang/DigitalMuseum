@@ -7,6 +7,7 @@ import {
   CandidateEvent,
   Phase0ApiError,
   Stage,
+  blobUrl,
   getEvents,
   getStage,
 } from "../phase0-api";
@@ -457,7 +458,7 @@ export default function ExhibitionWorkspace() {
                     key={event.id}
                   >
                     <figure className="expo-art">
-                      <SpecimenArt seed={event.claims[0]?.anchors[0]?.blob_sha256 ?? event.id} />
+                      <ExhibitArt event={event} />
                       <span className="expo-card-no">No. {String(chapterIndex + 1).padStart(2, "0")}{String(exhibitIndex + 1).padStart(2, "0")}</span>
                       {event.status === "confirmed" ? (
                         <span className="expo-seal">已入馆</span>
@@ -547,6 +548,35 @@ function CountUp({ value }: { value: number }) {
   }, [value]);
 
   return <>{display}</>;
+}
+
+/**
+ * 展品画面：事件首个 claim 带可展示原图（source_media）时直接上墙，照片满框
+ * 并叠一层装裱内衬刻线（照片 + 版式刻线 = 装裱感）；图片加载失败（例如文件
+ * 被手动删除）静默回落确定性 SpecimenArt，无媒体事件维持标本版画。
+ * 编号 / 钢印 / 草稿标层在 figure 内保持不变。
+ */
+function ExhibitArt({ event }: { event: CandidateEvent }) {
+  const sourceMedia = event.claims[0]?.source_media ?? null;
+  const [photoFailed, setPhotoFailed] = useState(false);
+
+  if (sourceMedia && !photoFailed) {
+    return (
+      <>
+        {/* 内容寻址的本地 blob 无法走 next/image 加载器，直接用 img 满框展示 */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          className="expo-art-photo"
+          src={blobUrl(sourceMedia.sha256)}
+          alt=""
+          loading="lazy"
+          onError={() => setPhotoFailed(true)}
+        />
+        <span className="expo-art-mat" aria-hidden="true" />
+      </>
+    );
+  }
+  return <SpecimenArt seed={event.claims[0]?.anchors[0]?.blob_sha256 ?? event.id} />;
 }
 
 /**

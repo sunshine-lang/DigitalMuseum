@@ -106,7 +106,7 @@ export default function StageLibraryPage() {
       setDeleteArmed(false);
       setNotice({
         kind: "success",
-        message: `已删除「${deleteTarget.name}」。原始记录文件按内容寻址保留在本地。`,
+        message: `已删除「${deleteTarget.name}」。仅这个阶段使用的原始文件已一并清理；被其他阶段共享的按内容寻址保留。`,
       });
       await refresh();
     } catch (error) {
@@ -133,7 +133,7 @@ export default function StageLibraryPage() {
         <div>
           <p className="mvp-kicker">MY ARCHIVES · 我的回顾</p>
           <h1>管理你的回顾阶段</h1>
-          <p>每个阶段是一段独立的回顾范围。可以重新进入其中任意一段，也可以改名或删除不再需要的阶段；原始记录文件按内容寻址保留在本地，不会随阶段删除而丢失。</p>
+          <p>每个阶段是一段独立的回顾范围。可以重新进入其中任意一段，也可以改名或删除不再需要的阶段；原始文件按内容寻址共享：仍被其他阶段引用的会保留，仅本阶段使用的会随删除一并清理。</p>
         </div>
       </section>
 
@@ -196,7 +196,7 @@ export default function StageLibraryPage() {
                       {deleteArmed ? (
                         <>
                           <strong>请再次确认：删除后无法恢复</strong>
-                          <p>「{stage.name}」的 {stage.event_count} 段经历、{stage.evidence_count} 份记录的整理结果将被永久删除。原始记录文件按内容寻址保留在本地。</p>
+                          <p>「{stage.name}」的 {stage.event_count} 段经历、{stage.evidence_count} 份记录的整理结果将被永久删除。仅这个阶段使用的原始文件会一并清理；被其他阶段共享的按内容寻址保留。</p>
                           <div className="mvp-stage-danger-actions">
                             <button className="mvp-primary" type="button" disabled={busy} onClick={() => void confirmDelete()}>{busy ? "正在删除…" : "确认永久删除"}</button>
                             <button className="mvp-secondary" type="button" disabled={busy} onClick={() => { setDeleteTarget(null); setDeleteArmed(false); }}>取消</button>
@@ -205,7 +205,7 @@ export default function StageLibraryPage() {
                       ) : (
                         <>
                           <strong>确定要删除这个阶段吗？</strong>
-                          <p>将永久删除「{stage.name}」整理出的 {stage.event_count} 段经历、{stage.evidence_count} 份记录的整理结果。原始记录文件按内容寻址保留在本地，不会从磁盘删除。</p>
+                          <p>将永久删除「{stage.name}」整理出的 {stage.event_count} 段经历、{stage.evidence_count} 份记录的整理结果。仅这个阶段使用的原始文件会一并清理，无法恢复；被其他阶段共享的按内容寻址保留。</p>
                           <div className="mvp-stage-danger-actions">
                             <button className="mvp-secondary" type="button" disabled={busy} onClick={() => setDeleteArmed(true)}>删除这个阶段</button>
                             <button className="mvp-stage-remove cancel" type="button" disabled={busy} onClick={() => setDeleteTarget(null)}>取消</button>

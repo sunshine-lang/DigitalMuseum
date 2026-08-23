@@ -6654,3 +6654,58 @@ a.mvp-primary {
 @media (prefers-reduced-motion: reduce) {
   .mvp-experience-card.st-verified { transition: none; }
 }
+
+/* ============================================================
+   照片上墙（切片 B）：真实照片直接进展览与工作台证据侧栏
+   ============================================================ */
+
+/* 展览：原图满框上墙（object-fit: cover 保持装裱比例），底色兜底加载空窗 */
+.expo-show .expo-art .expo-art-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  background: var(--e-bg-soft);
+}
+
+/* 装裱内衬刻线：叠在照片上的一圈细线，延续标本版式的取景框语言；
+   与照片同生同灭（加载失败回落版画时一并消失）。编号/钢印/草稿标仍在刻线之上。 */
+.expo-show .expo-art .expo-art-mat {
+  position: absolute;
+  inset: 10px;
+  z-index: 1;
+  border: 1px solid color-mix(in srgb, var(--e-ink) 46%, transparent);
+  pointer-events: none;
+}
+
+/* 工作台证据侧栏：96px 原图缩略图，点击新窗口查看原图（核对时刻看到那张照片） */
+.mvp-evidence-list .mvp-source-media {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 14px 0;
+  padding: 8px;
+  border: 1px solid var(--mvp-line);
+  background: #fffdf9;
+  text-decoration: none;
+}
+.mvp-evidence-list .mvp-source-media img {
+  width: 96px;
+  height: 96px;
+  flex: none;
+  display: block;
+  object-fit: cover;
+  border: 1px solid var(--mvp-line);
+}
+.mvp-evidence-list .mvp-source-media span {
+  color: var(--mvp-muted);
+  font: 700 10px var(--mvp-mono);
+  letter-spacing: .08em;
+}
+.mvp-evidence-list .mvp-source-media:hover span { color: var(--mvp-gold); }
+
+@media (max-width: 680px) {
+  .expo-show .expo-art .expo-art-mat { inset: 6px; }
+}

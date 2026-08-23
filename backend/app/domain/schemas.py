@@ -51,6 +51,11 @@ class AnchorOut(BaseModel):
     char_end: int
 
 
+class SourceMediaOut(BaseModel):
+    sha256: str
+    media_type: str
+
+
 class ClaimOut(BaseModel):
     id: str
     text: str
@@ -58,6 +63,8 @@ class ClaimOut(BaseModel):
     evidence_role: Literal["user_statement", "artifact"]
     processor_version: str
     anchors: list[AnchorOut]
+    # 可展示的原始媒体：照片事件指向原图 blob；笔记/Git/照片元数据文档为 null。
+    source_media: SourceMediaOut | None = None
 
 
 class ReviewOut(BaseModel):

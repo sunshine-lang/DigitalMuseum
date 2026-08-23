@@ -19,6 +19,11 @@ export type Anchor = {
   char_end: number;
 };
 
+export type SourceMedia = {
+  sha256: string;
+  media_type: string;
+};
+
 export type Claim = {
   id: string;
   text: string;
@@ -26,6 +31,8 @@ export type Claim = {
   evidence_role: "user_statement" | "artifact";
   processor_version: string;
   anchors: Anchor[];
+  /** 可展示的原始媒体：照片事件指向原图 blob；笔记/Git 为 null。 */
+  source_media: SourceMedia | null;
 };
 
 export type ReviewDecision = "confirmed" | "disputed" | "unknown" | "rejected";
@@ -111,6 +118,11 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
     );
   }
   return body.data;
+}
+
+/** 内容寻址的本地 Blob 媒体地址（GET 只读端点，可永久缓存）。 */
+export function blobUrl(sha256: string): string {
+  return `${apiBaseUrl}/api/v1/blobs/${sha256}`;
 }
 
 export function createStage(payload: {

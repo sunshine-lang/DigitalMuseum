@@ -305,7 +305,9 @@ def test_disputed_verified_event_absorbs_reimport_without_duplicate(
     )
     assert first.status_code == 201
     events = _list_events(git_client, stage_id)
-    target = next(e for e in events if "提交代码" in e["title"] and e["occurred_on"] == "2026-05-10")
+    target = next(
+        e for e in events if "提交代码" in e["title"] and e["occurred_on"] == "2026-05-10"
+    )
 
     disputed = git_client.post(
         f"/api/v1/events/{target['id']}/reviews",
@@ -353,7 +355,10 @@ def test_committer_date_defines_the_commit_day(app_paths, tmp_path: Path):
     repo = tmp_path / "rebased-repo"
     repo.mkdir()
     _git(repo, "init", "-b", "main")
-    env_days = {"GIT_AUTHOR_DATE": "2026-05-10T12:00:00", "GIT_COMMITTER_DATE": "2026-06-20T12:00:00"}
+    env_days = {
+        "GIT_AUTHOR_DATE": "2026-05-10T12:00:00",
+        "GIT_COMMITTER_DATE": "2026-06-20T12:00:00",
+    }
     import os as _os
 
     env = _os.environ.copy()
