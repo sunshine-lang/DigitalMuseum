@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import json
+from functools import partial
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from tests.helpers import create_stage
+from tests.helpers import create_stage, import_agent_sessions
+from tests.helpers import fetch_document as _fetch_document
 
 
 def _rollout_line(timestamp: str, record_type: str, payload: dict) -> str:
@@ -158,19 +160,7 @@ def codex_client(app_paths, tmp_path: Path) -> TestClient:
         yield test_client
 
 
-def _import(client: TestClient, stage_id: str, path: Path | str) -> dict:
-    response = client.post(
-        f"/api/v1/stages/{stage_id}/codex-sessions",
-        json={"path": str(path)},
-    )
-    assert response.status_code == 201, response.text
-    return response.json()["data"]
-
-
-def _fetch_document(client: TestClient, sha256: str) -> str:
-    response = client.get(f"/api/v1/blobs/{sha256}")
-    assert response.status_code == 200
-    return response.text
+_import = partial(import_agent_sessions, endpoint="codex-sessions")
 
 
 def test_import_creates_verified_daily_event_excluding_subagent(

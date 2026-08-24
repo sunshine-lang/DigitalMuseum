@@ -16,7 +16,7 @@ def require_path_allowed(
     allowed_roots: str,
     *,
     error_code: str,
-    message: str,
+    message: str = "这个路径不在允许读取的目录范围内",
 ) -> None:
     """resolved 必须等于某个允许根，或位于某个允许根之下。"""
     roots = [

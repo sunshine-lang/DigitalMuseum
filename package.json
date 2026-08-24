@@ -16,7 +16,7 @@
     "test:local": "npm run build:local && node --test tests/rendered-html.test.mjs && npm run test:export",
     "test:export": "node --experimental-strip-types --test tests/exhibition-export.test.mts",
     "test:e2e": "node tests/e2e/preflight.mjs && playwright test",
-    "test:backend": "cd backend && UV_CACHE_DIR=../.sites-runtime/uv-cache uv run pytest",
+    "test:backend": "cd backend && UV_CACHE_DIR=../.sites-runtime/uv-cache uv run ruff check . && UV_CACHE_DIR=../.sites-runtime/uv-cache uv run pytest",
     "backend:sync": "cd backend && UV_CACHE_DIR=../.sites-runtime/uv-cache uv sync --python 3.11",
     "backend:dev": "cd backend && UV_CACHE_DIR=../.sites-runtime/uv-cache uv run uvicorn app.main:app --host 127.0.0.1 --port 8010 --reload",
     "typecheck": "tsc --noEmit",

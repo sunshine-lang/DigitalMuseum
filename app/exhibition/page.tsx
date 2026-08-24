@@ -267,10 +267,6 @@ export default function ExhibitionWorkspace() {
   const [captionBusy, setCaptionBusy] = useState(false);
   const [captionError, setCaptionError] = useState<string | null>(null);
 
-  const selectedVerifiedCount = useMemo(
-    () => selectedEvents.filter((event) => event.status === "verified").length,
-    [selectedEvents],
-  );
   const [posterUrl, setPosterUrl] = useState<string | null>(null);
   const [posterBusy, setPosterBusy] = useState(false);
 
@@ -322,7 +318,7 @@ export default function ExhibitionWorkspace() {
       const stats: Array<[number, string]> = [
         [selectedEvents.length, "段经历"],
         [confirmedCount, "你亲自确认"],
-        [selectedVerifiedCount, "系统核实"],
+        [verifiedCount, "系统核实"],
         [stage.evidence_count, "份原始记录"],
       ];
       stats.forEach(([value, label], index) => {
@@ -698,7 +694,7 @@ export default function ExhibitionWorkspace() {
           <div className="expo-epilogue-stats" aria-label="阶段统计">
             <div><strong><CountUp value={selectedEvents.length} /></strong><span>段经历</span></div>
             <div><strong><CountUp value={confirmedCount} /></strong><span>你亲自确认</span></div>
-            <div><strong><CountUp value={selectedVerifiedCount} /></strong><span>系统核实</span></div>
+            <div><strong><CountUp value={verifiedCount} /></strong><span>系统核实</span></div>
             <div><strong><CountUp value={stage?.evidence_count ?? 0} /></strong><span>份原始记录</span></div>
           </div>
           <h2>{closingLine}</h2>

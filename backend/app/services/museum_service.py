@@ -715,7 +715,7 @@ def set_exhibit_caption(session: Session, event_id: str, caption: str | None) ->
     event.exhibit_caption = normalized or None
     event.updated_at = utc_now()
     session.commit()
-    return serialize_event(_load_event(session, event_id), session)
+    return serialize_event(event, session)
 
 
 def merge_events(session: Session, stage_id: str, payload: MergeCreate) -> dict:

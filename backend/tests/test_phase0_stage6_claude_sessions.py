@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from functools import partial
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from tests.helpers import create_stage
+from tests.helpers import create_stage, import_agent_sessions
+from tests.helpers import fetch_document as _fetch_document
 
 SESSION_A = "\n".join(
     [
@@ -73,19 +75,7 @@ def claude_client(app_paths, tmp_path: Path) -> TestClient:
         yield test_client
 
 
-def _import(client: TestClient, stage_id: str, path: Path | str) -> dict:
-    response = client.post(
-        f"/api/v1/stages/{stage_id}/claude-sessions",
-        json={"path": str(path)},
-    )
-    assert response.status_code == 201, response.text
-    return response.json()["data"]
-
-
-def _fetch_document(client: TestClient, sha256: str) -> str:
-    response = client.get(f"/api/v1/blobs/{sha256}")
-    assert response.status_code == 200
-    return response.text
+_import = partial(import_agent_sessions, endpoint="claude-sessions")
 
 
 def test_import_by_real_project_path_creates_verified_daily_event(

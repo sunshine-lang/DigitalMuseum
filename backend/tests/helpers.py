@@ -157,3 +157,20 @@ def create_stage(
 def create_half_year_stage(client: TestClient, name: str = "我的 AI 产品半年") -> str:
     """phase0_api / aggregation / stages_management 家族用的上半年阶段。"""
     return create_stage(client, name, starts_on="2026-01-01", ends_on="2026-06-30")
+
+
+def fetch_document(client: TestClient, sha256: str) -> str:
+    """按内容哈希取证据文档原文（claude/codex 两个 Agent 适配器测试共用）。"""
+    response = client.get(f"/api/v1/blobs/{sha256}")
+    assert response.status_code == 200
+    return response.text
+
+
+def import_agent_sessions(client: TestClient, stage_id: str, path, endpoint: str) -> dict:
+    """导入 Agent 会话证据；endpoint 传 "claude-sessions" 或 "codex-sessions"。"""
+    response = client.post(
+        f"/api/v1/stages/{stage_id}/{endpoint}",
+        json={"path": str(path)},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["data"]

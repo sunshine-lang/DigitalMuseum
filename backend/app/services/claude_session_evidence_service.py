@@ -32,7 +32,7 @@ def preview_claude_sessions(
         path_raw, allowed_roots=allowed_roots, projects_root=projects_root
     )
     sessions = _scan_project_sessions(directory)
-    dated = [session for session in sessions if session is not None]
+    dated = list(sessions)
     if not dated:
         raise ApiError(422, "no_claude_sessions", "这个项目还没有可读取的 Claude Code 会话")
     days = [session.started_at.date() for session in dated]
@@ -58,7 +58,7 @@ def import_claude_sessions(
     sessions = [
         session
         for session in _scan_project_sessions(directory)
-        if session is not None and starts_on <= session.started_at.date() <= ends_on
+        if starts_on <= session.started_at.date() <= ends_on
     ]
     if not sessions:
         raise ApiError(
@@ -99,7 +99,7 @@ def _resolve_session_directory(
     if not candidate.is_dir():
         raise ApiError(422, "claude_sessions_not_found", "这个路径下没有找到 Claude Code 会话记录")
     resolved = candidate.resolve()
-    _require_allowed(resolved, allowed_roots)
+    require_path_allowed(resolved, allowed_roots, error_code="claude_path_not_allowed")
 
     if _is_session_directory(resolved):
         return resolved, _label_from_munged_name(resolved.name), resolved.name
@@ -108,7 +108,9 @@ def _resolve_session_directory(
     projects = Path(projects_root).expanduser()
     session_dir = projects / munged
     if session_dir.is_dir() and _is_session_directory(session_dir):
-        _require_allowed(session_dir.resolve(), allowed_roots)
+        require_path_allowed(
+            session_dir.resolve(), allowed_roots, error_code="claude_path_not_allowed"
+        )
         return session_dir.resolve(), resolved.name, str(resolved)
 
     raise ApiError(
@@ -128,20 +130,11 @@ def _label_from_munged_name(name: str) -> str:
     return name.lstrip("-").split("-")[-1] or "claude-project"
 
 
-def _require_allowed(resolved: Path, allowed_roots: str) -> None:
-    require_path_allowed(
-        resolved,
-        allowed_roots,
-        error_code="claude_path_not_allowed",
-        message="这个路径不在允许读取的目录范围内",
-    )
 
 
-def _scan_project_sessions(directory: Path) -> list[SessionSummary | None]:
-    summaries: list[SessionSummary | None] = []
-    for file_path in sorted(directory.glob("*.jsonl")):
-        summaries.append(_scan_session_file(file_path))
-    return summaries
+def _scan_project_sessions(directory: Path) -> list[SessionSummary]:
+    scanned = (_scan_session_file(file_path) for file_path in sorted(directory.glob("*.jsonl")))
+    return [summary for summary in scanned if summary is not None]
 
 
 def _scan_session_file(path: Path) -> SessionSummary | None:

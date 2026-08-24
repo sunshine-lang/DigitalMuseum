@@ -81,17 +81,10 @@ def _resolve_project(path_raw: str, *, allowed_roots: str) -> tuple[Path, str]:
     if not candidate.is_dir():
         raise ApiError(422, "codex_sessions_not_found", "这个路径下没有找到 Codex 会话记录")
     resolved = candidate.resolve()
-    _require_allowed(resolved, allowed_roots)
+    require_path_allowed(resolved, allowed_roots, error_code="codex_path_not_allowed")
     return resolved, resolved.name or "codex-project"
 
 
-def _require_allowed(resolved: Path, allowed_roots: str) -> None:
-    require_path_allowed(
-        resolved,
-        allowed_roots,
-        error_code="codex_path_not_allowed",
-        message="这个路径不在允许读取的目录范围内",
-    )
 
 
 def _project_sessions(project_root: Path, sessions_root: str) -> list[SessionSummary]:

@@ -79,8 +79,6 @@ test("状态徽标与统计口径诚实", () => {
   assert.match(html, /3 段经历/);
   assert.match(html, /1 段本人确认/);
   assert.match(html, /1 段系统核实/);
-  assert.match(html, /本人确认/);
-  assert.match(html, /系统核实/);
   assert.match(html, /等待核对/);
   assert.match(html, /不代表对内容的解读/);
   assert.match(html, /未随本页导出/);

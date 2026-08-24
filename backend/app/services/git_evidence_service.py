@@ -238,12 +238,7 @@ def _resolve_repo_path(raw: str, allowed_roots: str) -> Path:
     if not candidate.is_dir():
         raise ApiError(422, "repo_not_found", "路径不存在或不是一个目录")
     resolved = candidate.resolve()
-    require_path_allowed(
-        resolved,
-        allowed_roots,
-        error_code="repo_path_not_allowed",
-        message="这个路径不在允许读取的目录范围内",
-    )
+    require_path_allowed(resolved, allowed_roots, error_code="repo_path_not_allowed")
     return resolved
 
 
