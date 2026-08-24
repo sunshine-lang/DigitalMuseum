@@ -67,3 +67,4 @@ npm run lint              # eslint
 - `npm run build`（build-verified.sh）需要 GNU timeout，macOS 上用 `npm run build:local`。
 - 前端 dev 模式不会内联 `NEXT_PUBLIC_*` 变量，页面始终请求默认的 8010 端口；E2E 因此必须让隔离后端占用 8010。
 - 提交前自查：`test:backend`、`test:local`、`typecheck`、`lint` 全部通过；改动用户交互链路时加跑 `test:e2e`。
+- Git 提交信息一律用中文（用户约定，2026-08-24 起）。
