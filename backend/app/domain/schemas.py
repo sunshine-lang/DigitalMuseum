@@ -100,6 +100,7 @@ class EventOut(BaseModel):
         "note", "aggregated", "merged", "split", "git", "photo", "claude", "codex"
     ]
     source_count: int
+    exhibit_caption: str | None
     claims: list[ClaimOut]
     latest_review: ReviewOut | None
 
@@ -155,6 +156,11 @@ class MergeOut(BaseModel):
 class SplitOut(BaseModel):
     event: EventOut
     events: list[EventOut]
+
+
+class ExhibitCaptionUpdate(BaseModel):
+    # 空/空白 = 清除展签，回落到确定性叙事底稿；长度校验在服务层（invalid_caption）
+    caption: str | None = None
 
 
 class GitRepoCreate(BaseModel):

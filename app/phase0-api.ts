@@ -76,6 +76,7 @@ export type CandidateEvent = {
   is_formal: boolean;
   origin: EventOrigin;
   source_count: number;
+  exhibit_caption: string | null;
   claims: Claim[];
   latest_review: EventReview | null;
 };
@@ -200,6 +201,16 @@ export function importPhoto(stageId: string, file: File): Promise<CandidateEvent
     method: "POST",
     body: formData,
   }).then((result) => result.event);
+}
+
+export function updateExhibitCaption(
+  eventId: string,
+  caption: string | null,
+): Promise<CandidateEvent> {
+  return apiRequest(`/api/v1/events/${eventId}/exhibit-caption`, {
+    method: "PATCH",
+    body: JSON.stringify({ caption }),
+  });
 }
 
 export function reviewEvent(

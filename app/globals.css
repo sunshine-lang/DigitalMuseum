@@ -2622,3 +2622,80 @@ a.mvp-primary {
 @media (max-width: 760px) {
   [data-expo-theme="museum-night"] .expo-chapter { padding-left: 14px; }
 }
+
+/* —— 展签：人工策展文案（点按改写） —— */
+.expo-card-narrative { cursor: pointer; position: relative; padding-right: 34px; }
+.expo-card-narrative:hover { color: var(--e-ink); }
+.expo-card-narrative.curated { color: var(--e-ink); }
+.expo-card-narrative.curated::after {
+  content: "✎";
+  position: absolute;
+  right: 0;
+  top: 0;
+  color: var(--hall-accent, var(--e-accent));
+  font-size: 11px;
+}
+.expo-caption-edit-hint {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  font-family: var(--e-mono, ui-monospace, monospace);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: var(--e-muted);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.expo-card-narrative:hover .expo-caption-edit-hint { opacity: 0.9; }
+.expo-caption-editor { display: grid; gap: 8px; }
+.expo-caption-editor textarea {
+  width: 100%;
+  border: 1px solid var(--e-line);
+  border-radius: 8px;
+  background: var(--e-bg-soft);
+  color: var(--e-ink);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 10px 12px;
+  resize: vertical;
+}
+.expo-caption-editor textarea:focus-visible {
+  outline: 2px solid var(--hall-accent, var(--e-accent));
+  outline-offset: 1px;
+}
+.expo-caption-editor > div { display: flex; gap: 8px; }
+.expo-caption-editor button {
+  border: 1px solid var(--e-line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--e-ink);
+  font-size: 12px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+.expo-caption-editor button:first-child { border-color: var(--hall-accent, var(--e-accent)); }
+.expo-caption-toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border: 1px solid var(--e-line);
+  border-radius: 10px;
+  background: var(--e-card, #141416);
+  color: var(--e-ink, #eee);
+  font-size: 13px;
+  box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.5);
+}
+.expo-caption-toast button {
+  border: 0;
+  background: transparent;
+  color: var(--hall-accent, var(--e-accent, #847dff));
+  cursor: pointer;
+  font-size: 12px;
+}

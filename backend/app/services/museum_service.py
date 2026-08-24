@@ -705,6 +705,19 @@ def _persist_photo_candidate(
     }
 
 
+def set_exhibit_caption(session: Session, event_id: str, caption: str | None) -> dict:
+    """展签是展览态的人工策展文案：只改 display 层，不触碰状态机、
+    审计与聚合语义（结构性事件也可改——拆分产物同样要展出）。"""
+    event = _load_event(session, event_id)
+    normalized = caption.strip() if caption else ""
+    if normalized and len(normalized) > 200:
+        raise ApiError(422, "invalid_caption", "展签不能超过 200 字")
+    event.exhibit_caption = normalized or None
+    event.updated_at = utc_now()
+    session.commit()
+    return serialize_event(_load_event(session, event_id), session)
+
+
 def merge_events(session: Session, stage_id: str, payload: MergeCreate) -> dict:
     require_stage(session, stage_id)
     unique_ids = list(dict.fromkeys(payload.event_ids))
@@ -1090,6 +1103,7 @@ def serialize_event(event: CandidateEvent, session: Session) -> dict:
         "revision": event.revision,
         "is_formal": event.status == "confirmed",
         "origin": event.origin,
+        "exhibit_caption": event.exhibit_caption,
         "source_count": len({claim.occurrence_id for claim in event.claims}),
         "claims": [
             {

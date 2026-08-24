@@ -87,6 +87,8 @@ class CandidateEvent(Base):
     revision: Mapped[int] = mapped_column(Integer, default=0)
     origin: Mapped[str] = mapped_column(String(24))
     aggregation_rule: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # 展签：展览态的人工策展文案（Omeka「展品与展签分离」）。空 = 用确定性叙事底稿。
+    exhibit_caption: Mapped[str | None] = mapped_column(Text, nullable=True)
     parent_event_id: Mapped[str | None] = mapped_column(
         ForeignKey("candidate_events.id"), nullable=True
     )

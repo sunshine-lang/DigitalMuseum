@@ -103,6 +103,7 @@ def export_archive(session: Session, *, upload_dir: Path) -> bytes:
                 "revision": e.revision,
                 "origin": e.origin,
                 "aggregation_rule": e.aggregation_rule,
+                "exhibit_caption": e.exhibit_caption,
                 "parent_event_id": e.parent_event_id,
                 "created_at": _iso(e.created_at),
                 "updated_at": _iso(e.updated_at),
@@ -306,6 +307,7 @@ def import_archive(session: Session, archive_bytes: bytes, *, upload_dir: Path) 
                 revision=row["revision"],
                 origin=row["origin"],
                 aggregation_rule=row.get("aggregation_rule"),
+                exhibit_caption=row.get("exhibit_caption"),
                 parent_event_id=None,  # 血缘在全部事件建好后再回填
                 created_at=_parse_dt(row.get("created_at")),
                 updated_at=_parse_dt(row.get("updated_at")),

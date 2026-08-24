@@ -10,6 +10,7 @@ import {
   blobUrl,
   getEvents,
   getStage,
+  updateExhibitCaption,
 } from "../phase0-api";
 import { buildExhibitionHtml } from "./export-html";
 
@@ -73,12 +74,12 @@ const themes: Array<{
 const HALL_ACCENTS = ["#847dff", "#dd90d8", "#90b8f0", "#d1c9ff"];
 
 /**
- * 展品叙事：把确定性 claim 压成一句适合展览的人话。
- * 只做显示层清洗（去 URL/插件标记/markdown 残留、限长），不改证据本身——
- * 原文与锚点仍在"展品标签"里供查证。
+ * 展品叙事底稿：把确定性 claim 压成一句适合展览的人话。
+ * 确定性天花板明确——真正满意的展签交给用户改写（exhibit_caption），
+ * 这里只负责"不丢人"的默认值。原文与锚点仍在"展品标签"里供查证。
  */
-function exhibitNarrative(text: string): string {
-  const cleaned = text
+function cleanFragment(text: string): string {
+  return text
     .replace(/\[@[^\]]*\]\(plugin\/\/[^)]*\)/g, "")
     .replace(/\[([^\]]*)\]\(https?:[^)]*\)/g, "$1")
     .replace(/<[^>]+>/g, "")
@@ -88,7 +89,41 @@ function exhibitNarrative(text: string): string {
     })
     .replace(/\s+/g, " ")
     .trim();
-  return cleaned.length > 72 ? `${cleaned.slice(0, 72)}…` : cleaned;
+}
+
+function exhibitNarrative(event: CandidateEvent): string {
+  const claim = event.claims[0]?.text ?? "";
+  const topicMatch = claim.match(/「([^」]{2,40})」/);
+  const topic = topicMatch ? cleanFragment(topicMatch[1]) : "";
+
+  if (event.origin === "claude" || event.origin === "codex") {
+    const agent = event.origin === "claude" ? "Claude Code" : "Codex";
+    const sessionCount = Number(claim.match(/进行了 (\d+) 个/)?.[1] ?? 0);
+    const messageCount = Number(claim.match(/共 (\d+) 条/)?.[1] ?? 0);
+    const stats = [
+      sessionCount > 1 ? `${sessionCount} 个会话` : "",
+      messageCount > 0 ? `${messageCount} 条你来我往的消息` : "",
+    ].filter(Boolean).join("、");
+    if (topic) return stats ? `${stats}，从「${topic}」开始` : `与 ${agent} 的对话，从「${topic}」开始`;
+    return stats ? `这一天你与 ${agent} 有${stats}` : cleanFragment(claim).slice(0, 72);
+  }
+
+  if (event.origin === "git") {
+    const commitCount = Number(claim.match(/提交了 (\d+) 个变更/)?.[1] ?? 0);
+    const repo = claim.match(/仓库 ([^（]+?)（/)?.[1] ?? "";
+    const first = claim.match(/变更：([^；。]{4,40})/)?.[1] ?? "";
+    const parts = [
+      repo ? `在 ${repo.trim()}` : "",
+      commitCount > 0 ? `提交了 ${commitCount} 次` : "",
+    ].filter(Boolean).join("");
+    const tail = first ? `：${first.trim()}…` : "";
+    return `${parts}${tail}` || cleanFragment(claim).slice(0, 72);
+  }
+
+  // 笔记：取第一个完整句
+  const cleaned = cleanFragment(claim).replace(/^[-*>\s]+/, "");
+  const sentence = cleaned.split(/[。！？]/)[0];
+  return (sentence.length >= 6 ? sentence : cleaned).slice(0, 72);
 }
 
 const statusLabels: Record<string, string> = {
@@ -279,6 +314,28 @@ export default function ExhibitionWorkspace() {
     beginExhibition(picked.id, true);
   }
 
+  // 展签改写：机器给底稿，人是策展人。只改展示层，不触碰证据与状态机。
+  const [captionEdit, setCaptionEdit] = useState<{ id: string; value: string } | null>(null);
+  const [captionBusy, setCaptionBusy] = useState(false);
+  const [captionError, setCaptionError] = useState<string | null>(null);
+
+  async function saveCaption(eventId: string) {
+    if (!captionEdit || captionBusy) return;
+    setCaptionBusy(true);
+    setCaptionError(null);
+    try {
+      const updated = await updateExhibitCaption(eventId, captionEdit.value.trim() || null);
+      setEvents((current) =>
+        current.map((event) => (event.id === updated.id ? updated : event)),
+      );
+      setCaptionEdit(null);
+    } catch (error) {
+      setCaptionError(error instanceof Error ? error.message : "展签保存失败，请重试");
+    } finally {
+      setCaptionBusy(false);
+    }
+  }
+
   function exportStaticExhibition() {
     if (!stage || selectedEvents.length === 0) return;
     const html = buildExhibitionHtml({
@@ -450,6 +507,12 @@ export default function ExhibitionWorkspace() {
 
   return (
     <main className="expo-show" data-expo-theme={themeId}>
+      {captionError && (
+        <div className="expo-caption-toast" role="alert">
+          <span>{captionError}</span>
+          <button type="button" onClick={() => setCaptionError(null)}>知道了</button>
+        </div>
+      )}
       <div className="expo-progress" ref={progressRef} aria-hidden="true" />
       <header className="expo-show-topbar">
         <span className="expo-show-brand">DIGITAL MUSEUM</span>
@@ -531,9 +594,37 @@ export default function ExhibitionWorkspace() {
                     <div className="expo-card-caption">
                       <time>{event.occurred_on ?? "时间待定"}</time>
                       <h3>{event.title}</h3>
-                      <p className="expo-card-narrative">
-                        {exhibitNarrative(event.claims[0]?.text ?? "")}
-                      </p>
+                      {captionEdit?.id === event.id ? (
+                        <div className="expo-caption-editor">
+                          <textarea
+                            value={captionEdit.value}
+                            maxLength={200}
+                            rows={3}
+                            autoFocus
+                            onChange={(changeEvent) =>
+                              setCaptionEdit({ id: event.id, value: changeEvent.target.value })
+                            }
+                          />
+                          <div>
+                            <button type="button" disabled={captionBusy} onClick={() => void saveCaption(event.id)}>{captionBusy ? "正在保存…" : "保存展签"}</button>
+                            <button type="button" disabled={captionBusy} onClick={() => setCaptionEdit(null)}>取消</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p
+                          className={`expo-card-narrative${event.exhibit_caption ? " curated" : ""}`}
+                          title="点按可改写这段展签"
+                          onClick={() =>
+                            setCaptionEdit({
+                              id: event.id,
+                              value: event.exhibit_caption ?? exhibitNarrative(event),
+                            })
+                          }
+                        >
+                          {event.exhibit_caption ?? exhibitNarrative(event)}
+                          <span className="expo-caption-edit-hint" aria-hidden="true">改写</span>
+                        </p>
+                      )}
                     </div>
                     <div className="expo-labels">
                       {event.claims.map((claim, claimIndex) => (

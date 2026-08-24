@@ -17,6 +17,7 @@ from app.domain.schemas import (
     CodexSessionPreviewOut,
     CoverageOut,
     DataEnvelope,
+    ExhibitCaptionUpdate,
     EventOut,
     GitImportOut,
     GitRepoCreate,
@@ -449,6 +450,21 @@ def create_api_router(session_provider) -> APIRouter:
     @router.post("/events/{event_id}/split", response_model=DataEnvelope[SplitOut])
     def split_event(event_id: str, session: SessionDependency) -> dict:
         return {"data": museum_service.split_event(session, event_id)}
+
+    @router.patch(
+        "/events/{event_id}/exhibit-caption",
+        response_model=DataEnvelope[EventOut],
+    )
+    def update_exhibit_caption(
+        event_id: str,
+        payload: ExhibitCaptionUpdate,
+        session: SessionDependency,
+    ) -> dict:
+        return {
+            "data": museum_service.set_exhibit_caption(
+                session, event_id, payload.caption
+            )
+        }
 
     return router
 
