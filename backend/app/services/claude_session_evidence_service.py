@@ -13,6 +13,7 @@ from app.services.agent_session_evidence import (
     real_user_text,
     render_evidence_document,
 )
+from app.services.path_policy import require_path_allowed
 
 CLAUDE_PROCESSOR_VERSION = "claude-code-evidence-v1"
 
@@ -128,13 +129,12 @@ def _label_from_munged_name(name: str) -> str:
 
 
 def _require_allowed(resolved: Path, allowed_roots: str) -> None:
-    roots = [
-        Path(root.strip()).expanduser().resolve()
-        for root in allowed_roots.split(",")
-        if root.strip()
-    ]
-    if not any(resolved == root or root in resolved.parents for root in roots):
-        raise ApiError(403, "claude_path_not_allowed", "这个路径不在允许读取的目录范围内")
+    require_path_allowed(
+        resolved,
+        allowed_roots,
+        error_code="claude_path_not_allowed",
+        message="这个路径不在允许读取的目录范围内",
+    )
 
 
 def _scan_project_sessions(directory: Path) -> list[SessionSummary | None]:

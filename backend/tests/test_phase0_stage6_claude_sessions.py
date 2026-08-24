@@ -6,9 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-
-STAGE_START = "2026-03-01"
-STAGE_END = "2026-08-31"
+from tests.helpers import create_stage
 
 SESSION_A = "\n".join(
     [
@@ -75,15 +73,6 @@ def claude_client(app_paths, tmp_path: Path) -> TestClient:
         yield test_client
 
 
-def _create_stage(client: TestClient) -> str:
-    response = client.post(
-        "/api/v1/stages",
-        json={"name": "Claude 阶段", "starts_on": STAGE_START, "ends_on": STAGE_END},
-    )
-    assert response.status_code == 201
-    return response.json()["data"]["id"]
-
-
 def _import(client: TestClient, stage_id: str, path: Path | str) -> dict:
     response = client.post(
         f"/api/v1/stages/{stage_id}/claude-sessions",
@@ -103,7 +92,7 @@ def test_import_by_real_project_path_creates_verified_daily_event(
     claude_client: TestClient, claude_workspace: tuple[Path, Path]
 ) -> None:
     workspace, _sessions_dir = claude_workspace
-    stage_id = _create_stage(claude_client)
+    stage_id = create_stage(claude_client, "Claude 阶段")
 
     data = _import(claude_client, stage_id, workspace)
 
@@ -141,7 +130,7 @@ def test_import_by_direct_session_directory(
     claude_client: TestClient, claude_workspace: tuple[Path, Path]
 ) -> None:
     _workspace, sessions_dir = claude_workspace
-    stage_id = _create_stage(claude_client)
+    stage_id = create_stage(claude_client, "Claude 阶段")
     data = _import(claude_client, stage_id, sessions_dir)
     assert data["events"][0]["title"] == "在 MyProject 与 Claude Code 协作"
 
@@ -150,7 +139,7 @@ def test_out_of_range_and_timestampless_sessions_excluded(
     claude_client: TestClient, claude_workspace: tuple[Path, Path]
 ) -> None:
     workspace, _sessions_dir = claude_workspace
-    stage_id = _create_stage(claude_client)
+    stage_id = create_stage(claude_client, "Claude 阶段")
     data = _import(claude_client, stage_id, workspace)
     days = [event["occurred_on"] for event in data["events"]]
     assert days == ["2026-05-10"]
@@ -160,7 +149,7 @@ def test_reimport_aggregates_without_duplicate(
     claude_client: TestClient, claude_workspace: tuple[Path, Path]
 ) -> None:
     workspace, _sessions_dir = claude_workspace
-    stage_id = _create_stage(claude_client)
+    stage_id = create_stage(claude_client, "Claude 阶段")
     _import(claude_client, stage_id, workspace)
     second = _import(claude_client, stage_id, workspace)
 
@@ -177,7 +166,7 @@ def test_disputed_then_reimport_absorbs_into_user_judgement(
     claude_client: TestClient, claude_workspace: tuple[Path, Path]
 ) -> None:
     workspace, sessions_dir = claude_workspace
-    stage_id = _create_stage(claude_client)
+    stage_id = create_stage(claude_client, "Claude 阶段")
     data = _import(claude_client, stage_id, workspace)
     event_id = data["events"][0]["id"]
     review = claude_client.post(
@@ -207,7 +196,7 @@ def test_disputed_then_reimport_absorbs_into_user_judgement(
 
 
 def test_path_errors(claude_client: TestClient, tmp_path: Path) -> None:
-    stage_id = _create_stage(claude_client)
+    stage_id = create_stage(claude_client, "Claude 阶段")
 
     missing = claude_client.post(
         f"/api/v1/stages/{stage_id}/claude-sessions",
@@ -234,7 +223,7 @@ def test_path_errors(claude_client: TestClient, tmp_path: Path) -> None:
 def test_no_sessions_in_range_leaves_no_residue(
     claude_client: TestClient, tmp_path: Path
 ) -> None:
-    stage_id = _create_stage(claude_client)
+    stage_id = create_stage(claude_client, "Claude 阶段")
     workspace = tmp_path / "empty-project"
     workspace.mkdir()
     munged = str(workspace.resolve()).replace("/", "-")
@@ -266,7 +255,7 @@ def test_restart_persists_events_and_review(
             claude_projects_root=str(tmp_path / "claude-home" / "projects"),
         )
     ) as client:
-        stage_id = _create_stage(client)
+        stage_id = create_stage(client, "Claude 阶段")
         data = _import(client, stage_id, workspace)
         event_id = data["events"][0]["id"]
         confirmed = client.post(

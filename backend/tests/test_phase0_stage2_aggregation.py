@@ -5,19 +5,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-
-
-def create_stage(client: TestClient) -> str:
-    response = client.post(
-        "/api/v1/stages",
-        json={
-            "name": "我的 AI 产品半年",
-            "starts_on": "2026-01-01",
-            "ends_on": "2026-06-30",
-        },
-    )
-    assert response.status_code == 201
-    return response.json()["data"]["id"]
+from tests.helpers import create_half_year_stage as create_stage
 
 
 def note_bytes(title: str, occurred_on: str, body: str) -> bytes:

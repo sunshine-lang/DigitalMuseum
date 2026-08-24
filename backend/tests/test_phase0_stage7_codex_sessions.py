@@ -7,9 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-
-STAGE_START = "2026-03-01"
-STAGE_END = "2026-08-31"
+from tests.helpers import create_stage
 
 
 def _rollout_line(timestamp: str, record_type: str, payload: dict) -> str:
@@ -160,15 +158,6 @@ def codex_client(app_paths, tmp_path: Path) -> TestClient:
         yield test_client
 
 
-def _create_stage(client: TestClient) -> str:
-    response = client.post(
-        "/api/v1/stages",
-        json={"name": "Codex 阶段", "starts_on": STAGE_START, "ends_on": STAGE_END},
-    )
-    assert response.status_code == 201
-    return response.json()["data"]["id"]
-
-
 def _import(client: TestClient, stage_id: str, path: Path | str) -> dict:
     response = client.post(
         f"/api/v1/stages/{stage_id}/codex-sessions",
@@ -188,7 +177,7 @@ def test_import_creates_verified_daily_event_excluding_subagent(
     codex_client: TestClient, codex_workspace: tuple[Path, Path]
 ) -> None:
     workspace, _sessions_root = codex_workspace
-    stage_id = _create_stage(codex_client)
+    stage_id = create_stage(codex_client, "Codex 阶段")
 
     data = _import(codex_client, stage_id, workspace)
 
@@ -224,7 +213,7 @@ def test_reimport_aggregates_without_duplicate(
     codex_client: TestClient, codex_workspace: tuple[Path, Path]
 ) -> None:
     workspace, _sessions_root = codex_workspace
-    stage_id = _create_stage(codex_client)
+    stage_id = create_stage(codex_client, "Codex 阶段")
     _import(codex_client, stage_id, workspace)
     second = _import(codex_client, stage_id, workspace)
 
@@ -243,7 +232,7 @@ def test_disputed_then_reimport_absorbs_into_user_judgement(
     codex_client: TestClient, codex_workspace: tuple[Path, Path]
 ) -> None:
     workspace, sessions_root = codex_workspace
-    stage_id = _create_stage(codex_client)
+    stage_id = create_stage(codex_client, "Codex 阶段")
     data = _import(codex_client, stage_id, workspace)
     event_id = data["events"][0]["id"]
     review = codex_client.post(
@@ -285,7 +274,7 @@ def test_disputed_then_reimport_absorbs_into_user_judgement(
 
 
 def test_path_errors(codex_client: TestClient, tmp_path: Path) -> None:
-    stage_id = _create_stage(codex_client)
+    stage_id = create_stage(codex_client, "Codex 阶段")
 
     missing = codex_client.post(
         f"/api/v1/stages/{stage_id}/codex-sessions",
@@ -312,7 +301,7 @@ def test_path_errors(codex_client: TestClient, tmp_path: Path) -> None:
 def test_no_sessions_in_range_leaves_no_residue(
     codex_client: TestClient, tmp_path: Path
 ) -> None:
-    stage_id = _create_stage(codex_client)
+    stage_id = create_stage(codex_client, "Codex 阶段")
     workspace = tmp_path / "empty-project"
     workspace.mkdir()
     sessions_root = tmp_path / "codex-home" / "sessions"
@@ -342,7 +331,7 @@ def test_restart_persists_events_and_review(
             codex_sessions_root=str(tmp_path / "codex-home" / "sessions"),
         )
     ) as client:
-        stage_id = _create_stage(client)
+        stage_id = create_stage(client, "Codex 阶段")
         data = _import(client, stage_id, workspace)
         event_id = data["events"][0]["id"]
         confirmed = client.post(

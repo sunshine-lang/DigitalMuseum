@@ -38,6 +38,15 @@ STRUCTURAL_STATUSES = {"merged", "split"}
 # （Git 提交 / 照片元数据）。被用户审阅过的事件 revision > 0，天然不会匹配。
 AGGREGATABLE_STATUSES = ("candidate", "verified")
 
+# 机器证据同题同日聚合时的候选 origin 白名单。各家族只并入自身与笔记；
+# photo 额外包含 git：照片 EXIF 日期与 Git 提交日同为确定性机器读数，
+# 同题同日允许并入既有事件，而 Claude/Codex 会话事件不与 Git 聚合。
+NOTE_AGGREGATION_ORIGINS = ("note", "aggregated")
+GIT_AGGREGATION_ORIGINS = ("note", "aggregated", "git")
+CLAUDE_AGGREGATION_ORIGINS = ("note", "aggregated", "claude")
+CODEX_AGGREGATION_ORIGINS = ("note", "aggregated", "codex")
+PHOTO_AGGREGATION_ORIGINS = ("note", "aggregated", "git", "photo")
+
 COVERAGE_ORDER = {
     "stored_locally": 0,
     "parsed_locally": 1,
@@ -349,12 +358,10 @@ def persist_note_candidate(
     session.add(event)
     session.commit()
     reloaded_event = _load_event(session, event.id)
-    coverage = list_coverage(session, stage.id)
-    occurrence_coverage = [item for item in coverage if item["occurrence_id"] == occurrence.id]
     return {
         "occurrence": serialize_occurrence(occurrence),
         "event": serialize_event(reloaded_event, session),
-        "coverage": occurrence_coverage,
+        "coverage": _occurrence_coverage(session, stage.id, occurrence.id),
     }
 
 
@@ -373,41 +380,18 @@ def import_git_evidence(
         ends_on=stage.ends_on,
         allowed_roots=allowed_repo_roots,
     )
-    content = evidence.document.encode("utf-8")
-    occurrence = start_note_import(
+    return _import_activity_evidence(
         session,
-        stage_id=stage.id,
-        original_filename=f"{evidence.repo_name}-git-evidence.txt",
-        media_type="text/plain",
-        content=content,
+        stage=stage,
         upload_dir=upload_dir,
+        document=evidence.document,
+        items=evidence.items,
+        label=evidence.repo_name,
+        filename_suffix="-git-evidence.txt",
+        origin="git",
+        origins=GIT_AGGREGATION_ORIGINS,
+        processor_version=git_evidence.GIT_PROCESSOR_VERSION,
     )
-    occurrence_id = occurrence.id
-    try:
-        events = _persist_machine_candidates(
-            session,
-            occurrence_id=occurrence_id,
-            items=evidence.items,
-            origin="git",
-            origins=("note", "aggregated", "git"),
-            processor_version=git_evidence.GIT_PROCESSOR_VERSION,
-        )
-    except ApiError as exc:
-        mark_import_failed(
-            session,
-            occurrence_id=occurrence_id,
-            step="candidate_generated",
-            error_code=exc.code,
-            processor_version=git_evidence.GIT_PROCESSOR_VERSION,
-        )
-        raise
-    coverage = list_coverage(session, stage.id)
-    occurrence_coverage = [item for item in coverage if item["occurrence_id"] == occurrence_id]
-    return {
-        "occurrence": serialize_occurrence(occurrence),
-        "events": events,
-        "coverage": occurrence_coverage,
-    }
 
 
 def import_claude_sessions(
@@ -427,41 +411,18 @@ def import_claude_sessions(
         allowed_roots=allowed_repo_roots,
         projects_root=claude_projects_root,
     )
-    content = evidence.document.encode("utf-8")
-    occurrence = start_note_import(
+    return _import_activity_evidence(
         session,
-        stage_id=stage.id,
-        original_filename=f"{evidence.project_label}-claude-sessions.txt",
-        media_type="text/plain",
-        content=content,
+        stage=stage,
         upload_dir=upload_dir,
+        document=evidence.document,
+        items=evidence.items,
+        label=evidence.project_label,
+        filename_suffix="-claude-sessions.txt",
+        origin="claude",
+        origins=CLAUDE_AGGREGATION_ORIGINS,
+        processor_version=claude_evidence.CLAUDE_PROCESSOR_VERSION,
     )
-    occurrence_id = occurrence.id
-    try:
-        events = _persist_machine_candidates(
-            session,
-            occurrence_id=occurrence_id,
-            items=evidence.items,
-            origin="claude",
-            origins=("note", "aggregated", "claude"),
-            processor_version=claude_evidence.CLAUDE_PROCESSOR_VERSION,
-        )
-    except ApiError as exc:
-        mark_import_failed(
-            session,
-            occurrence_id=occurrence_id,
-            step="candidate_generated",
-            error_code=exc.code,
-            processor_version=claude_evidence.CLAUDE_PROCESSOR_VERSION,
-        )
-        raise
-    coverage = list_coverage(session, stage.id)
-    occurrence_coverage = [item for item in coverage if item["occurrence_id"] == occurrence_id]
-    return {
-        "occurrence": serialize_occurrence(occurrence),
-        "events": events,
-        "coverage": occurrence_coverage,
-    }
 
 
 def import_codex_sessions(
@@ -481,13 +442,44 @@ def import_codex_sessions(
         allowed_roots=allowed_repo_roots,
         sessions_root=codex_sessions_root,
     )
-    content = evidence.document.encode("utf-8")
+    return _import_activity_evidence(
+        session,
+        stage=stage,
+        upload_dir=upload_dir,
+        document=evidence.document,
+        items=evidence.items,
+        label=evidence.project_label,
+        filename_suffix="-codex-sessions.txt",
+        origin="codex",
+        origins=CODEX_AGGREGATION_ORIGINS,
+        processor_version=codex_evidence.CODEX_PROCESSOR_VERSION,
+    )
+
+
+def _import_activity_evidence(
+    session: Session,
+    *,
+    stage: Stage,
+    upload_dir: Path,
+    document: str,
+    items: tuple[GitActivityItem | AgentActivityItem, ...],
+    label: str,
+    filename_suffix: str,
+    origin: str,
+    origins: tuple[str, ...],
+    processor_version: str,
+) -> dict:
+    """Git / Claude / Codex 三条导入链路的公共尾部：
+
+    证据文档落 blob → 起始 occurrence → 持久化机器候选（失败则标记失败
+    coverage 后原样抛出）→ 只保留本次 occurrence 的 coverage 并组装返回。
+    """
     occurrence = start_note_import(
         session,
         stage_id=stage.id,
-        original_filename=f"{evidence.project_label}-codex-sessions.txt",
+        original_filename=f"{label}{filename_suffix}",
         media_type="text/plain",
-        content=content,
+        content=document.encode("utf-8"),
         upload_dir=upload_dir,
     )
     occurrence_id = occurrence.id
@@ -495,10 +487,10 @@ def import_codex_sessions(
         events = _persist_machine_candidates(
             session,
             occurrence_id=occurrence_id,
-            items=evidence.items,
-            origin="codex",
-            origins=("note", "aggregated", "codex"),
-            processor_version=codex_evidence.CODEX_PROCESSOR_VERSION,
+            items=items,
+            origin=origin,
+            origins=origins,
+            processor_version=processor_version,
         )
     except ApiError as exc:
         mark_import_failed(
@@ -506,15 +498,13 @@ def import_codex_sessions(
             occurrence_id=occurrence_id,
             step="candidate_generated",
             error_code=exc.code,
-            processor_version=codex_evidence.CODEX_PROCESSOR_VERSION,
+            processor_version=processor_version,
         )
         raise
-    coverage = list_coverage(session, stage.id)
-    occurrence_coverage = [item for item in coverage if item["occurrence_id"] == occurrence_id]
     return {
         "occurrence": serialize_occurrence(occurrence),
         "events": events,
-        "coverage": occurrence_coverage,
+        "coverage": _occurrence_coverage(session, stage.id, occurrence_id),
     }
 
 
@@ -665,7 +655,7 @@ def _persist_photo_candidate(
         occurred_on=evidence.occurred_on,
         initial_status="verified",
         origin="photo",
-        origins=("note", "aggregated", "git", "photo"),
+        origins=PHOTO_AGGREGATION_ORIGINS,
     )
     claim = Claim(
         event=event,
@@ -708,12 +698,10 @@ def _persist_photo_candidate(
     session.add(event)
     session.commit()
     reloaded_event = _load_event(session, event.id)
-    coverage = list_coverage(session, stage.id)
-    occurrence_coverage = [item for item in coverage if item["occurrence_id"] == occurrence.id]
     return {
         "occurrence": serialize_occurrence(occurrence),
         "event": serialize_event(reloaded_event, session),
-        "coverage": occurrence_coverage,
+        "coverage": _occurrence_coverage(session, stage.id, occurrence.id),
     }
 
 
@@ -949,7 +937,7 @@ def _find_aggregation_target(
     stage_id: str,
     title: str,
     occurred_on: date | None,
-    origins: tuple[str, ...] = ("note", "aggregated"),
+    origins: tuple[str, ...] = NOTE_AGGREGATION_ORIGINS,
 ) -> CandidateEvent | None:
     if occurred_on is None:
         return None
@@ -1070,6 +1058,12 @@ def list_coverage(session: Session, stage_id: str) -> list[dict]:
             COVERAGE_ORDER[item["step"]],
         ),
     )
+
+
+def _occurrence_coverage(session: Session, stage_id: str, occurrence_id: str) -> list[dict]:
+    """导入返回只携带本次 occurrence 的 coverage（全阶段列表按 occurrence 过滤）。"""
+    coverage = list_coverage(session, stage_id)
+    return [item for item in coverage if item["occurrence_id"] == occurrence_id]
 
 
 def serialize_occurrence(occurrence: EvidenceOccurrence) -> dict:

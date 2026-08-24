@@ -7,16 +7,9 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from tests.helpers import create_stage
+
 NOTE_CONTENT = "# 2026-05-10 调通归档链路\n\n今天把备份导出与恢复跑通。\n"
-
-
-def _create_stage(client: TestClient) -> str:
-    response = client.post(
-        "/api/v1/stages",
-        json={"name": "备份阶段", "starts_on": "2026-03-01", "ends_on": "2026-08-31"},
-    )
-    assert response.status_code == 201
-    return response.json()["data"]["id"]
 
 
 def _import_note(client: TestClient, stage_id: str) -> dict:
@@ -44,7 +37,7 @@ def _import_archive(client: TestClient, archive_bytes: bytes):
 
 
 def test_round_trip_restores_deleted_stage_events_and_blobs(client: TestClient) -> None:
-    stage_id = _create_stage(client)
+    stage_id = create_stage(client, "备份阶段")
     note = _import_note(client, stage_id)
     event_id = note["event"]["id"]
     review = client.post(
@@ -92,7 +85,7 @@ def test_round_trip_restores_deleted_stage_events_and_blobs(client: TestClient) 
 
 
 def test_reimport_reuses_existing_blobs_and_duplicates_stages(client: TestClient) -> None:
-    stage_id = _create_stage(client)
+    stage_id = create_stage(client, "备份阶段")
     _import_note(client, stage_id)
     archive_bytes = _export(client)
 
@@ -109,7 +102,7 @@ def test_reimport_reuses_existing_blobs_and_duplicates_stages(client: TestClient
 
 
 def test_tampered_blob_rejected_without_residue(client: TestClient) -> None:
-    stage_id = _create_stage(client)
+    stage_id = create_stage(client, "备份阶段")
     _import_note(client, stage_id)
     archive_bytes = _export(client)
 
@@ -167,7 +160,7 @@ def test_empty_archive_exports_and_reimports_cleanly(client: TestClient) -> None
 
 
 def test_broken_reference_rejected(client: TestClient, tmp_path: Path) -> None:
-    stage_id = _create_stage(client)
+    stage_id = create_stage(client, "备份阶段")
     _import_note(client, stage_id)
     archive_bytes = _export(client)
 

@@ -13,6 +13,7 @@ from app.services.agent_session_evidence import (
     real_user_text,
     render_evidence_document,
 )
+from app.services.path_policy import require_path_allowed
 
 CODEX_PROCESSOR_VERSION = "codex-evidence-v1"
 
@@ -85,13 +86,12 @@ def _resolve_project(path_raw: str, *, allowed_roots: str) -> tuple[Path, str]:
 
 
 def _require_allowed(resolved: Path, allowed_roots: str) -> None:
-    roots = [
-        Path(root.strip()).expanduser().resolve()
-        for root in allowed_roots.split(",")
-        if root.strip()
-    ]
-    if not any(resolved == root or root in resolved.parents for root in roots):
-        raise ApiError(403, "codex_path_not_allowed", "这个路径不在允许读取的目录范围内")
+    require_path_allowed(
+        resolved,
+        allowed_roots,
+        error_code="codex_path_not_allowed",
+        message="这个路径不在允许读取的目录范围内",
+    )
 
 
 def _project_sessions(project_root: Path, sessions_root: str) -> list[SessionSummary]:

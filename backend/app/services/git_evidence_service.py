@@ -6,6 +6,7 @@ from datetime import date
 from pathlib import Path
 
 from app.core.errors import ApiError
+from app.services.path_policy import require_path_allowed
 
 GIT_PROCESSOR_VERSION = "git-evidence-v1"
 
@@ -237,13 +238,12 @@ def _resolve_repo_path(raw: str, allowed_roots: str) -> Path:
     if not candidate.is_dir():
         raise ApiError(422, "repo_not_found", "路径不存在或不是一个目录")
     resolved = candidate.resolve()
-    roots = [
-        Path(root.strip()).expanduser().resolve()
-        for root in allowed_roots.split(",")
-        if root.strip()
-    ]
-    if not any(resolved == root or root in resolved.parents for root in roots):
-        raise ApiError(403, "repo_path_not_allowed", "这个路径不在允许读取的目录范围内")
+    require_path_allowed(
+        resolved,
+        allowed_roots,
+        error_code="repo_path_not_allowed",
+        message="这个路径不在允许读取的目录范围内",
+    )
     return resolved
 
 

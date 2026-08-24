@@ -16,36 +16,8 @@ from app.domain.models import (
     EvidenceOccurrence,
 )
 from app.main import create_app
-
-
-def create_stage(client: TestClient, name: str = "我的 AI 产品半年") -> str:
-    response = client.post(
-        "/api/v1/stages",
-        json={
-            "name": name,
-            "starts_on": "2026-01-01",
-            "ends_on": "2026-06-30",
-        },
-    )
-    assert response.status_code == 201
-    return response.json()["data"]["id"]
-
-
-def upload_note(client: TestClient, stage_id: str, filename: str) -> bytes:
-    note = (
-        "---\n"
-        f"title: {filename} 的记录\n"
-        "date: 2026-05-20\n"
-        "---\n"
-        "\n"
-        "今天完成了一段可回溯的整理工作。\n"
-    ).encode()
-    response = client.post(
-        f"/api/v1/stages/{stage_id}/notes",
-        files={"file": (filename, note, "text/markdown")},
-    )
-    assert response.status_code == 201, response.text
-    return note
+from tests.helpers import create_half_year_stage as create_stage
+from tests.helpers import upload_note
 
 
 def test_stage_list_orders_by_created_at_desc_with_confirmed_count(

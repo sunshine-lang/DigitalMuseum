@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import os
-import subprocess
 from datetime import date
 from pathlib import Path
 
@@ -11,71 +9,26 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 from app.services.git_evidence_service import import_git_repository
-
-STAGE_START = "2026-03-01"
-STAGE_END = "2026-08-31"
-
-
-def _git(repo: Path, *args: str, date_iso: str | None = None) -> None:
-    env = os.environ.copy()
-    env.update(
-        {
-            "GIT_AUTHOR_NAME": "Tester",
-            "GIT_AUTHOR_EMAIL": "tester@example.com",
-            "GIT_COMMITTER_NAME": "Tester",
-            "GIT_COMMITTER_EMAIL": "tester@example.com",
-        }
-    )
-    if date_iso is not None:
-        env["GIT_AUTHOR_DATE"] = f"{date_iso}T12:00:00"
-        env["GIT_COMMITTER_DATE"] = f"{date_iso}T12:00:00"
-    subprocess.run(
-        ["git", "-C", str(repo), *args],
-        check=True,
-        capture_output=True,
-        env=env,
-    )
+from tests.helpers import (
+    STAGE_END,
+    STAGE_START,
+    create_stage,
+    make_git_repo,
+)
 
 
 @pytest.fixture
 def git_repo(tmp_path: Path) -> Path:
-    repo = tmp_path / "demo-repo"
-    repo.mkdir()
-    _git(repo, "init", "-b", "main")
-    commits: list[tuple[str, str]] = [
-        ("commit 0: old work", "2024-01-01"),
-        ("commit 1: build feature", "2026-05-10"),
-        ("commit 2: fix bug", "2026-05-10"),
-        ("commit 3: write docs", "2026-06-02"),
-    ]
-    for index, (message, day) in enumerate(commits):
-        (repo / f"file-{index}.txt").write_text(f"content {index}", encoding="utf-8")
-        _git(repo, "add", ".")
-        _git(repo, "commit", "-m", message, date_iso=day)
-    _git(repo, "tag", "-a", "v1.0.0", "-m", "first release", date_iso="2026-06-05")
-    return repo
-
-
-@pytest.fixture
-def git_client(app_paths, tmp_path: Path) -> TestClient:
-    database_url, upload_dir = app_paths
-    with TestClient(
-        create_app(
-            database_url=database_url,
-            upload_dir=upload_dir,
-            allowed_repo_roots=str(tmp_path),
-        )
-    ) as test_client:
-        yield test_client
-
-
-def _create_stage(client: TestClient) -> str:
-    response = client.post(
-        "/api/v1/stages",
-        json={"name": "Git 阶段", "starts_on": STAGE_START, "ends_on": STAGE_END},
+    return make_git_repo(
+        tmp_path / "demo-repo",
+        [
+            ("commit 0: old work", "2024-01-01"),
+            ("commit 1: build feature", "2026-05-10"),
+            ("commit 2: fix bug", "2026-05-10"),
+            ("commit 3: write docs", "2026-06-02"),
+        ],
+        tags=[("v1.0.0", "first release", "2026-06-05")],
     )
-    assert response.status_code == 201
-    return response.json()["data"]["id"]
 
 
 def _import_repo(client: TestClient, stage_id: str, repo: Path):
@@ -83,7 +36,7 @@ def _import_repo(client: TestClient, stage_id: str, repo: Path):
 
 
 def test_git_import_creates_day_and_tag_events(git_client: TestClient, git_repo: Path):
-    stage_id = _create_stage(git_client)
+    stage_id = create_stage(git_client, "Git 阶段")
     response = _import_repo(git_client, stage_id, git_repo)
     assert response.status_code == 201
     events = response.json()["data"]["events"]
@@ -112,7 +65,7 @@ def test_git_import_creates_day_and_tag_events(git_client: TestClient, git_repo:
 
 
 def test_git_evidence_document_is_verbatim_anchorled(git_client: TestClient, git_repo: Path):
-    stage_id = _create_stage(git_client)
+    stage_id = create_stage(git_client, "Git 阶段")
     response = _import_repo(git_client, stage_id, git_repo)
     assert response.status_code == 201
     payload = response.json()["data"]
@@ -136,7 +89,7 @@ def test_git_evidence_document_is_verbatim_anchorled(git_client: TestClient, git
 
 
 def test_git_import_excludes_out_of_range_activity(git_client: TestClient, git_repo: Path):
-    stage_id = _create_stage(git_client)
+    stage_id = create_stage(git_client, "Git 阶段")
     response = _import_repo(git_client, stage_id, git_repo)
     events = response.json()["data"]["events"]
     assert all(event["occurred_on"] >= STAGE_START for event in events)
@@ -148,7 +101,7 @@ def test_git_import_excludes_out_of_range_activity(git_client: TestClient, git_r
 
 
 def test_git_reimport_aggregates_instead_of_duplicating(git_client: TestClient, git_repo: Path):
-    stage_id = _create_stage(git_client)
+    stage_id = create_stage(git_client, "Git 阶段")
     assert _import_repo(git_client, stage_id, git_repo).status_code == 201
     second = _import_repo(git_client, stage_id, git_repo)
     assert second.status_code == 201
@@ -170,7 +123,7 @@ def test_git_review_persists_across_restart(app_paths, tmp_path: Path, git_repo:
             allowed_repo_roots=str(tmp_path),
         )
     ) as client:
-        stage_id = _create_stage(client)
+        stage_id = create_stage(client, "Git 阶段")
         events = _import_repo(client, stage_id, git_repo).json()["data"]["events"]
         target = next(event for event in events if "提交代码" in event["title"])
         reviewed = client.post(
@@ -190,48 +143,51 @@ def test_git_review_persists_across_restart(app_paths, tmp_path: Path, git_repo:
         assert event["status"] == "confirmed"
 
 
-def test_git_path_outside_allowed_roots_is_rejected(app_paths, tmp_path: Path, git_repo: Path):
+@pytest.mark.parametrize(
+    ("scenario", "expected_status", "expected_code"),
+    [
+        ("disallowed-root", 403, "repo_path_not_allowed"),
+        ("not-a-repo", 422, "not_a_git_repository"),
+        ("blank-path", 422, "repo_path_required"),
+    ],
+)
+def test_git_import_path_error_contract(
+    app_paths,
+    tmp_path: Path,
+    git_repo: Path,
+    scenario: str,
+    expected_status: int,
+    expected_code: str,
+):
     database_url, upload_dir = app_paths
-    other_root = tmp_path / "elsewhere"
-    other_root.mkdir()
+    allowed_roots = tmp_path
+    path = str(git_repo)
+    if scenario == "disallowed-root":
+        allowed_roots = tmp_path / "elsewhere"
+        allowed_roots.mkdir()
+    elif scenario == "not-a-repo":
+        plain_dir = tmp_path / "not-a-repo"
+        plain_dir.mkdir()
+        path = str(plain_dir)
+    else:  # blank-path
+        path = "  "
     with TestClient(
         create_app(
             database_url=database_url,
             upload_dir=upload_dir,
-            allowed_repo_roots=str(other_root),
+            allowed_repo_roots=str(allowed_roots),
         )
     ) as client:
-        stage_id = _create_stage(client)
-        response = _import_repo(client, stage_id, git_repo)
-        assert response.status_code == 403
-        assert response.json()["error"]["code"] == "repo_path_not_allowed"
-
-
-def test_git_path_that_is_not_a_repository(git_client: TestClient, tmp_path: Path):
-    plain_dir = tmp_path / "not-a-repo"
-    plain_dir.mkdir()
-    stage_id = _create_stage(git_client)
-    response = _import_repo(git_client, stage_id, plain_dir)
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "not_a_git_repository"
-
-
-def test_git_empty_path_is_rejected(git_client: TestClient):
-    stage_id = _create_stage(git_client)
-    response = git_client.post(f"/api/v1/stages/{stage_id}/git-repos", json={"path": "  "})
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "repo_path_required"
+        stage_id = create_stage(client, "Git 阶段")
+        response = client.post(f"/api/v1/stages/{stage_id}/git-repos", json={"path": path})
+        assert response.status_code == expected_status
+        assert response.json()["error"]["code"] == expected_code
 
 
 def test_git_no_activity_in_range_leaves_no_partial_data(git_client: TestClient, tmp_path: Path):
-    quiet_repo = tmp_path / "quiet-repo"
-    quiet_repo.mkdir()
-    _git(quiet_repo, "init", "-b", "main")
-    (quiet_repo / "only.txt").write_text("old", encoding="utf-8")
-    _git(quiet_repo, "add", ".")
-    _git(quiet_repo, "commit", "-m", "ancient work", date_iso="2020-01-01")
+    quiet_repo = make_git_repo(tmp_path / "quiet-repo", [("ancient work", "2020-01-01")])
 
-    stage_id = _create_stage(git_client)
+    stage_id = create_stage(git_client, "Git 阶段")
     response = _import_repo(git_client, stage_id, quiet_repo)
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "no_git_activity_in_range"
