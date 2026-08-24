@@ -2699,3 +2699,87 @@ a.mvp-primary {
   cursor: pointer;
   font-size: 12px;
 }
+
+/* —— Stage 8 收官：大数字尾声 / 档案落款 / 厅头吸顶 / 海报预览 —— */
+.expo-epilogue-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  margin: 26px 0 34px;
+  text-align: center;
+}
+.expo-epilogue-stats strong {
+  display: block;
+  font-family: var(--e-heading-font, var(--e-display, serif));
+  font-weight: 400;
+  font-size: clamp(44px, 6vw, 76px);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--e-ink);
+}
+.expo-epilogue-stats span {
+  display: block;
+  margin-top: 8px;
+  font-family: var(--e-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--e-muted);
+}
+.expo-archive-stamp {
+  margin: 34px 0 0;
+  font-family: var(--e-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--e-muted);
+  opacity: 0.8;
+}
+
+/* 厅头吸顶：走过展厅时厅名悬停（午夜档案馆；solid 底色主题适用） */
+[data-expo-theme="museum-night"] .expo-chapter > header {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  padding: 14px 0 10px;
+  background: linear-gradient(#0b0b0d 78%, rgba(11, 11, 13, 0));
+}
+
+/* 分享海报预览 */
+.expo-poster-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(6px);
+}
+.expo-poster-modal > div {
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+  max-width: min(92vw, 520px);
+}
+.expo-poster-modal img {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(245, 245, 247, 0.14);
+  box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.9);
+}
+.expo-poster-modal > div > div { display: flex; gap: 12px; }
+.expo-poster-modal a,
+.expo-poster-modal button {
+  border: 1px solid rgba(245, 245, 247, 0.2);
+  border-radius: 8px;
+  padding: 9px 22px;
+  font-size: 14px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.expo-poster-modal a { background: #847dff; border-color: #847dff; color: #0b0b0d; }
+.expo-poster-modal button { background: transparent; color: #f5f5f7; }
+
+@media (max-width: 760px) {
+  .expo-epilogue-stats { grid-template-columns: repeat(2, 1fr); gap: 24px 12px; }
+}

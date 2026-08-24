@@ -8,10 +8,14 @@
  * - 所有用户产生的文本一律 HTML 转义。
  */
 
+import { exhibitNarrative } from "./narrative.ts";
+
 export type ExportExhibitEvent = {
   title: string;
   occurred_on: string | null;
   status: string;
+  origin: string;
+  exhibit_caption: string | null;
   claims: { text: string }[];
 };
 
@@ -86,9 +90,7 @@ export function buildExhibitionHtml(input: ExportExhibitionInput): string {
             <span class="chip ${esc(event.status)}">${esc(statusLabel(event.status))}</span>
           </div>
           <h3>${esc(event.title)}</h3>
-          ${event.claims
-            .map((claim) => `<p>${esc(claim.text)}</p>`)
-            .join("\n          ")}
+          <p class="caption">${esc(event.exhibit_caption || exhibitNarrative(event))}</p>
         </article>`,
         )
         .join("")}
@@ -112,29 +114,35 @@ export function buildExhibitionHtml(input: ExportExhibitionInput): string {
   :root { color-scheme: dark; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    background: #101014; color: #e8e6e1;
+    background: #0b0b0d; color: #f5f5f7;
     font: 16px/1.75 -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
     -webkit-font-smoothing: antialiased;
   }
   .wrap { max-width: 720px; margin: 0 auto; padding: 48px 20px 64px; }
-  header.page { border-bottom: 1px solid #2c2c33; padding-bottom: 32px; margin-bottom: 40px; }
-  .eyebrow { letter-spacing: 0.22em; font-size: 11px; color: #8f8d86; text-transform: uppercase; }
-  h1 { font-size: clamp(26px, 6vw, 38px); line-height: 1.3; margin: 14px 0 10px; font-weight: 700; }
-  .range { color: #a9a7a0; font-size: 14px; }
+  header.page { border-bottom: 1px solid rgba(245,245,247,0.12); padding-bottom: 32px; margin-bottom: 40px; }
+  .eyebrow { letter-spacing: 0.22em; font-size: 11px; color: #9f9fa0; text-transform: uppercase; font-family: ui-monospace, Menlo, monospace; }
+  h1 { font-size: clamp(30px, 7vw, 46px); line-height: 1.15; margin: 16px 0 10px; font-weight: 400; letter-spacing: -0.02em; font-family: Georgia, "Times New Roman", "Noto Serif SC", "Songti SC", serif; }
+  .range { color: #9f9fa0; font-size: 13px; letter-spacing: 0.14em; font-family: ui-monospace, Menlo, monospace; }
   .stats { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 8px; }
-  .stats span { font-size: 12px; border: 1px solid #33333b; border-radius: 999px; padding: 4px 12px; color: #b9b7b0; }
-  h2 { font-size: 13px; letter-spacing: 0.18em; color: #8f8d86; margin: 44px 0 16px; text-transform: uppercase; }
-  .event { border-left: 2px solid #33333b; padding: 4px 0 4px 18px; margin-bottom: 26px; }
+  .stats span { font-size: 12px; border: 1px solid rgba(245,245,247,0.14); border-radius: 999px; padding: 4px 12px; color: #cacacf; font-family: ui-monospace, Menlo, monospace; }
+  h2 { font-size: 13px; letter-spacing: 0.22em; color: #9f9fa0; margin: 56px 0 18px; text-transform: uppercase; font-family: ui-monospace, Menlo, monospace; }
+  section.month { border-left: 2px solid #847dff; padding-left: 18px; }
+  section.month:nth-child(2) { border-left-color: #dd90d8; }
+  section.month:nth-child(3) { border-left-color: #90b8f0; }
+  section.month:nth-child(4) { border-left-color: #d1c9ff; }
+  section.month:nth-child(5) { border-left-color: #847dff; }
+  .event { border-left: 2px solid #2a2a31; padding: 4px 0 4px 18px; margin: 0 0 26px 10px; }
   .meta { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
-  .meta time { font-size: 13px; color: #8f8d86; }
+  .meta time { font-size: 12px; color: #9f9fa0; letter-spacing: 0.12em; font-family: ui-monospace, Menlo, monospace; }
   .chip { font-size: 11px; border-radius: 999px; padding: 2px 10px; letter-spacing: 0.05em; }
   .chip.confirmed { background: rgba(64, 129, 109, 0.25); color: #9fd6c2; border: 1px solid rgba(64, 129, 109, 0.5); }
   .chip.verified { background: rgba(78, 100, 160, 0.25); color: #b9c8f5; border: 1px solid rgba(78, 100, 160, 0.5); }
   .chip.candidate { background: rgba(150, 110, 60, 0.22); color: #e6c89a; border: 1px solid rgba(150, 110, 60, 0.5); }
-  h3 { font-size: 19px; font-weight: 600; margin-bottom: 8px; }
+  h3 { font-size: 20px; font-weight: 600; margin-bottom: 6px; font-family: Georgia, "Times New Roman", "Noto Serif SC", "Songti SC", serif; }
+  .caption { color: #b9b9bf; }
   .event p { color: #c7c5be; font-size: 14.5px; margin-bottom: 8px; }
-  footer { border-top: 1px solid #2c2c33; margin-top: 56px; padding-top: 20px; }
-  footer p { color: #7c7a74; font-size: 12.5px; }
+  footer { border-top: 1px solid rgba(245,245,247,0.12); margin-top: 56px; padding-top: 20px; }
+  footer p { color: #8a8a90; font-size: 12.5px; }
 </style>
 </head>
 <body>

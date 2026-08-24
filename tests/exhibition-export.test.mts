@@ -11,18 +11,24 @@ const events: ExportExhibitEvent[] = [
     title: "在 DigitalMuseum 与 Claude Code 协作",
     occurred_on: "2026-08-21",
     status: "verified",
+    origin: "claude",
+    exhibit_caption: null,
     claims: [{ text: "这一天在项目 DigitalMuseum 进行了 2 个 Claude Code 会话、共 5 条用户消息" }],
   },
   {
     title: "完成开源发布准备",
     occurred_on: "2026-07-02",
     status: "confirmed",
+    origin: "note",
+    exhibit_caption: "亲手写下的展签。",
     claims: [{ text: "本人确认的关键经历。" }],
   },
   {
     title: "一次未定日期的讨论",
     occurred_on: null,
     status: "candidate",
+    origin: "note",
+    exhibit_caption: null,
     claims: [{ text: "等待核对的草稿。" }],
   },
 ];
@@ -42,6 +48,8 @@ test("导出为自包含 HTML：无外部资源、无脚本", () => {
   assert.doesNotMatch(html, /src=/i);
   assert.doesNotMatch(html, /href=/i);
   assert.match(html, /<style>/);
+  assert.match(html, /亲手写下的展签。/);
+  assert.match(html, /你来我往/); // 机器底稿（exhibit_caption 为空时）
 });
 
 test("按月分组、组内按日期排序，未定日期在最后", () => {
@@ -84,7 +92,9 @@ test("用户文本全部转义，无 HTML 注入", () => {
       title: '<script>alert("x")</script>',
       occurred_on: "2026-05-01",
       status: "confirmed",
-      claims: [{ text: '"><img src=x onerror="steal()"> 说明文字' }],
+      origin: "note",
+      exhibit_caption: '"><img src=x onerror="steal()"> 说明文字',
+      claims: [{ text: "原始证据不随导出公开。" }],
     },
   ];
   const html = buildExhibitionHtml({

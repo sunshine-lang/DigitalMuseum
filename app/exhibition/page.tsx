@@ -13,6 +13,7 @@ import {
   updateExhibitCaption,
 } from "../phase0-api";
 import { buildExhibitionHtml } from "./export-html";
+import { exhibitNarrative } from "./narrative";
 
 const STAGE_STORAGE_KEY = "digital-museum-phase0-stage-id";
 const THEME_STORAGE_KEY = "digital-museum-expo-theme";
@@ -72,59 +73,6 @@ const themes: Array<{
 ];
 
 const HALL_ACCENTS = ["#847dff", "#dd90d8", "#90b8f0", "#d1c9ff"];
-
-/**
- * 展品叙事底稿：把确定性 claim 压成一句适合展览的人话。
- * 确定性天花板明确——真正满意的展签交给用户改写（exhibit_caption），
- * 这里只负责"不丢人"的默认值。原文与锚点仍在"展品标签"里供查证。
- */
-function cleanFragment(text: string): string {
-  return text
-    .replace(/\[@[^\]]*\]\(plugin\/\/[^)]*\)/g, "")
-    .replace(/\[([^\]]*)\]\(https?:[^)]*\)/g, "$1")
-    .replace(/<[^>]+>/g, "")
-    .replace(/https?:\/\/\S+/g, (url) => {
-      const host = url.replace(/^https?:\/\//, "").split("/")[0];
-      return host || "";
-    })
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function exhibitNarrative(event: CandidateEvent): string {
-  const claim = event.claims[0]?.text ?? "";
-  const topicMatch = claim.match(/「([^」]{2,40})」/);
-  const topic = topicMatch ? cleanFragment(topicMatch[1]) : "";
-
-  if (event.origin === "claude" || event.origin === "codex") {
-    const agent = event.origin === "claude" ? "Claude Code" : "Codex";
-    const sessionCount = Number(claim.match(/进行了 (\d+) 个/)?.[1] ?? 0);
-    const messageCount = Number(claim.match(/共 (\d+) 条/)?.[1] ?? 0);
-    const stats = [
-      sessionCount > 1 ? `${sessionCount} 个会话` : "",
-      messageCount > 0 ? `${messageCount} 条你来我往的消息` : "",
-    ].filter(Boolean).join("、");
-    if (topic) return stats ? `${stats}，从「${topic}」开始` : `与 ${agent} 的对话，从「${topic}」开始`;
-    return stats ? `这一天你与 ${agent} 有${stats}` : cleanFragment(claim).slice(0, 72);
-  }
-
-  if (event.origin === "git") {
-    const commitCount = Number(claim.match(/提交了 (\d+) 个变更/)?.[1] ?? 0);
-    const repo = claim.match(/仓库 ([^（]+?)（/)?.[1] ?? "";
-    const first = claim.match(/变更：([^；。]{4,40})/)?.[1] ?? "";
-    const parts = [
-      repo ? `在 ${repo.trim()}` : "",
-      commitCount > 0 ? `提交了 ${commitCount} 次` : "",
-    ].filter(Boolean).join("");
-    const tail = first ? `：${first.trim()}…` : "";
-    return `${parts}${tail}` || cleanFragment(claim).slice(0, 72);
-  }
-
-  // 笔记：取第一个完整句
-  const cleaned = cleanFragment(claim).replace(/^[-*>\s]+/, "");
-  const sentence = cleaned.split(/[。！？]/)[0];
-  return (sentence.length >= 6 ? sentence : cleaned).slice(0, 72);
-}
 
 const statusLabels: Record<string, string> = {
   candidate: "等待核对",
@@ -319,6 +267,95 @@ export default function ExhibitionWorkspace() {
   const [captionBusy, setCaptionBusy] = useState(false);
   const [captionError, setCaptionError] = useState<string | null>(null);
 
+  const selectedVerifiedCount = useMemo(
+    () => selectedEvents.filter((event) => event.status === "verified").length,
+    [selectedEvents],
+  );
+  const [posterUrl, setPosterUrl] = useState<string | null>(null);
+  const [posterBusy, setPosterBusy] = useState(false);
+
+  /**
+   * 分享海报：Canvas 本地绘制（1080×1350），不联网不上传。
+   * 全部元素确定性生成：阶段名、日期、四项统计、档案编号。
+   */
+  async function generatePoster() {
+    if (!stage || posterBusy) return;
+    setPosterBusy(true);
+    setCaptionError(null);
+    try {
+      await document.fonts.ready;
+      const canvas = document.createElement("canvas");
+      canvas.width = 1080;
+      canvas.height = 1350;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.fillStyle = "#0b0b0d";
+      ctx.fillRect(0, 0, 1080, 1350);
+      const glow = ctx.createRadialGradient(540, 180, 60, 540, 260, 900);
+      glow.addColorStop(0, "rgba(132, 125, 255, 0.22)");
+      glow.addColorStop(1, "rgba(132, 125, 255, 0)");
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, 1080, 1350);
+
+      const mono = '"JetBrains Mono", ui-monospace, Menlo, monospace';
+      const serif = '"Playfair Display", "Noto Serif SC", Georgia, serif';
+
+      ctx.fillStyle = "#9f9fa0";
+      ctx.font = `400 22px ${mono}`;
+      ctx.textAlign = "center";
+      ctx.fillText("D I G I T A L   M U S E U M · 人 生 档 案 馆", 540, 120);
+
+      ctx.fillStyle = "#f5f5f7";
+      ctx.font = `400 88px ${serif}`;
+      const name = stage.name.length > 12 ? `${stage.name.slice(0, 12)}…` : stage.name;
+      ctx.fillText(name, 540, 300);
+      ctx.font = `400 28px ${mono}`;
+      ctx.fillStyle = "#9f9fa0";
+      ctx.fillText(`${stage.starts_on}  —  ${stage.ends_on}`, 540, 370);
+
+      ctx.strokeStyle = "rgba(245, 245, 247, 0.16)";
+      ctx.beginPath();
+      ctx.moveTo(180, 460);
+      ctx.lineTo(900, 460);
+      ctx.stroke();
+
+      const stats: Array<[number, string]> = [
+        [selectedEvents.length, "段经历"],
+        [confirmedCount, "你亲自确认"],
+        [selectedVerifiedCount, "系统核实"],
+        [stage.evidence_count, "份原始记录"],
+      ];
+      stats.forEach(([value, label], index) => {
+        const y = 620 + index * 150;
+        ctx.fillStyle = "#f5f5f7";
+        ctx.font = `400 96px ${serif}`;
+        ctx.fillText(String(value), 540, y);
+        ctx.fillStyle = "#9f9fa0";
+        ctx.font = `400 24px ${mono}`;
+        ctx.fillText(label, 540, y + 48);
+      });
+
+      ctx.fillStyle = "#847dff";
+      ctx.font = `400 26px ${mono}`;
+      ctx.fillText(
+        `ARCHIVE-${stage.id.slice(0, 8).toUpperCase()} · ${new Date().toISOString().slice(0, 10)}`,
+        540,
+        1268,
+      );
+      ctx.fillStyle = "#6a6b6b";
+      ctx.font = `400 20px ${mono}`;
+      ctx.fillText("由本地真实档案确定性生成 · 未经模型补写", 540, 1310);
+
+      setPosterUrl(canvas.toDataURL("image/png"));
+    } catch (error) {
+      setCaptionError(
+        error instanceof Error ? `海报生成失败：${error.message}` : "海报生成失败，请重试",
+      );
+    } finally {
+      setPosterBusy(false);
+    }
+  }
+
   async function saveCaption(eventId: string) {
     if (!captionEdit || captionBusy) return;
     setCaptionBusy(true);
@@ -346,6 +383,8 @@ export default function ExhibitionWorkspace() {
         title: event.title,
         occurred_on: event.occurred_on,
         status: event.status,
+        origin: event.origin,
+        exhibit_caption: event.exhibit_caption,
         claims: event.claims.map((claim) => ({ text: claim.text })),
       })),
       exportedAt: new Date().toISOString(),
@@ -656,9 +695,23 @@ export default function ExhibitionWorkspace() {
       <section className="expo-epilogue">
         <div className="expo-reveal">
           <span className="expo-kicker">EPILOGUE · 尾声</span>
+          <div className="expo-epilogue-stats" aria-label="阶段统计">
+            <div><strong><CountUp value={selectedEvents.length} /></strong><span>段经历</span></div>
+            <div><strong><CountUp value={confirmedCount} /></strong><span>你亲自确认</span></div>
+            <div><strong><CountUp value={selectedVerifiedCount} /></strong><span>系统核实</span></div>
+            <div><strong><CountUp value={stage?.evidence_count ?? 0} /></strong><span>份原始记录</span></div>
+          </div>
           <h2>{closingLine}</h2>
           <p>所有展品由本地真实档案确定性生成，未经模型补写。</p>
           <div className="expo-show-actions">
+            <button
+              className="expo-button"
+              type="button"
+              disabled={posterBusy}
+              onClick={() => void generatePoster()}
+            >
+              {posterBusy ? "正在绘制…" : "生成分享海报"}
+            </button>
             <button className="expo-button ghost" type="button" onClick={() => setPhase("style")}>
               换一种风格再看一次
             </button>
@@ -672,8 +725,23 @@ export default function ExhibitionWorkspace() {
             </button>
             <Link className="expo-button" href="/">回到工作台</Link>
           </div>
+          <p className="expo-archive-stamp">
+            ARCHIVE-{(stage?.id ?? "00000000").slice(0, 8).toUpperCase()} · {new Date().toISOString().slice(0, 10)}
+          </p>
         </div>
       </section>
+
+      {posterUrl && (
+        <div className="expo-poster-modal" role="dialog" aria-label="分享海报预览">
+          <div>
+            <img src={posterUrl} alt="阶段分享海报预览" />
+            <div>
+              <a href={posterUrl} download="digital-museum-poster.png">下载 PNG</a>
+              <button type="button" onClick={() => setPosterUrl(null)}>关闭</button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
