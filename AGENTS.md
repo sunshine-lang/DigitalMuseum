@@ -63,7 +63,7 @@ npm run lint              # eslint
 - 聚合规则 `note-aggregation-v1` 同样是确定性的：仅按规范化标题加日期聚合，不做语义聚类；Merge/Split 产物一律重置为 Candidate 并保留逐字锚点与审计行。
 - 阶段管理：`DELETE /api/v1/stages/{id}` 级联清空该阶段全部数据，随后回收零引用的 EvidenceBlob（occurrences 与 evidence_anchors 都不再引用）——删行并清理文件；被其他阶段共享（仍有引用）的 blob 必须保留。前端展示原图走 `claims[].source_media`（仅 image/jpeg、image/png），加载失败静默回落 SpecimenArt。
 - Archive 备份（API 级，暂无 UI）：`GET /api/v1/archive/export` 把整库打包为 ZIP（archive.json + blobs/ 原文，格式 `archive-v1`）；`POST /api/v1/archive/import` 恢复为**全新数据**（所有行换新 id、绝不覆盖既有内容；blob 内容寻址——本地已有同 sha 直接复用不信任 ZIP 字节，需写回时先校验 sha 一致，fail closed 无半成品；重复导入会复制阶段）。
-- 样式延续集中式 CSS（`app/globals.css`），Tailwind 仅保留依赖，暂不迁移。
+- 样式延续集中式 CSS（`app/globals.css`）。Tailwind 已于 2026-08 全量移除（依赖与 preflight 均已删除，globals.css 顶部内置等价重置），不要再引入。
 - `npm run build`（build-verified.sh）需要 GNU timeout，macOS 上用 `npm run build:local`。
 - 前端 dev 模式不会内联 `NEXT_PUBLIC_*` 变量，页面始终请求默认的 8010 端口；E2E 因此必须让隔离后端占用 8010。
 - 提交前自查：`test:backend`、`test:local`、`typecheck`、`lint` 全部通过；改动用户交互链路时加跑 `test:e2e`。
