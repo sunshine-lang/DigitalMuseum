@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import {
   CandidateEvent,
   Phase0ApiError,
@@ -16,7 +16,7 @@ import { buildExhibitionHtml } from "./export-html";
 const STAGE_STORAGE_KEY = "digital-museum-phase0-stage-id";
 const THEME_STORAGE_KEY = "digital-museum-expo-theme";
 
-type ThemeId = "renaissance" | "fieldnotes" | "archive" | "midnight" | "glass" | "brutal";
+type ThemeId = "renaissance" | "fieldnotes" | "archive" | "midnight" | "glass" | "brutal" | "museum-night";
 type ExpoPhase = "select" | "style" | "show";
 type LoadStatus = "loading" | "ready" | "empty" | "error";
 
@@ -26,6 +26,12 @@ const themes: Array<{
   tagline: string;
   description: string;
 }> = [
+  {
+    id: "museum-night",
+    name: "午夜档案馆",
+    tagline: "MIDNIGHT ARCHIVE",
+    description: "暗色画布上，轻衬线大字讲你的故事；证据压成档案编号般的等宽小签，色彩只从你的照片与版画里来。",
+  },
   {
     id: "renaissance",
     name: "文艺复兴画廊",
@@ -63,6 +69,27 @@ const themes: Array<{
     description: "粗边框与高对比色块，把成就大声地贴在墙上。",
   },
 ];
+
+const HALL_ACCENTS = ["#847dff", "#dd90d8", "#90b8f0", "#d1c9ff"];
+
+/**
+ * 展品叙事：把确定性 claim 压成一句适合展览的人话。
+ * 只做显示层清洗（去 URL/插件标记/markdown 残留、限长），不改证据本身——
+ * 原文与锚点仍在"展品标签"里供查证。
+ */
+function exhibitNarrative(text: string): string {
+  const cleaned = text
+    .replace(/\[@[^\]]*\]\(plugin\/\/[^)]*\)/g, "")
+    .replace(/\[([^\]]*)\]\(https?:[^)]*\)/g, "$1")
+    .replace(/<[^>]+>/g, "")
+    .replace(/https?:\/\/\S+/g, (url) => {
+      const host = url.replace(/^https?:\/\//, "").split("/")[0];
+      return host || "";
+    })
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned.length > 72 ? `${cleaned.slice(0, 72)}…` : cleaned;
+}
 
 const statusLabels: Record<string, string> = {
   candidate: "等待核对",
@@ -469,7 +496,12 @@ export default function ExhibitionWorkspace() {
           const confirmedHere = shown.filter((event) => event.status === "confirmed").length;
           const verifiedHere = shown.filter((event) => event.status === "verified").length;
           return (
-            <section className="expo-chapter" id={`chapter-${key}`} key={key}>
+            <section
+              className="expo-chapter"
+              id={`chapter-${key}`}
+              key={key}
+              style={{ "--hall-accent": HALL_ACCENTS[chapterIndex % HALL_ACCENTS.length] } as CSSProperties}
+            >
               <header className="expo-reveal">
                 <span className="expo-chapter-num">{String(chapterIndex + 1).padStart(2, "0")}</span>
                 <div>
@@ -499,6 +531,9 @@ export default function ExhibitionWorkspace() {
                     <div className="expo-card-caption">
                       <time>{event.occurred_on ?? "时间待定"}</time>
                       <h3>{event.title}</h3>
+                      <p className="expo-card-narrative">
+                        {exhibitNarrative(event.claims[0]?.text ?? "")}
+                      </p>
                     </div>
                     <div className="expo-labels">
                       {event.claims.map((claim, claimIndex) => (
