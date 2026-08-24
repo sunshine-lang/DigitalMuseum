@@ -157,9 +157,6 @@ def export_archive(session: Session, *, upload_dir: Path) -> bytes:
             MANIFEST_NAME, json.dumps(manifest, ensure_ascii=False, indent=1)
         )
         for blob in manifest["blobs"]:
-            row = session.get(EvidenceBlob, blob["sha256"])
-            if row is None:
-                raise ApiError(500, "missing_evidence_blob", "导出时发现 blob 行缺失")
             content = (upload_dir / blob["relative_path"]).read_bytes()
             archive.writestr(f"blobs/{blob['sha256']}", content)
     return buffer.getvalue()
@@ -211,7 +208,6 @@ def import_archive(session: Session, archive_bytes: bytes, *, upload_dir: Path) 
             raise ApiError(422, "archive_invalid", "备份结构不完整（anchor 的引用断裂）")
 
     # 1) blob：内容寻址，先校验 ZIP 内字节与 sha 一致，再决定写文件或复用。
-    blob_id_map: dict[str, str] = {}
     for row in manifest.get("blobs", []):
         sha = row["sha256"]
         existing = session.get(EvidenceBlob, sha)
@@ -237,8 +233,9 @@ def import_archive(session: Session, archive_bytes: bytes, *, upload_dir: Path) 
                 created_at=_parse_dt(row.get("created_at")),
             )
         )
-        blob_id_map[sha] = sha
         counts["blobs_restored"] += 1
+
+    session.flush()  # blob 先落库，后续 occurrence 的外键才可满足
 
     # 2) stage / occurrence / coverage / event / claim / anchor / review，
     #    全部换新 id；引用按映射重写。
@@ -257,6 +254,7 @@ def import_archive(session: Session, archive_bytes: bytes, *, upload_dir: Path) 
         )
         counts["stages"] += 1
 
+    session.flush()  # stage 先落库
     occurrence_map: dict[str, str] = {}
     for row in manifest.get("occurrences", []):
         new_occurrence_id = new_id()
@@ -287,6 +285,7 @@ def import_archive(session: Session, archive_bytes: bytes, *, upload_dir: Path) 
         )
         counts["coverage_items"] += 1
 
+    session.flush()  # occurrence 先落库
     event_map: dict[str, str] = {}
     for row in manifest.get("events", []):
         new_event_id = new_id()
@@ -318,6 +317,7 @@ def import_archive(session: Session, archive_bytes: bytes, *, upload_dir: Path) 
             restored = session.get(CandidateEvent, event_map[row["id"]])
             restored.parent_event_id = event_map[row["parent_event_id"]]
 
+    session.flush()  # event 先落库（parent_event_id 随后置值）
     claim_map: dict[str, str] = {}
     for row in manifest.get("claims", []):
         new_claim_id = new_id()
@@ -338,6 +338,7 @@ def import_archive(session: Session, archive_bytes: bytes, *, upload_dir: Path) 
         )
         counts["claims"] += 1
 
+    session.flush()  # claim 先落库
     for row in manifest.get("anchors", []):
         session.add(
             EvidenceAnchor(
@@ -353,6 +354,7 @@ def import_archive(session: Session, archive_bytes: bytes, *, upload_dir: Path) 
         )
         counts["anchors"] += 1
 
+    session.flush()  # anchor 先落库
     for row in manifest.get("reviews", []):
         if row.get("event_id") not in event_map:
             raise ApiError(422, "archive_invalid", "备份结构不完整（review 的引用断裂）")

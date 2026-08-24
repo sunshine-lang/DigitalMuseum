@@ -26,9 +26,6 @@ class Stage(Base):
     ends_on: Mapped[date] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
-    occurrences: Mapped[list[EvidenceOccurrence]] = relationship(back_populates="stage")
-    events: Mapped[list[CandidateEvent]] = relationship(back_populates="stage")
-
 
 class EvidenceBlob(Base):
     __tablename__ = "evidence_blobs"
@@ -38,9 +35,6 @@ class EvidenceBlob(Base):
     byte_size: Mapped[int] = mapped_column(Integer)
     media_type: Mapped[str] = mapped_column(String(80))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
-
-    occurrences: Mapped[list[EvidenceOccurrence]] = relationship(back_populates="blob")
-    anchors: Mapped[list[EvidenceAnchor]] = relationship(back_populates="blob")
 
 
 class EvidenceOccurrence(Base):
@@ -52,15 +46,13 @@ class EvidenceOccurrence(Base):
         ForeignKey("evidence_blobs.sha256"), nullable=True
     )
     original_filename: Mapped[str] = mapped_column(String(255))
-    status: Mapped[str] = mapped_column(String(32), default="completed")
+    status: Mapped[str] = mapped_column(String(32))
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
-    stage: Mapped[Stage] = relationship(back_populates="occurrences")
-    blob: Mapped[EvidenceBlob | None] = relationship(back_populates="occurrences")
+    blob: Mapped[EvidenceBlob | None] = relationship()
     coverage_items: Mapped[list[CoverageItem]] = relationship(
         back_populates="occurrence", cascade="all, delete-orphan"
     )
-    event: Mapped[CandidateEvent | None] = relationship(back_populates="occurrence")
 
 
 class CoverageItem(Base):
@@ -90,10 +82,10 @@ class CandidateEvent(Base):
     )
     title: Mapped[str] = mapped_column(String(200))
     occurred_on: Mapped[date | None] = mapped_column(Date, nullable=True)
-    time_precision: Mapped[str] = mapped_column(String(24), default="unknown")
-    status: Mapped[str] = mapped_column(String(24), default="candidate")
+    time_precision: Mapped[str] = mapped_column(String(24))
+    status: Mapped[str] = mapped_column(String(24))
     revision: Mapped[int] = mapped_column(Integer, default=0)
-    origin: Mapped[str] = mapped_column(String(24), default="note")
+    origin: Mapped[str] = mapped_column(String(24))
     aggregation_rule: Mapped[str | None] = mapped_column(String(40), nullable=True)
     parent_event_id: Mapped[str | None] = mapped_column(
         ForeignKey("candidate_events.id"), nullable=True
@@ -101,13 +93,12 @@ class CandidateEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
-    stage: Mapped[Stage] = relationship(back_populates="events")
-    occurrence: Mapped[EvidenceOccurrence] = relationship(back_populates="event")
+    occurrence: Mapped[EvidenceOccurrence] = relationship()
     claims: Mapped[list[Claim]] = relationship(
         back_populates="event", cascade="all, delete-orphan", order_by="Claim.created_at"
     )
     reviews: Mapped[list[EventReview]] = relationship(
-        back_populates="event", cascade="all, delete-orphan", order_by="EventReview.revision"
+        cascade="all, delete-orphan", order_by="EventReview.revision"
     )
 
 
@@ -120,17 +111,16 @@ class Claim(Base):
         ForeignKey("evidence_occurrences.id", ondelete="CASCADE")
     )
     text: Mapped[str] = mapped_column(Text)
-    epistemic_status: Mapped[str] = mapped_column(String(24), default="unknown")
-    evidence_role: Mapped[str] = mapped_column(String(32), default="user_statement")
+    epistemic_status: Mapped[str] = mapped_column(String(24))
+    evidence_role: Mapped[str] = mapped_column(String(32))
     processor_version: Mapped[str] = mapped_column(String(80))
     source_title: Mapped[str] = mapped_column(String(200))
     source_occurred_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     event: Mapped[CandidateEvent] = relationship(back_populates="claims")
-    occurrence: Mapped[EvidenceOccurrence] = relationship(foreign_keys=[occurrence_id])
     anchors: Mapped[list[EvidenceAnchor]] = relationship(
-        back_populates="claim", cascade="all, delete-orphan"
+        cascade="all, delete-orphan"
     )
 
 
@@ -146,8 +136,7 @@ class EvidenceAnchor(Base):
     char_start: Mapped[int] = mapped_column(Integer)
     char_end: Mapped[int] = mapped_column(Integer)
 
-    claim: Mapped[Claim] = relationship(back_populates="anchors")
-    blob: Mapped[EvidenceBlob] = relationship(back_populates="anchors")
+    blob: Mapped[EvidenceBlob] = relationship()
 
 
 class EventReview(Base):
@@ -161,5 +150,3 @@ class EventReview(Base):
     previous_status: Mapped[str] = mapped_column(String(24))
     revision: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
-
-    event: Mapped[CandidateEvent] = relationship(back_populates="reviews")

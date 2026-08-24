@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Generic, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 T = TypeVar("T")
 
@@ -29,7 +29,6 @@ class StageUpdate(BaseModel):
 
 
 class StageOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
 
     id: str
     name: str

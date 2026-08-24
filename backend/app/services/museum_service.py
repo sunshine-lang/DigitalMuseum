@@ -236,8 +236,6 @@ def mark_import_failed(
     processor_version: str = PROCESSOR_VERSION,
 ) -> None:
     occurrence = session.get(EvidenceOccurrence, occurrence_id)
-    if occurrence is None:
-        return
     occurrence.status = "failed"
     existing_steps = {item.step for item in occurrence.coverage_items}
     if step == "candidate_generated" and "parsed_locally" not in existing_steps:
@@ -1085,7 +1083,7 @@ def serialize_occurrence(occurrence: EvidenceOccurrence) -> dict:
     }
 
 
-def serialize_event(event: CandidateEvent, session: Session | None = None) -> dict:
+def serialize_event(event: CandidateEvent, session: Session) -> dict:
     latest_review = event.reviews[-1] if event.reviews else None
     source_media = _claim_source_media(event, session)
     return {
@@ -1136,32 +1134,20 @@ def serialize_event(event: CandidateEvent, session: Session | None = None) -> di
     }
 
 
-def _claim_source_media(
-    event: CandidateEvent, session: Session | None
-) -> dict[str, dict]:
+def _claim_source_media(event: CandidateEvent, session: Session) -> dict[str, dict]:
     """按事件内 claims 的 occurrence 批量解析一次可展示原图，避免逐 claim 查询。"""
     occurrence_ids = {claim.occurrence_id for claim in event.claims}
     if not occurrence_ids:
         return {}
-    if session is not None:
-        rows = session.execute(
-            select(
-                EvidenceOccurrence.id,
-                EvidenceOccurrence.blob_sha256,
-                EvidenceBlob.media_type,
-            )
-            .join(EvidenceBlob, EvidenceOccurrence.blob_sha256 == EvidenceBlob.sha256)
-            .where(EvidenceOccurrence.id.in_(occurrence_ids))
-        ).all()
-    else:
-        rows = [
-            (
-                claim.occurrence_id,
-                claim.occurrence.blob.sha256 if claim.occurrence else None,
-                claim.occurrence.blob.media_type if claim.occurrence else None,
-            )
-            for claim in event.claims
-        ]
+    rows = session.execute(
+        select(
+            EvidenceOccurrence.id,
+            EvidenceOccurrence.blob_sha256,
+            EvidenceBlob.media_type,
+        )
+        .join(EvidenceBlob, EvidenceOccurrence.blob_sha256 == EvidenceBlob.sha256)
+        .where(EvidenceOccurrence.id.in_(occurrence_ids))
+    ).all()
     return {
         occurrence_id: {"sha256": sha256, "media_type": media_type}
         for occurrence_id, sha256, media_type in rows

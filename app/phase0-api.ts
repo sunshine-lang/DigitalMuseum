@@ -17,7 +17,7 @@ export type Stage = {
   verified_count: number;
 };
 
-export type Anchor = {
+type Anchor = {
   blob_sha256: string;
   quote: string;
   line_start: number;
@@ -26,12 +26,12 @@ export type Anchor = {
   char_end: number;
 };
 
-export type SourceMedia = {
+type SourceMedia = {
   sha256: string;
   media_type: string;
 };
 
-export type Claim = {
+type Claim = {
   id: string;
   text: string;
   epistemic_status: "unknown" | "user_confirmed" | "disputed";
@@ -44,7 +44,7 @@ export type Claim = {
 
 export type ReviewDecision = "confirmed" | "disputed" | "unknown" | "rejected";
 
-export type EventOrigin =
+type EventOrigin =
   | "note"
   | "aggregated"
   | "merged"
@@ -54,11 +54,11 @@ export type EventOrigin =
   | "claude"
   | "codex";
 
-export type AuditDecision = ReviewDecision | "merged" | "split";
+type AuditDecision = ReviewDecision | "merged" | "split";
 
-export type EventStatus = "candidate" | "verified" | ReviewDecision | "merged" | "split";
+type EventStatus = "candidate" | "verified" | ReviewDecision | "merged" | "split";
 
-export type EventReview = {
+type EventReview = {
   decision: AuditDecision;
   note: string | null;
   revision: number;
