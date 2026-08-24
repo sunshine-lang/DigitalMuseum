@@ -12,6 +12,7 @@ import {
   getStage,
   updateExhibitCaption,
 } from "../phase0-api";
+import { isVisibleExperience, sortEvents, statusLabel } from "../events-shared";
 import { buildExhibitionHtml } from "./export-html";
 import { exhibitNarrative } from "./narrative";
 
@@ -73,26 +74,6 @@ const themes: Array<{
 ];
 
 const HALL_ACCENTS = ["#847dff", "#dd90d8", "#90b8f0", "#d1c9ff"];
-
-const statusLabels: Record<string, string> = {
-  candidate: "等待核对",
-  verified: "系统核实",
-  confirmed: "本人确认",
-  disputed: "描述待修正",
-  unknown: "暂不确定",
-};
-
-function isVisibleExperience(event: CandidateEvent): boolean {
-  return event.status !== "merged" && event.status !== "split" && event.status !== "rejected";
-}
-
-function sortEvents(events: CandidateEvent[]): CandidateEvent[] {
-  return [...events].sort((a, b) => {
-    if (!a.occurred_on) return 1;
-    if (!b.occurred_on) return -1;
-    return a.occurred_on.localeCompare(b.occurred_on);
-  });
-}
 
 function monthKey(event: CandidateEvent): string {
   return event.occurred_on?.slice(0, 7) ?? "undated";
@@ -457,7 +438,7 @@ export default function ExhibitionWorkspace() {
                           <input type="checkbox" checked={selectedIds.has(event.id)} onChange={() => toggleEvent(event.id)} />
                           <span>
                             <strong>{event.title}</strong>
-                            <small>{event.occurred_on ?? "时间待定"} · {statusLabels[event.status] ?? "等待核对"}</small>
+                            <small>{event.occurred_on ?? "时间待定"} · {statusLabel(event.status)}</small>
                           </span>
                         </label>
                       </li>
@@ -622,7 +603,7 @@ export default function ExhibitionWorkspace() {
                         <span className="expo-seal sys">系统核实</span>
                       ) : (
                         <span className="expo-card-status">
-                          {statusLabels[event.status] ?? "等待核对"}
+                          {statusLabel(event.status)}
                         </span>
                       )}
                     </figure>

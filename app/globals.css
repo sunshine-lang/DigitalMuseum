@@ -945,7 +945,6 @@ button:focus-visible {
   --e-heading-track: 0;
   --e-chapter-color: rgba(28, 93, 95, 0.2);
   --e-spot: radial-gradient(ellipse at 50% 0%, rgba(202, 225, 226, 0.55), transparent 60%);
-  --e-mono: "IBM Plex Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 /* 封面：眉题带圆点前缀，衬线大标题正常字距，深青药丸 CTA */
@@ -1753,6 +1752,7 @@ a.mvp-primary {
    ============================================================ */
 
 .expo-show {
+  /* --e-mono 全部主题唯一定义处（fieldnotes/museum-night 等主题继承，不再各自覆盖） */
   --e-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, Menlo, monospace;
   --e-display: "Playfair Display", "Noto Serif SC", Georgia, serif;
 }
@@ -2461,7 +2461,6 @@ a.mvp-primary {
   --e-heading-track: -0.03em;
   --e-chapter-color: rgba(132, 125, 255, 0.3);
   --e-spot: radial-gradient(ellipse at 50% 0%, rgba(132, 125, 255, 0.08), transparent 60%);
-  --e-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
 }
 
 /* 封面：轻衬线大字 + 等宽档案小签 */

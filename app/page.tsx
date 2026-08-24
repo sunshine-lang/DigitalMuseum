@@ -28,6 +28,11 @@ import {
   splitEvent,
 } from "./phase0-api";
 import type { CandidateEvent } from "./phase0-api";
+import {
+  isVisibleExperience as isVisibleExperienceBase,
+  sortEvents,
+  statusLabels,
+} from "./events-shared";
 
 const STAGE_STORAGE_KEY = "digital-museum-phase0-stage-id";
 const RECENT_GIT_PATHS_KEY = "digital-museum-recent-git-paths";
@@ -62,15 +67,13 @@ const viewItems: Array<{ id: WorkspaceView; label: string; helper: string }> = [
   { id: "exhibition", label: "查看回顾", helper: "私人展览草稿" },
 ];
 
+// 状态文案基于共享表（含 merged/split/rejected 全 8 态）；工作台语境里
+// candidate/confirmed/unknown 用“你”视角措辞，作为差异键本地覆写。
 const friendlyStatus: Record<CandidateEvent["status"], string> = {
+  ...statusLabels,
   candidate: "等待你核对",
-  verified: "系统核实",
   confirmed: "你已确认",
-  disputed: "描述需要修改",
   unknown: "暂时不确定",
-  rejected: "不进入档案",
-  merged: "已整理到其他经历",
-  split: "已拆成其他经历",
 };
 
 function isStructuralEvent(event: CandidateEvent): boolean {
@@ -78,7 +81,7 @@ function isStructuralEvent(event: CandidateEvent): boolean {
 }
 
 function isVisibleExperience(event: CandidateEvent): boolean {
-  return !isStructuralEvent(event) && event.status !== "rejected";
+  return !isStructuralEvent(event) && isVisibleExperienceBase(event);
 }
 
 function originChipLabel(event: CandidateEvent): string {
@@ -1564,14 +1567,6 @@ function summarizeCoverage(coverage: CoverageItem[]) {
     grouped.set(item.occurrence_id, current);
   }
   return Array.from(grouped.values()).reverse().slice(0, 20);
-}
-
-function sortEvents(events: CandidateEvent[]): CandidateEvent[] {
-  return [...events].sort((a, b) => {
-    if (!a.occurred_on) return 1;
-    if (!b.occurred_on) return -1;
-    return a.occurred_on.localeCompare(b.occurred_on);
-  });
 }
 
 function reviewSuccessMessage(decision: ReviewDecision): string {

@@ -24,7 +24,7 @@ export function cleanFragment(text: string): string {
 
 export function exhibitNarrative(event: NarrativeEvent): string {
   const claim = event.claims[0]?.text ?? "";
-  const topicMatch = claim.match(/「([^」]{2,40})」/);
+  const topicMatch = claim.match(/「([^」]{2,60})」/);
   const topic = topicMatch ? cleanFragment(topicMatch[1]) : "";
 
   if (event.origin === "claude" || event.origin === "codex") {

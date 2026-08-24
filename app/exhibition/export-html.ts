@@ -8,6 +8,7 @@
  * - 所有用户产生的文本一律 HTML 转义。
  */
 
+import { statusLabel } from "../events-shared.ts";
 import { exhibitNarrative } from "./narrative.ts";
 
 export type ExportExhibitEvent = {
@@ -27,14 +28,6 @@ export type ExportExhibitionInput = {
   exportedAt: string;
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  confirmed: "本人确认",
-  verified: "系统核实",
-  candidate: "等待核对",
-  disputed: "本人存疑",
-  unknown: "暂不确定",
-};
-
 function esc(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -42,10 +35,6 @@ function esc(value: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
-}
-
-function statusLabel(status: string): string {
-  return STATUS_LABELS[status] ?? "已整理";
 }
 
 function monthKey(isoDate: string): string {
