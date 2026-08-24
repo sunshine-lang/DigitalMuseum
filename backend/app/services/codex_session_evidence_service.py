@@ -8,10 +8,12 @@ from app.core.errors import ApiError
 from app.services.agent_session_evidence import (
     AgentEvidence,
     AgentSessionsPreview,
+    RecordClassification,
     SessionSummary,
-    parse_session_timestamp,
+    build_sessions_preview,
     real_user_text,
     render_evidence_document,
+    scan_session_file,
 )
 from app.services.path_policy import require_path_allowed
 
@@ -29,13 +31,7 @@ def preview_codex_sessions(
     sessions = _project_sessions(project_root, sessions_root)
     if not sessions:
         raise ApiError(422, "no_codex_sessions", "这个项目还没有可读取的 Codex 会话")
-    days = [session.started_at.date() for session in sessions]
-    return AgentSessionsPreview(
-        project_label=label,
-        first_session_on=min(days),
-        last_session_on=max(days),
-        session_count=len(sessions),
-    )
+    return build_sessions_preview(sessions, project_label=label)
 
 
 def import_codex_sessions(
@@ -85,8 +81,6 @@ def _resolve_project(path_raw: str, *, allowed_roots: str) -> tuple[Path, str]:
     return resolved, resolved.name or "codex-project"
 
 
-
-
 def _project_sessions(project_root: Path, sessions_root: str) -> list[SessionSummary]:
     """扫描会话根目录下全部 rollout 文件，返回属于该项目的人机线程。
 
@@ -115,7 +109,7 @@ def _project_sessions(project_root: Path, sessions_root: str) -> list[SessionSum
                 continue
         except OSError:
             continue
-        summary = _scan_session_file(file_path)
+        summary = scan_session_file(file_path, _classify_record)
         if summary is not None:
             summaries.append(summary)
     return summaries
@@ -141,60 +135,20 @@ def _read_session_meta(path: Path) -> dict | None:
     return payload if isinstance(payload, dict) else None
 
 
-def _scan_session_file(path: Path) -> SessionSummary | None:
-    """逐行流式解析一个 Codex rollout JSONL。
-
-    只提取记录级时间戳（min/max）、user_message 计数与首条真实用户消息、
-    agent_message 计数。单行解析失败或缺时间戳的行被跳过（确定性）。
+def _classify_record(record: dict) -> RecordClassification | None:
+    """Codex rollout 记录分类：只统计 event_msg——payload.type=
+    agent_message 计一条助手消息，user_message 须为真实文本（系统注入
+    行不算）；骨架的确定性跳过语义见 scan_session_file。
     """
-    started = None
-    ended = None
-    user_messages = 0
-    assistant_messages = 0
-    first_user_message: str | None = None
-
-    with path.open("r", encoding="utf-8", errors="replace") as handle:
-        for raw_line in handle:
-            stripped = raw_line.strip()
-            if not stripped:
-                continue
-            try:
-                record = json.loads(stripped)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(record, dict):
-                continue
-
-            timestamp = parse_session_timestamp(record.get("timestamp"))
-            if timestamp is not None:
-                if started is None or timestamp < started:
-                    started = timestamp
-                if ended is None or timestamp > ended:
-                    ended = timestamp
-
-            if record.get("type") != "event_msg":
-                continue
-            payload = record.get("payload")
-            if not isinstance(payload, dict):
-                continue
-            event_type = payload.get("type")
-            if event_type == "agent_message":
-                assistant_messages += 1
-            elif event_type == "user_message":
-                raw_message = payload.get("message")
-                text = real_user_text(raw_message if isinstance(raw_message, str) else None)
-                if text:
-                    user_messages += 1
-                    if first_user_message is None:
-                        first_user_message = text
-
-    if started is None or ended is None:
+    if record.get("type") != "event_msg":
         return None
-    return SessionSummary(
-        session_id=path.stem,
-        started_at=started,
-        ended_at=ended,
-        user_messages=user_messages,
-        assistant_messages=assistant_messages,
-        first_user_message=first_user_message,
-    )
+    payload = record.get("payload")
+    if not isinstance(payload, dict):
+        return None
+    event_type = payload.get("type")
+    if event_type == "agent_message":
+        return ("assistant", None)
+    if event_type != "user_message":
+        return None
+    raw_message = payload.get("message")
+    return ("user", real_user_text(raw_message if isinstance(raw_message, str) else None))

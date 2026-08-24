@@ -61,19 +61,7 @@ def claude_workspace(tmp_path: Path) -> tuple[Path, Path]:
     return workspace, sessions_dir
 
 
-@pytest.fixture
-def claude_client(app_paths, tmp_path: Path) -> TestClient:
-    database_url, upload_dir = app_paths
-    with TestClient(
-        create_app(
-            database_url=database_url,
-            upload_dir=upload_dir,
-            allowed_repo_roots=str(tmp_path),
-            claude_projects_root=str(tmp_path / "claude-home" / "projects"),
-        )
-    ) as test_client:
-        yield test_client
-
+# claude_client / codex_client fixtures 统一在 conftest.py（stage6/stage7 共用）。
 
 _import = partial(import_agent_sessions, endpoint="claude-sessions")
 
@@ -185,29 +173,38 @@ def test_disputed_then_reimport_absorbs_into_user_judgement(
     assert len(visible[0]["claims"]) == 2
 
 
-def test_path_errors(claude_client: TestClient, tmp_path: Path) -> None:
-    stage_id = create_stage(claude_client, "Claude 阶段")
-
-    missing = claude_client.post(
-        f"/api/v1/stages/{stage_id}/claude-sessions",
-        json={"path": str(tmp_path / "no-such-dir")},
+@pytest.mark.parametrize(
+    ("kind", "scenario", "expected_status", "expected_code"),
+    [
+        ("claude", "missing-dir", 422, "claude_sessions_not_found"),
+        ("claude", "disallowed-root", 403, "claude_path_not_allowed"),
+        ("claude", "blank-path", 422, "claude_path_required"),
+        ("codex", "missing-dir", 422, "codex_sessions_not_found"),
+        ("codex", "disallowed-root", 403, "codex_path_not_allowed"),
+        ("codex", "blank-path", 422, "codex_path_required"),
+    ],
+)
+def test_agent_session_path_errors(
+    request: pytest.FixtureRequest,
+    tmp_path: Path,
+    kind: str,
+    scenario: str,
+    expected_status: int,
+    expected_code: str,
+) -> None:
+    """Claude/Codex 两个 Agent 导入端点共用的路径错误契约（缺目录/越界/空路径）。"""
+    client = request.getfixturevalue(f"{kind}_client")
+    stage_id = create_stage(client, "Agent 阶段")
+    raw_path = {
+        "missing-dir": str(tmp_path / "no-such-dir"),
+        "disallowed-root": "/",
+        "blank-path": "  ",
+    }[scenario]
+    response = client.post(
+        f"/api/v1/stages/{stage_id}/{kind}-sessions", json={"path": raw_path}
     )
-    assert missing.status_code == 422
-    assert missing.json()["error"]["code"] == "claude_sessions_not_found"
-
-    not_allowed = claude_client.post(
-        f"/api/v1/stages/{stage_id}/claude-sessions",
-        json={"path": "/"},
-    )
-    assert not_allowed.status_code == 403
-    assert not_allowed.json()["error"]["code"] == "claude_path_not_allowed"
-
-    empty = claude_client.post(
-        f"/api/v1/stages/{stage_id}/claude-sessions",
-        json={"path": "  "},
-    )
-    assert empty.status_code == 422
-    assert empty.json()["error"]["code"] == "claude_path_required"
+    assert response.status_code == expected_status
+    assert response.json()["error"]["code"] == expected_code
 
 
 def test_no_sessions_in_range_leaves_no_residue(

@@ -9,23 +9,18 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import ApiError
 from app.domain.schemas import (
-    ClaudeSessionCreate,
-    ClaudeSessionImportOut,
-    ClaudeSessionPreviewOut,
-    CodexSessionCreate,
-    CodexSessionImportOut,
-    CodexSessionPreviewOut,
+    ActivityImportOut,
+    AgentSessionPreviewOut,
     CoverageOut,
     DataEnvelope,
     EventOut,
     ExhibitCaptionUpdate,
-    GitImportOut,
-    GitRepoCreate,
     GitRepoPreviewOut,
     HealthOut,
     MergeCreate,
     MergeOut,
     NoteImportOut,
+    PathCreate,
     PhotoImportOut,
     ReviewCreate,
     SplitOut,
@@ -270,11 +265,11 @@ def create_api_router(session_provider) -> APIRouter:
     @router.post(
         "/stages/{stage_id}/git-repos",
         status_code=201,
-        response_model=DataEnvelope[GitImportOut],
+        response_model=DataEnvelope[ActivityImportOut],
     )
     def import_git_repo(
         stage_id: str,
-        payload: GitRepoCreate,
+        payload: PathCreate,
         request: Request,
         session: SessionDependency,
     ) -> dict:
@@ -290,7 +285,7 @@ def create_api_router(session_provider) -> APIRouter:
 
     @router.get(
         "/claude-sessions/preview",
-        response_model=DataEnvelope[ClaudeSessionPreviewOut],
+        response_model=DataEnvelope[AgentSessionPreviewOut],
     )
     def preview_claude_sessions(request: Request, path: str = "") -> dict:
         # 只读预览项目的会话最早/最晚日期与数量，帮用户预填建馆表单。
@@ -306,11 +301,11 @@ def create_api_router(session_provider) -> APIRouter:
     @router.post(
         "/stages/{stage_id}/claude-sessions",
         status_code=201,
-        response_model=DataEnvelope[ClaudeSessionImportOut],
+        response_model=DataEnvelope[ActivityImportOut],
     )
     def import_claude_sessions(
         stage_id: str,
-        payload: ClaudeSessionCreate,
+        payload: PathCreate,
         request: Request,
         session: SessionDependency,
     ) -> dict:
@@ -327,7 +322,7 @@ def create_api_router(session_provider) -> APIRouter:
 
     @router.get(
         "/codex-sessions/preview",
-        response_model=DataEnvelope[CodexSessionPreviewOut],
+        response_model=DataEnvelope[AgentSessionPreviewOut],
     )
     def preview_codex_sessions(request: Request, path: str = "") -> dict:
         # 只读预览项目全部 Codex 会话的最早/最晚日期与数量；解析与安全约束
@@ -343,11 +338,11 @@ def create_api_router(session_provider) -> APIRouter:
     @router.post(
         "/stages/{stage_id}/codex-sessions",
         status_code=201,
-        response_model=DataEnvelope[CodexSessionImportOut],
+        response_model=DataEnvelope[ActivityImportOut],
     )
     def import_codex_sessions(
         stage_id: str,
-        payload: CodexSessionCreate,
+        payload: PathCreate,
         request: Request,
         session: SessionDependency,
     ) -> dict:

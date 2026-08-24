@@ -1,15 +1,19 @@
-"""Agent 会话证据的共享模型与确定性文档渲染。
+"""Agent 会话证据的共享模型、扫描骨架与确定性文档渲染。
 
 Claude Code（claude-code-evidence-v1）与 Codex（codex-evidence-v1）适配器
-共用：会话按天分块渲染证据文档、逐行锚点、确定性截断。两个适配器只保留
-各自的目录定位与会话文件解析规则；未来 Agent Session 适配器（Stage 10）
-同样复用本模块。
+共用：会话 JSONL 的逐行扫描骨架（时间戳 min/max 与计数累加）、按天分块
+渲染证据文档、逐行锚点、确定性截断。两个适配器只保留各自的目录定位与
+记录分类规则；未来 Agent Session 适配器（Stage 10）同样复用本模块。
 """
 
 from __future__ import annotations
 
+import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
+from pathlib import Path
+from typing import Literal
 
 # 用户首条消息在证据文档中的确定性截断长度；claim 中再截取更短的前缀。
 _MAX_QUOTE_CHARS = 120
@@ -62,6 +66,11 @@ class AgentSessionsPreview:
     session_count: int
 
 
+# 单行记录的分类结果：("assistant", None) 计一条助手消息，("user", 文本)
+# 在文本为真实用户消息时计一条用户消息；None 表示该行不计入任何计数。
+RecordClassification = tuple[Literal["assistant", "user"], str | None]
+
+
 def parse_session_timestamp(value: object) -> datetime | None:
     """解析 Agent 会话文件里的 ISO 8601 时间戳。
 
@@ -91,6 +100,79 @@ def truncate_text(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[:limit].rstrip() + "…"
+
+
+def scan_session_file(
+    path: Path,
+    classify_record: Callable[[dict], RecordClassification | None],
+) -> SessionSummary | None:
+    """逐行流式扫描一个 Agent 会话 JSONL 的共享骨架：UTF-8 容错打开 →
+    逐行 strip → json.loads/dict 双守卫 → 记录级时间戳取 min/max → 分类
+    回调累加计数 → 组装 SessionSummary。单行损坏、非 dict、缺时间戳的行
+    被确定性跳过；全文件无时间戳返回 None（跳过该文件）。分类规则由
+    适配器注入，骨架本身不持有任何适配器规则。
+    """
+    started: datetime | None = None
+    ended: datetime | None = None
+    user_messages = 0
+    assistant_messages = 0
+    first_user_message: str | None = None
+
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+        for raw_line in handle:
+            stripped = raw_line.strip()
+            if not stripped:
+                continue
+            try:
+                record = json.loads(stripped)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(record, dict):
+                continue
+
+            timestamp = parse_session_timestamp(record.get("timestamp"))
+            if timestamp is not None:
+                if started is None or timestamp < started:
+                    started = timestamp
+                if ended is None or timestamp > ended:
+                    ended = timestamp
+
+            classification = classify_record(record)
+            if classification is None:
+                continue
+            kind, text = classification
+            if kind == "assistant":
+                assistant_messages += 1
+            elif text:
+                user_messages += 1
+                if first_user_message is None:
+                    first_user_message = text
+
+    if started is None or ended is None:
+        return None
+    return SessionSummary(
+        session_id=path.stem,
+        started_at=started,
+        ended_at=ended,
+        user_messages=user_messages,
+        assistant_messages=assistant_messages,
+        first_user_message=first_user_message,
+    )
+
+
+def build_sessions_preview(
+    sessions: list[SessionSummary],
+    *,
+    project_label: str,
+) -> AgentSessionsPreview:
+    """由扫描出的会话列表构造预览：最早/最晚开始日期与数量。"""
+    days = [session.started_at.date() for session in sessions]
+    return AgentSessionsPreview(
+        project_label=project_label,
+        first_session_on=min(days),
+        last_session_on=max(days),
+        session_count=len(sessions),
+    )
 
 
 def render_evidence_document(

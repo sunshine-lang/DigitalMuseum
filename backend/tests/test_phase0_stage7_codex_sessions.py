@@ -146,19 +146,7 @@ def codex_workspace(tmp_path: Path) -> tuple[Path, Path]:
     return workspace, sessions_root
 
 
-@pytest.fixture
-def codex_client(app_paths, tmp_path: Path) -> TestClient:
-    database_url, upload_dir = app_paths
-    with TestClient(
-        create_app(
-            database_url=database_url,
-            upload_dir=upload_dir,
-            allowed_repo_roots=str(tmp_path),
-            codex_sessions_root=str(tmp_path / "codex-home" / "sessions"),
-        )
-    ) as test_client:
-        yield test_client
-
+# codex_client fixture 统一在 conftest.py（stage6/stage7 共用）。
 
 _import = partial(import_agent_sessions, endpoint="codex-sessions")
 
@@ -263,29 +251,8 @@ def test_disputed_then_reimport_absorbs_into_user_judgement(
     assert len(visible[0]["claims"]) == 2
 
 
-def test_path_errors(codex_client: TestClient, tmp_path: Path) -> None:
-    stage_id = create_stage(codex_client, "Codex 阶段")
-
-    missing = codex_client.post(
-        f"/api/v1/stages/{stage_id}/codex-sessions",
-        json={"path": str(tmp_path / "no-such-dir")},
-    )
-    assert missing.status_code == 422
-    assert missing.json()["error"]["code"] == "codex_sessions_not_found"
-
-    not_allowed = codex_client.post(
-        f"/api/v1/stages/{stage_id}/codex-sessions",
-        json={"path": "/"},
-    )
-    assert not_allowed.status_code == 403
-    assert not_allowed.json()["error"]["code"] == "codex_path_not_allowed"
-
-    empty = codex_client.post(
-        f"/api/v1/stages/{stage_id}/codex-sessions",
-        json={"path": "  "},
-    )
-    assert empty.status_code == 422
-    assert empty.json()["error"]["code"] == "codex_path_required"
+# 路径错误契约（缺目录/越界/空路径）已参数化合一到
+# test_phase0_stage6_claude_sessions.py::test_agent_session_path_errors。
 
 
 def test_no_sessions_in_range_leaves_no_residue(

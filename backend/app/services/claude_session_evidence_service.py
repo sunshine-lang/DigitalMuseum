@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import date
 from pathlib import Path
 
@@ -8,10 +7,12 @@ from app.core.errors import ApiError
 from app.services.agent_session_evidence import (
     AgentEvidence,
     AgentSessionsPreview,
+    RecordClassification,
     SessionSummary,
-    parse_session_timestamp,
+    build_sessions_preview,
     real_user_text,
     render_evidence_document,
+    scan_session_file,
 )
 from app.services.path_policy import require_path_allowed
 
@@ -32,16 +33,9 @@ def preview_claude_sessions(
         path_raw, allowed_roots=allowed_roots, projects_root=projects_root
     )
     sessions = _scan_project_sessions(directory)
-    dated = list(sessions)
-    if not dated:
+    if not sessions:
         raise ApiError(422, "no_claude_sessions", "这个项目还没有可读取的 Claude Code 会话")
-    days = [session.started_at.date() for session in dated]
-    return AgentSessionsPreview(
-        project_label=label,
-        first_session_on=min(days),
-        last_session_on=max(days),
-        session_count=len(dated),
-    )
+    return build_sessions_preview(sessions, project_label=label)
 
 
 def import_claude_sessions(
@@ -130,67 +124,28 @@ def _label_from_munged_name(name: str) -> str:
     return name.lstrip("-").split("-")[-1] or "claude-project"
 
 
-
-
 def _scan_project_sessions(directory: Path) -> list[SessionSummary]:
-    scanned = (_scan_session_file(file_path) for file_path in sorted(directory.glob("*.jsonl")))
+    scanned = (
+        scan_session_file(file_path, _classify_record)
+        for file_path in sorted(directory.glob("*.jsonl"))
+    )
     return [summary for summary in scanned if summary is not None]
 
 
-def _scan_session_file(path: Path) -> SessionSummary | None:
-    """逐行流式解析一个会话 JSONL。
-
-    只提取时间戳、user/assistant 计数与首条真实用户消息；单行解析失败
-    或缺少时间戳的行被跳过；整个文件没有任何时间戳则返回 None（跳过
-    该文件）。所有跳过规则都是确定性的。
+def _classify_record(record: dict) -> RecordClassification | None:
+    """Claude Code 记录分类：type=assistant 计一条助手消息；type=user 从
+    message.content 提取真实文本（系统包装行与 tool_result 不算）；
+    骨架的确定性跳过语义见 agent_session_evidence.scan_session_file。
     """
-    started = None
-    ended = None
-    user_messages = 0
-    assistant_messages = 0
-    first_user_message: str | None = None
-
-    with path.open("r", encoding="utf-8", errors="replace") as handle:
-        for raw_line in handle:
-            stripped = raw_line.strip()
-            if not stripped:
-                continue
-            try:
-                record = json.loads(stripped)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(record, dict):
-                continue
-
-            timestamp = parse_session_timestamp(record.get("timestamp"))
-            if timestamp is not None:
-                if started is None or timestamp < started:
-                    started = timestamp
-                if ended is None or timestamp > ended:
-                    ended = timestamp
-
-            record_type = record.get("type")
-            if record_type == "assistant":
-                assistant_messages += 1
-            elif record_type == "user":
-                message = record.get("message")
-                if isinstance(message, dict):
-                    text = _user_message_text(message.get("content"))
-                    if text:
-                        user_messages += 1
-                        if first_user_message is None:
-                            first_user_message = text
-
-    if started is None or ended is None:
+    record_type = record.get("type")
+    if record_type == "assistant":
+        return ("assistant", None)
+    if record_type != "user":
         return None
-    return SessionSummary(
-        session_id=path.stem,
-        started_at=started,
-        ended_at=ended,
-        user_messages=user_messages,
-        assistant_messages=assistant_messages,
-        first_user_message=first_user_message,
-    )
+    message = record.get("message")
+    if not isinstance(message, dict):
+        return None
+    return ("user", _user_message_text(message.get("content")))
 
 
 def _user_message_text(content: object) -> str | None:

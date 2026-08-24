@@ -46,3 +46,31 @@ def photo_client(app_paths: tuple[str, Path]) -> TestClient:
         create_app(database_url=database_url, upload_dir=upload_dir)
     ) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def claude_client(app_paths: tuple[str, Path], tmp_path: Path) -> TestClient:
+    database_url, upload_dir = app_paths
+    with TestClient(
+        create_app(
+            database_url=database_url,
+            upload_dir=upload_dir,
+            allowed_repo_roots=str(tmp_path),
+            claude_projects_root=str(tmp_path / "claude-home" / "projects"),
+        )
+    ) as test_client:
+        yield test_client
+
+
+@pytest.fixture
+def codex_client(app_paths: tuple[str, Path], tmp_path: Path) -> TestClient:
+    database_url, upload_dir = app_paths
+    with TestClient(
+        create_app(
+            database_url=database_url,
+            upload_dir=upload_dir,
+            allowed_repo_roots=str(tmp_path),
+            codex_sessions_root=str(tmp_path / "codex-home" / "sessions"),
+        )
+    ) as test_client:
+        yield test_client

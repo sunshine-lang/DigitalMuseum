@@ -163,7 +163,8 @@ class ExhibitCaptionUpdate(BaseModel):
     caption: str | None = None
 
 
-class GitRepoCreate(BaseModel):
+# Git 仓库与 Claude/Codex 会话三个导入端点共用同形 path 入参。
+class PathCreate(BaseModel):
     path: str = Field(min_length=1, max_length=1024)
 
 
@@ -174,41 +175,15 @@ class GitRepoPreviewOut(BaseModel):
     commit_count: int
 
 
-class GitImportOut(BaseModel):
-    occurrence: OccurrenceOut
-    events: list[EventOut]
-    coverage: list[CoverageOut]
-
-
-class ClaudeSessionCreate(BaseModel):
-    path: str = Field(min_length=1, max_length=1024)
-
-
-class ClaudeSessionPreviewOut(BaseModel):
+class AgentSessionPreviewOut(BaseModel):
     project_label: str
     first_session_on: date
     last_session_on: date
     session_count: int
 
 
-class ClaudeSessionImportOut(BaseModel):
-    occurrence: OccurrenceOut
-    events: list[EventOut]
-    coverage: list[CoverageOut]
-
-
-class CodexSessionCreate(BaseModel):
-    path: str = Field(min_length=1, max_length=1024)
-
-
-class CodexSessionPreviewOut(BaseModel):
-    project_label: str
-    first_session_on: date
-    last_session_on: date
-    session_count: int
-
-
-class CodexSessionImportOut(BaseModel):
+# Git 提交与 Claude/Codex 会话三类活动证据的导入返回同形结构（一对多事件）。
+class ActivityImportOut(BaseModel):
     occurrence: OccurrenceOut
     events: list[EventOut]
     coverage: list[CoverageOut]
