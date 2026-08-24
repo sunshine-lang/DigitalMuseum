@@ -360,84 +360,27 @@ export default function MuseumMvpWorkspace() {
     }
   }
 
-  function handleFileSelection(files: FileList | null) {
-    const nextFiles = files ? Array.from(files) : [];
-    setSelectedFiles(nextFiles);
-    setImportResults([]);
-    setNotice(null);
+  // 换选笔记/照片共用（#10）：覆盖旧选择并清空逐文件结果与全局提示。
+  function fileSelectionHandler(setter: (files: File[]) => void) {
+    return (files: FileList | null) => {
+      setter(files ? Array.from(files) : []);
+      setImportResults([]);
+      setNotice(null);
+    };
   }
 
+  // 笔记批量导入（#7）：与照片共用 runBatchImport，只注入校验规则与文案差异。
   async function handleImport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!stage) return;
-    if (!selectedFiles.length) {
-      setNotice({ kind: "error", message: "请先选择 Markdown 或 TXT 文件。" });
-      return;
-    }
-    if (selectedFiles.length > MAX_BATCH_FILES) {
-      setNotice({
-        kind: "error",
-        message: `一次最多选择 ${MAX_BATCH_FILES} 份记录。`,
-      });
-      return;
-    }
-    const totalBytes = selectedFiles.reduce((sum, file) => sum + file.size, 0);
-    if (totalBytes > MAX_BATCH_BYTES) {
-      setNotice({ kind: "error", message: `本次文件总大小不能超过 ${MAX_BATCH_BYTES_LABEL}。` });
-      return;
-    }
-
-    setBusy(true);
-    setNotice(null);
-    setImportResults(
-      selectedFiles.map((file) => ({
-        name: file.name,
-        status: "pending",
-        message: "等待处理",
-      })),
-    );
-
-    let succeeded = 0;
-    let failed = 0;
-    for (const file of selectedFiles) {
-      setImportResults((current) =>
-        current.map((item) =>
-          item.name === file.name && item.status === "pending"
-            ? { ...item, message: "正在保存和整理" }
-            : item,
-        ),
-      );
-      try {
-        await importNote(stage.id, file);
-        succeeded += 1;
-        setImportResults((current) =>
-          updateImportResult(current, file.name, "success", "已导入并形成经历草稿"),
-        );
-      } catch (error) {
-        failed += 1;
-        setImportResults((current) =>
-          updateImportResult(current, file.name, "error", errorMessage(error)),
-        );
-      }
-    }
-
-    try {
-      const nextEvents = await refreshStage(stage.id);
-      const firstVisible = nextEvents.find(isVisibleExperience);
-      setSelectedEventId(firstVisible?.id ?? null);
-      setSelectedFiles([]);
-      if (succeeded > 0) setView("discover");
-      setNotice({
-        kind: failed ? "error" : "success",
-        message: failed
-          ? `已导入 ${succeeded} 份，${failed} 份需要处理。成功文件没有受到影响。`
-          : `已导入 ${succeeded} 份记录。先看看系统整理出了哪些经历。`,
-      });
-    } catch (error) {
-      setNotice({ kind: "error", message: errorMessage(error) });
-    } finally {
-      setBusy(false);
-    }
+    await runBatchImport(stage, selectedFiles, {
+      validationError: noteValidationError(selectedFiles),
+      pendingMessage: "正在保存和整理",
+      importFile: importNote,
+      clearSelection: () => setSelectedFiles([]),
+      summary: (succeeded, failed) =>
+        failed ? `已导入 ${succeeded} 份，${failed} 份需要处理。成功文件没有受到影响。` : `已导入 ${succeeded} 份记录。先看看系统整理出了哪些经历。`,
+    });
   }
 
   async function handleImportGit(event: FormEvent<HTMLFormElement>) {
@@ -467,20 +410,30 @@ export default function MuseumMvpWorkspace() {
     }
   }
 
-  async function handleImportClaude(event: FormEvent<HTMLFormElement>) {
+  // Claude/Codex 会话导入共用骨架（#8）：路径必填 → 单次导入 → refreshStage →
+  // 项目级提示；两个适配器 API 形状一致，差异只有空路径提示与项目 label 提取。
+  async function runAgentSessionImport(
+    event: FormEvent<HTMLFormElement>,
+    config: {
+      path: string;
+      emptyHint: string;
+      importSessions: (stageId: string, projectPath: string) => Promise<{ occurrence: { original_filename: string }; events: CandidateEvent[] }>;
+      projectLabel: (originalFilename: string) => string;
+    },
+  ) {
     event.preventDefault();
     if (!stage) return;
-    const projectPath = claudePath.trim();
+    const projectPath = config.path.trim();
     if (!projectPath) {
-      setNotice({ kind: "error", message: "请先填写项目路径或 Claude Code 会话目录。" });
+      setNotice({ kind: "error", message: config.emptyHint });
       return;
     }
     setBusy(true);
     setNotice(null);
     try {
-      const result = await importClaudeSessions(stage.id, projectPath);
+      const result = await config.importSessions(stage.id, projectPath);
       await refreshStage(stage.id);
-      const label = claudeProjectLabel(result.occurrence.original_filename);
+      const label = config.projectLabel(result.occurrence.original_filename);
       setNotice({
         kind: "success",
         message: result.events.length
@@ -492,86 +445,75 @@ export default function MuseumMvpWorkspace() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleImportClaude(event: FormEvent<HTMLFormElement>) {
+    await runAgentSessionImport(event, {
+      path: claudePath,
+      emptyHint: "请先填写项目路径或 Claude Code 会话目录。",
+      importSessions: importClaudeSessions,
+      projectLabel: claudeProjectLabel,
+    });
   }
 
   async function handleImportCodex(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!stage) return;
-    const projectPath = codexPath.trim();
-    if (!projectPath) {
-      setNotice({ kind: "error", message: "请先填写要导入 Codex 会话的项目路径。" });
-      return;
-    }
-    setBusy(true);
-    setNotice(null);
-    try {
-      const result = await importCodexSessions(stage.id, projectPath);
-      await refreshStage(stage.id);
-      const label = codexProjectLabel(result.occurrence.original_filename);
-      setNotice({
-        kind: "success",
-        message: result.events.length
-          ? `已从项目 ${label} 整理出 ${result.events.length} 段经历。`
-          : "这个项目的会话已并入既有经历，没有产生重复事件。",
-      });
-    } catch (error) {
-      setNotice({ kind: "error", message: errorMessage(error) });
-    } finally {
-      setBusy(false);
-    }
+    await runAgentSessionImport(event, {
+      path: codexPath,
+      emptyHint: "请先填写要导入 Codex 会话的项目路径。",
+      importSessions: importCodexSessions,
+      projectLabel: codexProjectLabel,
+    });
   }
 
-  function handlePhotoSelection(files: FileList | null) {
-    setSelectedPhotos(files ? Array.from(files) : []);
-    setImportResults([]);
-    setNotice(null);
-  }
-
+  // 照片批量导入（#7）：同样走 runBatchImport，差异是“单张限重”校验与照片文案。
   async function handleImportPhotos(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!stage) return;
-    if (!selectedPhotos.length) {
-      setNotice({ kind: "error", message: "请先选择 JPEG 或 PNG 照片。" });
-      return;
-    }
-    if (selectedPhotos.length > MAX_BATCH_FILES) {
-      setNotice({
-        kind: "error",
-        message: `一次最多选择 ${MAX_BATCH_FILES} 张照片。`,
-      });
-      return;
-    }
-    const oversized = selectedPhotos.find((file) => file.size > MAX_PHOTO_BYTES);
-    if (oversized) {
-      setNotice({
-        kind: "error",
-        message: `单张照片不能超过 ${MAX_PHOTO_BYTES_LABEL}（${oversized.name} 超限）。`,
-      });
-      return;
-    }
+    await runBatchImport(stage, selectedPhotos, {
+      validationError: photoValidationError(selectedPhotos),
+      pendingMessage: "正在保存和读取拍摄时间",
+      importFile: importPhoto,
+      clearSelection: () => setSelectedPhotos([]),
+      summary: (succeeded, failed) =>
+        failed ? `已导入 ${succeeded} 张，${failed} 张需要处理。成功照片没有受到影响。` : `已导入 ${succeeded} 张照片。拍摄时间相同的照片会整理在同一段经历里。`,
+    });
+  }
 
+  // 批量导入共用骨架（#7）：仍是前端顺序调用单文件 API，不是服务端 Import
+  // Batch。流程为校验提示 → 置 pending → 逐文件导入 → refreshStage → 清空
+  // 选择并汇总通知；逐条失败不中断批次，成功文件的结果保持可见。笔记按总
+  // 字节数限重、照片按单张限重，差异全部经 config 注入。
+  async function runBatchImport(
+    stage: Stage,
+    files: File[],
+    config: {
+      validationError: string | null;
+      pendingMessage: string;
+      importFile: (stageId: string, file: File) => Promise<unknown>;
+      clearSelection: () => void;
+      summary: (succeeded: number, failed: number) => string;
+    },
+  ) {
+    if (config.validationError) {
+      setNotice({ kind: "error", message: config.validationError });
+      return;
+    }
     setBusy(true);
     setNotice(null);
     setImportResults(
-      selectedPhotos.map((file) => ({
-        name: file.name,
-        status: "pending",
-        message: "等待处理",
-      })),
+      files.map((file): ImportResult => ({ name: file.name, status: "pending", message: "等待处理" })),
     );
 
     let succeeded = 0;
     let failed = 0;
-    for (const file of selectedPhotos) {
+    for (const file of files) {
       setImportResults((current) =>
         current.map((item) =>
-          item.name === file.name && item.status === "pending"
-            ? { ...item, message: "正在保存和读取拍摄时间" }
-            : item,
+          item.name === file.name && item.status === "pending" ? { ...item, message: config.pendingMessage } : item,
         ),
       );
       try {
-        await importPhoto(stage.id, file);
+        await config.importFile(stage.id, file);
         succeeded += 1;
         setImportResults((current) =>
           updateImportResult(current, file.name, "success", "已导入并形成经历草稿"),
@@ -586,16 +528,10 @@ export default function MuseumMvpWorkspace() {
 
     try {
       const nextEvents = await refreshStage(stage.id);
-      const firstVisible = nextEvents.find(isVisibleExperience);
-      setSelectedEventId(firstVisible?.id ?? null);
-      setSelectedPhotos([]);
+      setSelectedEventId(nextEvents.find(isVisibleExperience)?.id ?? null);
+      config.clearSelection();
       if (succeeded > 0) setView("discover");
-      setNotice({
-        kind: failed ? "error" : "success",
-        message: failed
-          ? `已导入 ${succeeded} 张，${failed} 张需要处理。成功照片没有受到影响。`
-          : `已导入 ${succeeded} 张照片。拍摄时间相同的照片会整理在同一段经历里。`,
-      });
+      setNotice({ kind: failed ? "error" : "success", message: config.summary(succeeded, failed) });
     } catch (error) {
       setNotice({ kind: "error", message: errorMessage(error) });
     } finally {
@@ -827,7 +763,7 @@ export default function MuseumMvpWorkspace() {
         <>
           <StageSummary stage={stage} experienceCount={visibleEvents.length} pendingCount={candidateEvents.length} onSwitch={openStageLibrary} />
           {view === "import" && (
-            <ImportView busy={busy} coverage={coverage} files={selectedFiles} photoFiles={selectedPhotos} results={importResults} gitPath={gitPath} recentGitPaths={recentGitPaths} claudePath={claudePath} codexPath={codexPath} onGitPathChange={setGitPath} onPickRecentGitPath={setGitPath} onClaudePathChange={setClaudePath} onCodexPathChange={setCodexPath} onFileSelection={handleFileSelection} onPhotoSelection={handlePhotoSelection} onSubmit={handleImport} onPhotoSubmit={handleImportPhotos} onGitSubmit={handleImportGit} onClaudeSubmit={handleImportClaude} onCodexSubmit={handleImportCodex} />
+            <ImportView busy={busy} coverage={coverage} files={selectedFiles} photoFiles={selectedPhotos} results={importResults} gitPath={gitPath} recentGitPaths={recentGitPaths} claudePath={claudePath} codexPath={codexPath} onGitPathChange={setGitPath} onPickRecentGitPath={setGitPath} onClaudePathChange={setClaudePath} onCodexPathChange={setCodexPath} onFileSelection={fileSelectionHandler(setSelectedFiles)} onPhotoSelection={fileSelectionHandler(setSelectedPhotos)} onSubmit={handleImport} onPhotoSubmit={handleImportPhotos} onGitSubmit={handleImportGit} onClaudeSubmit={handleImportClaude} onCodexSubmit={handleImportCodex} />
           )}
           {view === "discover" && (
             <DiscoverView
@@ -1118,8 +1054,6 @@ function ImportView({ busy, coverage, files, photoFiles, results, gitPath, recen
   onClaudeSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onCodexSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
-  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
-  const totalPhotoBytes = photoFiles.reduce((sum, file) => sum + file.size, 0);
   return (
     <section className="mvp-view mvp-import-view">
       <article className="mvp-panel mvp-import-panel">
@@ -1130,13 +1064,7 @@ function ImportView({ busy, coverage, files, photoFiles, results, gitPath, recen
             <span>选择多份 Markdown / TXT 记录</span>
             <small>单次最多 {MAX_BATCH_FILES} 份，总计不超过 {MAX_BATCH_BYTES_LABEL}；不支持的文件会单独提示</small>
           </label>
-          {files.length > 0 && (
-            <div className="mvp-file-selection">
-              <div><strong>已选择 {files.length} 份</strong><span>{formatBytes(totalBytes)}</span></div>
-              <ul>{files.slice(0, 8).map((file) => <li key={`${file.name}-${file.size}`}><span>{file.name}</span><small>{formatBytes(file.size)}</small></li>)}</ul>
-              {files.length > 8 && <p>还有 {files.length - 8} 份文件将在本次一起处理。</p>}
-            </div>
-          )}
+          {files.length > 0 && <FileSelectionList files={files} unit="份" moreNoun="份文件" />}
           <button className="mvp-primary" disabled={busy || files.length === 0} type="submit">{busy ? "正在逐份保存和整理…" : "开始整理这些记录"}</button>
         </form>
         <form className="mvp-photo-import" onSubmit={onPhotoSubmit}>
@@ -1146,13 +1074,7 @@ function ImportView({ busy, coverage, files, photoFiles, results, gitPath, recen
             <span>选择 JPEG / PNG 照片</span>
             <small>单次最多 {MAX_BATCH_FILES} 张、每张不超过 {MAX_PHOTO_BYTES_LABEL}；按照片自带的拍摄时间（EXIF）归入时间线</small>
           </label>
-          {photoFiles.length > 0 && (
-            <div className="mvp-file-selection">
-              <div><strong>已选择 {photoFiles.length} 张</strong><span>{formatBytes(totalPhotoBytes)}</span></div>
-              <ul>{photoFiles.slice(0, 8).map((file) => <li key={`${file.name}-${file.size}`}><span>{file.name}</span><small>{formatBytes(file.size)}</small></li>)}</ul>
-              {photoFiles.length > 8 && <p>还有 {photoFiles.length - 8} 张照片将在本次一起处理。</p>}
-            </div>
-          )}
+          {photoFiles.length > 0 && <FileSelectionList files={photoFiles} unit="张" moreNoun="张照片" />}
           <button className="mvp-secondary" disabled={busy || photoFiles.length === 0} type="submit">{busy ? "正在逐张保存和整理…" : "开始整理这些照片"}</button>
         </form>
         <form className="mvp-git-import" onSubmit={onGitSubmit}>
@@ -1198,6 +1120,18 @@ function ImportView({ busy, coverage, files, photoFiles, results, gitPath, recen
       </article>
       <ImportReport coverage={coverage} results={results} />
     </section>
+  );
+}
+
+// 已选文件清单（#9）：笔记/照片共用，只差量词与“剩余文件”的措辞。
+function FileSelectionList({ files, unit, moreNoun }: { files: File[]; unit: string; moreNoun: string }) {
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+  return (
+    <div className="mvp-file-selection">
+      <div><strong>已选择 {files.length} {unit}</strong><span>{formatBytes(totalBytes)}</span></div>
+      <ul>{files.slice(0, 8).map((file) => <li key={`${file.name}-${file.size}`}><span>{file.name}</span><small>{formatBytes(file.size)}</small></li>)}</ul>
+      {files.length > 8 && <p>还有 {files.length - 8} {moreNoun}将在本次一起处理。</p>}
+    </div>
   );
 }
 
@@ -1596,6 +1530,24 @@ function StatusPendingGlyph() {
       <circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeDasharray="2.4 2.4" strokeLinecap="round" />
     </svg>
   );
+}
+
+// 笔记批量校验（#7）：按总字节数限重（MAX_BATCH_BYTES），与照片的单张限重不同。
+function noteValidationError(files: File[]): string | null {
+  if (!files.length) return "请先选择 Markdown 或 TXT 文件。";
+  if (files.length > MAX_BATCH_FILES) return `一次最多选择 ${MAX_BATCH_FILES} 份记录。`;
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+  if (totalBytes > MAX_BATCH_BYTES) return `本次文件总大小不能超过 ${MAX_BATCH_BYTES_LABEL}。`;
+  return null;
+}
+
+// 照片批量校验（#7）：按单张限重（MAX_PHOTO_BYTES），超限时点名具体文件。
+function photoValidationError(files: File[]): string | null {
+  if (!files.length) return "请先选择 JPEG 或 PNG 照片。";
+  if (files.length > MAX_BATCH_FILES) return `一次最多选择 ${MAX_BATCH_FILES} 张照片。`;
+  const oversized = files.find((file) => file.size > MAX_PHOTO_BYTES);
+  if (oversized) return `单张照片不能超过 ${MAX_PHOTO_BYTES_LABEL}（${oversized.name} 超限）。`;
+  return null;
 }
 
 function updateImportResult(results: ImportResult[], name: string, status: ImportResult["status"], message: string): ImportResult[] {
