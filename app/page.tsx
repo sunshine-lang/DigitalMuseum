@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import {
+  AgentSessionProject,
   CoverageItem,
   GitRepoPreview,
   Phase0ApiError,
@@ -19,6 +20,8 @@ import {
   importCodexSessions,
   importGitRepo,
   importNote,
+  listClaudeSessionProjects,
+  listCodexSessionProjects,
   listStages,
   mergeEvents,
   previewGitRepo,
@@ -408,29 +411,30 @@ export default function MuseumMvpWorkspace() {
   }
 
   // Claude/Codex 会话导入共用骨架（#8）：路径必填 → 单次导入 → refreshStage →
-  // 项目级提示；两个适配器 API 形状一致，差异只有空路径提示与项目 label 提取。
-  async function runAgentSessionImport(
-    event: FormEvent<HTMLFormElement>,
-    config: {
-      path: string;
-      emptyHint: string;
-      importSessions: (stageId: string, projectPath: string) => Promise<{ occurrence: { original_filename: string }; events: CandidateEvent[] }>;
-      projectLabel: (originalFilename: string) => string;
-    },
+  // 项目级提示；发现面板与手动表单共用这一条导入链路。
+  async function importAgentSessions(
+    kind: "claude" | "codex",
+    projectPath: string,
+    emptyHint: string,
   ) {
-    event.preventDefault();
     if (!stage) return;
-    const projectPath = config.path.trim();
-    if (!projectPath) {
-      setNotice({ kind: "error", message: config.emptyHint });
+    const trimmedPath = projectPath.trim();
+    if (!trimmedPath) {
+      setNotice({ kind: "error", message: emptyHint });
       return;
     }
     setBusy(true);
     setNotice(null);
     try {
-      const result = await config.importSessions(stage.id, projectPath);
+      const result =
+        kind === "claude"
+          ? await importClaudeSessions(stage.id, trimmedPath)
+          : await importCodexSessions(stage.id, trimmedPath);
       await refreshStage(stage.id);
-      const label = config.projectLabel(result.occurrence.original_filename);
+      const label =
+        kind === "claude"
+          ? claudeProjectLabel(result.occurrence.original_filename)
+          : codexProjectLabel(result.occurrence.original_filename);
       setNotice({
         kind: "success",
         message: result.events.length
@@ -445,21 +449,21 @@ export default function MuseumMvpWorkspace() {
   }
 
   async function handleImportClaude(event: FormEvent<HTMLFormElement>) {
-    await runAgentSessionImport(event, {
-      path: claudePath,
-      emptyHint: "请先填写项目路径或 Claude Code 会话目录。",
-      importSessions: importClaudeSessions,
-      projectLabel: claudeProjectLabel,
-    });
+    event.preventDefault();
+    await importAgentSessions(
+      "claude",
+      claudePath,
+      "请先填写项目路径或 Claude Code 会话目录。",
+    );
   }
 
   async function handleImportCodex(event: FormEvent<HTMLFormElement>) {
-    await runAgentSessionImport(event, {
-      path: codexPath,
-      emptyHint: "请先填写要导入 Codex 会话的项目路径。",
-      importSessions: importCodexSessions,
-      projectLabel: codexProjectLabel,
-    });
+    event.preventDefault();
+    await importAgentSessions(
+      "codex",
+      codexPath,
+      "请填写要导入 Codex 会话的项目路径。",
+    );
   }
 
   // 批量导入共用骨架（#7）：仍是前端顺序调用单文件 API，不是服务端 Import
@@ -736,7 +740,7 @@ export default function MuseumMvpWorkspace() {
         <>
           <StageSummary stage={stage} experienceCount={visibleEvents.length} pendingCount={candidateEvents.length} onSwitch={openStageLibrary} />
           {view === "import" && (
-            <ImportView busy={busy} coverage={coverage} files={selectedFiles} results={importResults} gitPath={gitPath} recentGitPaths={recentGitPaths} claudePath={claudePath} codexPath={codexPath} onGitPathChange={setGitPath} onPickRecentGitPath={setGitPath} onClaudePathChange={setClaudePath} onCodexPathChange={setCodexPath} onFileSelection={fileSelectionHandler(setSelectedFiles)} onSubmit={handleImport} onGitSubmit={handleImportGit} onClaudeSubmit={handleImportClaude} onCodexSubmit={handleImportCodex} />
+            <ImportView busy={busy} coverage={coverage} files={selectedFiles} results={importResults} gitPath={gitPath} recentGitPaths={recentGitPaths} claudePath={claudePath} codexPath={codexPath} onGitPathChange={setGitPath} onPickRecentGitPath={setGitPath} onClaudePathChange={setClaudePath} onCodexPathChange={setCodexPath} onFileSelection={fileSelectionHandler(setSelectedFiles)} onSubmit={handleImport} onGitSubmit={handleImportGit} onClaudeSubmit={handleImportClaude} onCodexSubmit={handleImportCodex} onImportSessions={(kind, path) => void importAgentSessions(kind, path, "请先选择要导入的项目。")} />
           )}
           {view === "discover" && (
             <DiscoverView
@@ -798,8 +802,8 @@ export default function MuseumMvpWorkspace() {
       )}
 
       <footer className="mvp-footer">
-        <span>当前体验：本地 Markdown/TXT → 经历草稿 → 关键核对 → 私人回顾</span>
-        <span>平台原生导出解析、自动策展网页和公开分享尚未实现</span>
+        <span>当前体验：笔记 / Git 仓库 / Claude Code / Codex 会话 → 经历草稿 → 关键核对 → 私人回顾</span>
+        <span>静态展览导出已就绪（导出前有敏感信息检查）；ChatGPT / WorkBuddy 导入尚未实现</span>
       </footer>
     </main>
   );
@@ -1000,7 +1004,7 @@ function StageSummary({ stage, experienceCount, pendingCount, onSwitch }: {
   );
 }
 
-function ImportView({ busy, coverage, files, results, gitPath, recentGitPaths, claudePath, codexPath, onGitPathChange, onPickRecentGitPath, onClaudePathChange, onCodexPathChange, onFileSelection, onSubmit, onGitSubmit, onClaudeSubmit, onCodexSubmit }: {
+function ImportView({ busy, coverage, files, results, gitPath, recentGitPaths, claudePath, codexPath, onGitPathChange, onPickRecentGitPath, onClaudePathChange, onCodexPathChange, onFileSelection, onSubmit, onGitSubmit, onClaudeSubmit, onCodexSubmit, onImportSessions }: {
   busy: boolean;
   coverage: CoverageItem[];
   files: File[];
@@ -1018,11 +1022,13 @@ function ImportView({ busy, coverage, files, results, gitPath, recentGitPaths, c
   onGitSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onClaudeSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onCodexSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onImportSessions: (kind: "claude" | "codex", path: string) => void;
 }) {
   return (
     <section className="mvp-view mvp-import-view">
       <article className="mvp-panel mvp-import-panel">
         <header className="mvp-section-heading"><span>01 · 导入</span><div><h2>一次导入这段时间的记录</h2><p>现在支持整理过的 Markdown/TXT、本地 Git 仓库、Claude Code 与 Codex 会话。ChatGPT、WorkBuddy 原生导出文件将在后续适配。</p></div></header>
+        <SessionDiscoveryPanel busy={busy} onImportSessions={onImportSessions} />
         <form onSubmit={onSubmit}>
           <label className="mvp-dropzone">
             <input name="notes" type="file" multiple onChange={(event) => onFileSelection(event.target.files)} />
@@ -1071,9 +1077,86 @@ function ImportView({ busy, coverage, files, results, gitPath, recentGitPaths, c
           <button className="mvp-secondary" disabled={busy} type="submit">{busy ? "正在读取会话…" : "读取 Codex 会话"}</button>
           <small>系统按会话记录里的项目路径归属过滤，只统计你亲自发起的会话（内部子代理线程不计入）；只读取时间戳、消息计数与你的消息原文，不会修改 ~/.codex 下的任何内容。</small>
         </form>
-        <div className="mvp-privacy-note"><strong>本地优先</strong><p>当前版本不调用模型，也不会把文件发送到云端。请仍只使用非敏感测试资料。</p></div>
+        <div className="mvp-privacy-note"><strong>本地优先</strong><p>当前版本不调用模型，也不会把文件发送到云端；档案只保存在这台机器上。导出分享前系统会做敏感信息检查，最终可见内容由你确认。</p></div>
       </article>
       <ImportReport coverage={coverage} results={results} />
+    </section>
+  );
+}
+
+// 会话发现面板：自动列举本机有 Claude Code / Codex 会话的项目，点一下即导入。
+// 只读扫描（Claude 数会话文件、Codex 只读首行）；失败时回落到下方手动填路径。
+function SessionDiscoveryPanel({ busy, onImportSessions }: {
+  busy: boolean;
+  onImportSessions: (kind: "claude" | "codex", path: string) => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [claudeProjects, setClaudeProjects] = useState<AgentSessionProject[]>([]);
+  const [codexProjects, setCodexProjects] = useState<AgentSessionProject[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    Promise.all([listClaudeSessionProjects(), listCodexSessionProjects()])
+      .then(([nextClaude, nextCodex]) => {
+        setClaudeProjects(nextClaude);
+        setCodexProjects(nextCodex);
+      })
+      .catch((loadError: unknown) =>
+        setError(loadError instanceof Error ? loadError.message : "扫描本机会话失败"),
+      )
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    // 与首页 restoreSavedStage 同习：微任务里启动，避免 effect 内同步 setState。
+    void Promise.resolve().then(load);
+  }, [load]);
+
+  const total = claudeProjects.length + codexProjects.length;
+
+  return (
+    <section className="mvp-session-discovery" aria-label="本机 Agent 会话发现">
+      <header>
+        <div>
+          <strong>本机 Agent 会话</strong>
+          <small>自动发现 Claude Code 与 Codex 的会话记录，点「导入」即可；只读，不会修改 ~/.claude 与 ~/.codex</small>
+        </div>
+        <button type="button" disabled={loading || busy} onClick={load}>{loading ? "扫描中…" : "刷新"}</button>
+      </header>
+      {error && (
+        <p className="mvp-session-discovery-hint">暂时扫不到会话：{error}。可在下方手动填写项目路径。</p>
+      )}
+      {!error && !loading && total === 0 && (
+        <p className="mvp-session-discovery-hint">没有发现 Claude Code / Codex 会话；也可以先导入笔记或 Git 仓库。</p>
+      )}
+      {[
+        { kind: "claude" as const, title: "Claude Code", projects: claudeProjects },
+        { kind: "codex" as const, title: "Codex", projects: codexProjects },
+      ].map(({ kind, title, projects }) =>
+        projects.length > 0 ? (
+          <div key={kind}>
+            <span>{title} · {projects.length} 个项目</span>
+            <ul>
+              {projects.map((project) => (
+                <li key={project.import_path}>
+                  <button
+                    type="button"
+                    className="mvp-session-project"
+                    disabled={busy}
+                    title={project.import_path}
+                    onClick={() => onImportSessions(kind, project.import_path)}
+                  >
+                    <strong>{project.project}</strong>
+                    <small>{project.session_count} 个会话 · 导入</small>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null,
+      )}
     </section>
   );
 }
@@ -1138,7 +1221,7 @@ function DiscoverView({ events, selectedEvent, pendingCount, noteCandidateCount,
   return (
     <section className="mvp-view mvp-discover-view">
       <div className="mvp-discover-main">
-        <header className="mvp-section-heading"><span>02 · 发现</span><div><h2>系统整理出 {events.length} 段可能的经历</h2><p>先浏览结果。带“等待你核对”的内容仍是草稿；带“系统核实”的内容来自确定性记录（Git 提交、照片元数据、Agent 会话时间戳），无需你逐条确认。</p></div></header>
+        <header className="mvp-section-heading"><span>02 · 发现</span><div><h2>系统整理出 {events.length} 段可能的经历</h2><p>先浏览结果。带“等待你核对”的内容仍是草稿；带“系统核实”的内容来自确定性记录（Git 提交、Agent 会话时间戳），无需你逐条确认。</p></div></header>
         <div className="mvp-legend" aria-label="卡片状态图例">
           <span><i className="ai" aria-hidden="true" />虚线半透明 · AI 整理的草稿</span>
           <span><i className="sys" aria-hidden="true" />实线纹理 · 系统核实的确定性记录</span>
@@ -1250,7 +1333,7 @@ function ReviewView({ event, remaining, note, busy, leaving, noteRef, evidenceRe
   onAnchorActivate: (claimId: string, anchorKey: string, quote: string) => void;
 }) {
   if (!event) {
-    return <section className="mvp-view mvp-review-complete"><span>关键核对已完成</span><h2>现在可以看看整理后的回顾</h2><p>暂时不确定的内容会保留原样，不会被系统补写。</p><button className="mvp-primary" type="button" onClick={onPreview}>查看回顾草稿</button></section>;
+    return <section className="mvp-view mvp-review-complete"><span>核对 · 无待办</span><h2>这段回顾目前无需逐条核对</h2><p>展示的经历全部来自系统核实（确定性机器读数）；如果哪一段与事实不符，随时可在“发现经历”里点「对这段记录提出异议」。</p><button className="mvp-primary" type="button" onClick={onPreview}>查看回顾草稿</button></section>;
   }
   const frozen = busy || leaving !== null;
   const aggregated = event.source_count > 1;

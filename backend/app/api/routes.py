@@ -11,6 +11,7 @@ from app.core.errors import ApiError
 from app.domain.schemas import (
     ActivityImportOut,
     AgentSessionPreviewOut,
+    AgentSessionProjectOut,
     CoverageOut,
     DataEnvelope,
     EventOut,
@@ -287,6 +288,18 @@ def create_api_router(session_provider) -> APIRouter:
             )
         }
 
+    @router.get(
+        "/claude-sessions/projects",
+        response_model=DataEnvelope[list[AgentSessionProjectOut]],
+    )
+    def discover_claude_projects(request: Request) -> dict:
+        # 发现面板：只读列举 projects 根下有会话文件的项目，不读会话内容。
+        return {
+            "data": claude_session_evidence_service.list_claude_projects(
+                request.app.state.settings.claude_projects_root,
+            )
+        }
+
     @router.post(
         "/stages/{stage_id}/claude-sessions",
         status_code=201,
@@ -321,6 +334,18 @@ def create_api_router(session_provider) -> APIRouter:
                 path,
                 allowed_roots=request.app.state.settings.allowed_repo_roots,
                 sessions_root=request.app.state.settings.codex_sessions_root,
+            )
+        }
+
+    @router.get(
+        "/codex-sessions/projects",
+        response_model=DataEnvelope[list[AgentSessionProjectOut]],
+    )
+    def discover_codex_projects(request: Request) -> dict:
+        # 发现面板：只读全部 rollout 首行的项目归属（真人会话计数），不读正文。
+        return {
+            "data": codex_session_evidence_service.list_codex_projects(
+                request.app.state.settings.codex_sessions_root,
             )
         }
 

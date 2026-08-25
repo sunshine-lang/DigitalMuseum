@@ -53,7 +53,7 @@ test("renders the value-first AI records MVP workspace", async () => {
   assert.match(html, /查看回顾/);
   assert.match(html, /原始记录保存在本地/);
   assert.match(html, /先看草稿/);
-  assert.match(html, /原生导出解析、自动策展网页和公开分享尚未实现/);
+  assert.match(html, /静态展览导出已就绪/);
   assert.doesNotMatch(html, /5 分钟/);
   assert.doesNotMatch(html, /Unknown/);
 });

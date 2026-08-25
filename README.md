@@ -15,7 +15,7 @@
 → 审阅状态持久化并可恢复
 ```
 
-这不是整个 Phase 0，也不是完整产品。当前“AI 协作记录”支持用户已经整理成 `.md/.txt` 的非敏感测试资料、本地 Git 仓库（只读提交记录）、Claude Code 会话（只读 `~/.claude/projects`）与 Codex 会话（只读 `~/.codex/sessions`）。照片适配器已于 2026-08-25 整体删除（spec 留档于阶段文档）；`/exhibition` 支持把勾选展出的事件一键导出为无脚本自包含单文件 HTML（午夜档案馆视觉），但 ChatGPT/WorkBuddy 原生 Session 解析、真实模型与 Share 尚未实现，首页展览区仍是读取真实 Event 状态的本地草稿。`/demo` 静态演示已于 2026-08 移除。
+这不是整个 Phase 0，也不是完整产品。当前“AI 协作记录”支持用户已经整理成 `.md/.txt` 的笔记、本地 Git 仓库（只读提交记录）、Claude Code 会话（只读 `~/.claude/projects`）与 Codex 会话（只读 `~/.codex/sessions`），导入页可自动发现本机有会话的项目。照片适配器已于 2026-08-25 整体删除（spec 留档于阶段文档）；`/exhibition` 支持把勾选展出的事件一键导出为无脚本自包含单文件 HTML（午夜档案馆视觉），但 ChatGPT/WorkBuddy 原生 Session 解析、真实模型与 Share 尚未实现，首页展览区仍是读取真实 Event 状态的本地草稿。`/demo` 静态演示已于 2026-08 移除。
 
 ## 技术适配
 
@@ -87,7 +87,7 @@ npm run dev:phase0
 10. 刷新页面，确认 Stage、Evidence、Event 和 Review 状态仍存在。
 11. 粘贴一个本机项目路径（如 `/Users/you/Projects/your-project`）点「读取 Claude Code 会话」，确认生成带“系统核实”标记的按天经历，且 `~/.claude` 没有被修改。
 
-当前原文未加密，只用于非敏感测试素材；不要导入真实隐私资料。
+档案只保存在本机、不联网；导出分享前系统会做敏感信息检查（常见密钥、本机路径、邮箱），命中需人工确认后才会生成文件。
 
 ## 自动化验证
 

@@ -266,3 +266,18 @@ export function importCodexSessions(
     body: JSON.stringify({ path: projectPath }),
   });
 }
+
+/** 会话发现面板：本机有会话的项目，import_path 可原样传给导入端点。 */
+export type AgentSessionProject = {
+  project: string;
+  session_count: number;
+  import_path: string;
+};
+
+export function listClaudeSessionProjects(): Promise<AgentSessionProject[]> {
+  return apiRequest("/api/v1/claude-sessions/projects");
+}
+
+export function listCodexSessionProjects(): Promise<AgentSessionProject[]> {
+  return apiRequest("/api/v1/codex-sessions/projects");
+}

@@ -27,7 +27,7 @@ test("导出脱敏：路径命中弹确认框，取消后不导出", async ({ pa
   await page.getByRole("button", { name: /开馆 · 展出已选的/ }).click();
 
   const downloadPromise = page.waitForEvent("download", { timeout: 3000 }).catch(() => null);
-  await page.getByRole("button", { name: "导出静态展览（HTML）" }).click();
+  await page.getByRole("button", { name: "导出展览（HTML）" }).click();
 
   const dialog = page.getByRole("dialog", { name: "导出内容风险确认" });
   await expect(dialog).toBeVisible();

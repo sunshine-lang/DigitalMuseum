@@ -370,6 +370,14 @@ export default function ExhibitionWorkspace() {
       <header className="expo-show-topbar">
         <span className="expo-show-brand">DIGITAL MUSEUM</span>
         <span className="expo-show-theme">午夜档案馆</span>
+        <button
+          className="expo-topbar-export"
+          type="button"
+          title="把当前勾选展出的经历导出为一个自包含 HTML 文件：断网可双击打开、可发给朋友；不含证据链细节（原文锚点与文件指纹留在本机）。"
+          onClick={exportStaticExhibition}
+        >
+          导出展览（HTML）
+        </button>
         <Link href="/">回到工作台</Link>
       </header>
 
@@ -520,14 +528,6 @@ export default function ExhibitionWorkspace() {
           <div className="expo-show-actions">
             <button className="expo-button ghost" type="button" onClick={() => setPhase("select")}>
               回到选展 · 调整展出内容
-            </button>
-            <button
-              className="expo-button ghost"
-              type="button"
-              title="把当前勾选展出的经历导出为一个自包含 HTML 文件：断网可双击打开、可发给朋友；不含证据链细节（原文锚点与文件指纹留在本机）。"
-              onClick={exportStaticExhibition}
-            >
-              导出静态展览（HTML）
             </button>
             <Link className="expo-button" href="/">回到工作台</Link>
           </div>

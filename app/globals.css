@@ -364,6 +364,49 @@ button:focus-visible {
 .mvp-dropzone span { font-size: 13px; font-weight: 750; }
 .mvp-dropzone small { color: var(--mvp-muted); font: 400 10px var(--mvp-mono); line-height: 1.6; }
 .mvp-import-panel form > .mvp-primary { width: 100%; }
+
+/* 会话发现面板：自动列举本机有 Claude Code / Codex 会话的项目 */
+.mvp-session-discovery {
+  margin: 20px 0 6px;
+  border: 1px solid var(--mvp-blue);
+  padding: 16px 18px;
+  background: var(--mvp-blue-soft);
+  display: grid;
+  gap: 12px;
+}
+.mvp-session-discovery > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.mvp-session-discovery header strong { display: block; font-size: 13px; }
+.mvp-session-discovery header small { display: block; margin-top: 4px; max-width: 460px; color: var(--mvp-muted); font-size: 10.5px; line-height: 1.6; }
+.mvp-session-discovery > header > button {
+  flex: none;
+  min-height: 34px;
+  border: 1px solid var(--mvp-line-strong);
+  padding: 0 14px;
+  color: var(--mvp-ink);
+  background: var(--mvp-card);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+}
+.mvp-session-discovery-hint { margin: 0; color: var(--mvp-muted); font-size: 11px; line-height: 1.6; }
+.mvp-session-discovery > div > span { display: block; color: var(--mvp-blue); font: 700 9.5px var(--mvp-mono); letter-spacing: .18em; }
+.mvp-session-discovery ul { margin: 8px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.mvp-session-project {
+  width: 100%;
+  min-height: 58px;
+  border: 1px solid var(--mvp-line-strong);
+  padding: 9px 12px;
+  color: inherit;
+  background: var(--mvp-card);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .2s ease, background .2s ease;
+}
+.mvp-session-project:hover:not(:disabled) { border-color: var(--mvp-blue); background: #fffdf9; }
+.mvp-session-project:disabled { cursor: wait; opacity: .5; }
+.mvp-session-project strong { display: block; overflow: hidden; font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+.mvp-session-project small { display: block; margin-top: 3px; color: var(--mvp-muted); font: 500 9.5px var(--mvp-mono); letter-spacing: .04em; }
+.mvp-session-project:hover:not(:disabled) small { color: var(--mvp-blue); }
 .mvp-file-selection { margin: 0 0 14px; border: 1px solid var(--mvp-line); padding: 14px; background: #fffdf9; }
 .mvp-file-selection > div { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; }
 .mvp-file-selection > div span { color: var(--mvp-muted); font: 400 10px var(--mvp-mono); }
@@ -1112,6 +1155,19 @@ mark.mvp-evidence-hit {
 }
 .expo-show-brand { font-size: 11px; font-weight: 700; letter-spacing: .2em; }
 .expo-show-theme { margin-left: auto; font-size: 12px; color: var(--e-muted); letter-spacing: .08em; }
+/* 导出是产品的终点动作：常驻吸顶栏，不随滚动沉底 */
+.expo-topbar-export {
+  border: 1px solid var(--e-line);
+  border-radius: 8px;
+  padding: 7px 14px;
+  color: var(--e-ink);
+  background: transparent;
+  font-size: 12px;
+  letter-spacing: .04em;
+  cursor: pointer;
+  transition: border-color .2s ease, color .2s ease;
+}
+.expo-topbar-export:hover { border-color: var(--e-accent); color: var(--e-accent); }
 .expo-show-topbar a { color: var(--e-muted); font-size: 13px; text-underline-offset: 4px; }
 
 .expo-cover {
@@ -1299,6 +1355,7 @@ a.mvp-primary {
   .expo-modules { grid-template-columns: 1fr; }
   .expo-show-topbar { padding: 12px 18px; }
   .expo-show-theme { display: none; }
+  .expo-topbar-export { margin-left: auto; }
   .expo-cover { min-height: 86vh; }
   .expo-card { padding: 20px; }
   .expo-prep-actions { flex-direction: column; align-items: stretch; }

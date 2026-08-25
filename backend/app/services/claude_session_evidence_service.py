@@ -19,6 +19,34 @@ from app.services.path_policy import require_path_allowed
 CLAUDE_PROCESSOR_VERSION = "claude-code-evidence-v1"
 
 
+def list_claude_projects(projects_root: str) -> list[dict]:
+    """只读列举 projects 根下有会话文件的项目目录（名称 + 会话文件数）。
+
+    发现面板专用：不读取任何会话内容（只数 *.jsonl 文件）；import_path 直接
+    指向会话目录，可原样传给导入端点（走“直接给出会话项目目录”分支）。
+    按会话数降序、同数按名称排序，全部确定性。
+    """
+    root = Path(projects_root).expanduser()
+    if not root.is_dir():
+        return []
+    projects: list[dict] = []
+    for directory in root.iterdir():
+        if not directory.is_dir():
+            continue
+        session_files = list(directory.glob("*.jsonl"))
+        if not session_files:
+            continue
+        projects.append(
+            {
+                "project": _label_from_munged_name(directory.name),
+                "session_count": len(session_files),
+                "import_path": str(directory),
+            }
+        )
+    projects.sort(key=lambda item: (-item["session_count"], item["project"]))
+    return projects
+
+
 def preview_claude_sessions(
     path_raw: str,
     *,

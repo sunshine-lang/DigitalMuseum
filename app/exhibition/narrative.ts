@@ -47,7 +47,7 @@ export function exhibitNarrative(event: NarrativeEvent): string {
     const parts = [
       repo ? `在 ${repo.trim()}` : "",
       commitCount > 0 ? `提交了 ${commitCount} 次` : "",
-    ].filter(Boolean).join("");
+    ].filter(Boolean).join(" ");
     const tail = first ? `：${first.trim()}…` : "";
     return `${parts}${tail}` || cleanFragment(claim).slice(0, 72);
   }

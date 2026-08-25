@@ -170,6 +170,13 @@ class AgentSessionPreviewOut(BaseModel):
     session_count: int
 
 
+# 会话发现面板：本机有会话的项目清单（import_path 可原样传给导入端点）。
+class AgentSessionProjectOut(BaseModel):
+    project: str
+    session_count: int
+    import_path: str
+
+
 # Git 提交与 Claude/Codex 会话三类活动证据的导入返回同形结构（一对多事件）。
 class ActivityImportOut(BaseModel):
     occurrence: OccurrenceOut

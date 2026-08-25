@@ -20,6 +20,45 @@ from app.services.path_policy import require_path_allowed
 CODEX_PROCESSOR_VERSION = "codex-evidence-v1"
 
 
+def list_codex_projects(sessions_root: str) -> list[dict]:
+    """只读列举全部 rollout 的项目归属（名称 + 真人会话数），发现面板专用。
+
+    只读每个文件的首行 session_meta（不读会话正文）；只统计
+    thread_source == "user"（与导入口径一致）；cwd 目录已不存在的不列——
+    导入要求项目目录存在，列出来只会点出 422。确定性排序：会话数降序、
+    同数按名称。
+    """
+    root = Path(sessions_root).expanduser()
+    if not root.is_dir():
+        return []
+    counts: dict[str, int] = {}
+    for file_path in sorted(root.rglob("rollout-*.jsonl")):
+        meta = _read_session_meta(file_path)
+        if meta is None or meta.get("thread_source") != "user":
+            continue
+        cwd = meta.get("cwd")
+        if not isinstance(cwd, str) or not cwd.strip():
+            continue
+        try:
+            resolved = Path(cwd).expanduser().resolve()
+        except OSError:
+            continue
+        if not resolved.is_dir():
+            continue
+        key = str(resolved)
+        counts[key] = counts.get(key, 0) + 1
+    projects = [
+        {
+            "project": Path(path).name or "codex-project",
+            "session_count": count,
+            "import_path": path,
+        }
+        for path, count in counts.items()
+    ]
+    projects.sort(key=lambda item: (-item["session_count"], item["project"]))
+    return projects
+
+
 def preview_codex_sessions(
     path_raw: str,
     *,
