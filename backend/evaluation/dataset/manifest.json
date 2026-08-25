@@ -18,10 +18,10 @@
   },
   "rejected": [
     {
-      "filename": "out-of-range-note.md",
-      "content": "---\ntitle: 阶段之外的旧笔记\ndate: 2025-12-01\n---\n\n这段内容发生在建馆阶段开始之前。",
-      "status": 422,
-      "error_code": "note_outside_stage"
+      "filename": "corrupt-note.md",
+      "content": "%PDF-1.4 这不是 UTF-8 纯文本笔记。",
+      "status": 415,
+      "error_code": "invalid_note_content"
     }
   ],
   "expected_events": [

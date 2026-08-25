@@ -9,11 +9,12 @@ head 执行清理，断言：照片谱系整体删除、多源事件保留非照
 from __future__ import annotations
 
 import hashlib
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
+from uuid import uuid4
 
 from alembic.config import Config
-from sqlalchemy import create_engine, func, select
+from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.orm import sessionmaker
 
 from alembic import command
@@ -45,9 +46,38 @@ def _blob(sha: str, suffix: str, media_type: str) -> models.EvidenceBlob:
     )
 
 
-def _event(stage_id: str, **overrides) -> models.CandidateEvent:
+def _occurrence(
+    session,
+    stage_id: str,
+    *,
+    blob_sha256: str | None,
+    original_filename: str,
+    status: str = "completed",
+) -> str:
+    """旧 schema 播种用原生 SQL：occurrence 的 stage_id 属主列已在当前 ORM
+    摘除（ADR-0001），但历史迁移测试必须按当时的表结构落行。"""
+    occurrence_id = str(uuid4())
+    session.execute(
+        text(
+            "INSERT INTO evidence_occurrences"
+            " (id, stage_id, blob_sha256, original_filename, status, imported_at)"
+            " VALUES (:id, :stage_id, :blob, :filename, :status, :now)"
+        ),
+        {
+            "id": occurrence_id,
+            "stage_id": stage_id,
+            "blob": blob_sha256,
+            "filename": original_filename,
+            "status": status,
+            "now": datetime.now(UTC),
+        },
+    )
+    return occurrence_id
+
+
+def _event(session, stage_id: str, **overrides) -> str:
+    """同上：candidate_events 的旧属主列经原生 SQL 播种，返回新事件 id。"""
     fields = {
-        "stage_id": stage_id,
         "occurrence_id": None,
         "title": "事件",
         "occurred_on": date(2026, 7, 4),
@@ -55,9 +85,32 @@ def _event(stage_id: str, **overrides) -> models.CandidateEvent:
         "status": "candidate",
         "revision": 0,
         "origin": "note",
+        "parent_event_id": None,
     }
     fields.update(overrides)
-    return models.CandidateEvent(**fields)
+    event_id = str(uuid4())
+    now = datetime.now(UTC)
+    session.execute(
+        text(
+            "INSERT INTO candidate_events"
+            " (id, stage_id, occurrence_id, title, occurred_on, time_precision,"
+            " status, revision, origin, aggregation_rule, exhibit_caption,"
+            " parent_event_id, created_at, updated_at)"
+            " VALUES (:id, :stage_id, :occurrence_id, :title, :occurred_on,"
+            " :time_precision, :status, :revision, :origin, :aggregation_rule,"
+            " :exhibit_caption, :parent_event_id, :created_at, :updated_at)"
+        ),
+        {
+            "id": event_id,
+            "stage_id": stage_id,
+            **fields,
+            "aggregation_rule": None,
+            "exhibit_caption": None,
+            "created_at": now,
+            "updated_at": now,
+        },
+    )
+    return event_id
 
 
 def _claim(event_id: str, occurrence_id: str, processor: str) -> models.Claim:
@@ -107,19 +160,16 @@ def test_photo_purge_removes_photo_lineage_and_keeps_the_rest(tmp_path, monkeypa
         session.flush()
 
         # 笔记链路：应完整保留（含审阅行与 blob 文件）。
-        note_occ = models.EvidenceOccurrence(
-            stage_id=stage.id, blob_sha256=note_sha,
-            original_filename="note.md", status="completed",
+        note_occ = _occurrence(
+            session, stage.id, blob_sha256=note_sha, original_filename="note.md"
         )
-        session.add_all([_blob(note_sha, ".md", "text/markdown"), note_occ])
+        session.add(_blob(note_sha, ".md", "text/markdown"))
         session.flush()
         note_event = _event(
-            stage.id, occurrence_id=note_occ.id, title="笔记事件",
+            session, stage.id, occurrence_id=note_occ, title="笔记事件",
             status="confirmed", revision=1, origin="note",
         )
-        session.add(note_event)
-        session.flush()
-        note_claim = _claim(note_event.id, note_occ.id, "note-development-v2")
+        note_claim = _claim(note_event, note_occ, "note-development-v2")
         note_claim.evidence_role = "user_statement"
         session.add(note_claim)
         session.flush()
@@ -129,34 +179,31 @@ def test_photo_purge_removes_photo_lineage_and_keeps_the_rest(tmp_path, monkeypa
                 quote="一段", line_start=1, line_end=1, char_start=0, char_end=3,
             ),
             models.EventReview(
-                event_id=note_event.id, decision="confirmed", note=None,
+                event_id=note_event, decision="confirmed", note=None,
                 previous_status="candidate", revision=1,
             ),
         ])
 
         # 纯照片事件（已确认过）：事件、审阅、occurrence、coverage 全部应删除。
-        photo_occ = models.EvidenceOccurrence(
-            stage_id=stage.id, blob_sha256=image_sha,
-            original_filename="IMG_20260704.jpg", status="completed",
+        photo_occ = _occurrence(
+            session, stage.id, blob_sha256=image_sha,
+            original_filename="IMG_20260704.jpg",
         )
         session.add_all([
             _blob(image_sha, ".jpg", "image/jpeg"),
             _blob(desc_sha, ".txt", "text/plain"),
-            photo_occ,
         ])
         session.flush()
         session.add(
             models.CoverageItem(
-                occurrence_id=photo_occ.id, step="stored_locally", status="completed"
+                occurrence_id=photo_occ, step="stored_locally", status="completed"
             )
         )
         photo_event = _event(
-            stage.id, occurrence_id=photo_occ.id, title="拍摄照片",
+            session, stage.id, occurrence_id=photo_occ, title="拍摄照片",
             status="confirmed", revision=1, origin="photo",
         )
-        session.add(photo_event)
-        session.flush()
-        photo_claim = _claim(photo_event.id, photo_occ.id, "photo-evidence-v1")
+        photo_claim = _claim(photo_event, photo_occ, "photo-evidence-v1")
         session.add(photo_claim)
         session.flush()
         session.add_all([
@@ -165,29 +212,27 @@ def test_photo_purge_removes_photo_lineage_and_keeps_the_rest(tmp_path, monkeypa
                 quote="拍摄时间", line_start=1, line_end=1, char_start=0, char_end=4,
             ),
             models.EventReview(
-                event_id=photo_event.id, decision="confirmed", note=None,
+                event_id=photo_event, decision="confirmed", note=None,
                 previous_status="verified", revision=1,
             ),
         ])
 
         # 混合聚合事件：photo claim + git claim。photo claim 删除、git claim 保留；
         # occurrence 曾指向照片导入（photo 白名单允许并 git），清理后应置 NULL。
-        git_occ = models.EvidenceOccurrence(
-            stage_id=stage.id, blob_sha256=gitdoc_sha,
-            original_filename="repo-git-evidence.txt", status="completed",
+        git_occ = _occurrence(
+            session, stage.id, blob_sha256=gitdoc_sha,
+            original_filename="repo-git-evidence.txt",
         )
-        session.add_all([_blob(gitdoc_sha, ".txt", "text/plain"), git_occ])
+        session.add(_blob(gitdoc_sha, ".txt", "text/plain"))
         session.flush()
-        mixed_event = _event(
-            stage.id, occurrence_id=photo_occ.id, title="混合事件",
-            status="verified", revision=0, origin="aggregated",
-        )
         # lineage 守卫：幸存事件指向被删照片事件时，parent_event_id 应置 NULL。
-        mixed_event.parent_event_id = photo_event.id
-        session.add(mixed_event)
-        session.flush()
-        git_claim = _claim(mixed_event.id, git_occ.id, "git-evidence-v1")
-        mixed_photo_claim = _claim(mixed_event.id, photo_occ.id, "photo-evidence-v1")
+        mixed_event = _event(
+            session, stage.id, occurrence_id=photo_occ, title="混合事件",
+            status="verified", revision=0, origin="aggregated",
+            parent_event_id=photo_event,
+        )
+        git_claim = _claim(mixed_event, git_occ, "git-evidence-v1")
+        mixed_photo_claim = _claim(mixed_event, photo_occ, "photo-evidence-v1")
         session.add_all([git_claim, mixed_photo_claim])
         session.flush()
         session.add_all([
@@ -204,37 +249,33 @@ def test_photo_purge_removes_photo_lineage_and_keeps_the_rest(tmp_path, monkeypa
         # merge/split 历史源事件：零 claim 是合法终态（claims 已移交产物事件，
         # 作为审计行保留），清理必须跳过它们。
         merged_source = _event(
-            stage.id, title="被合并的笔记经历", status="merged", revision=1,
-            origin="note",
+            session, stage.id, title="被合并的笔记经历", status="merged",
+            revision=1, origin="note", parent_event_id=note_event,
         )
-        merged_source.parent_event_id = note_event.id
         split_source = _event(
-            stage.id, title="被拆分的原始经历", status="split", revision=1,
-            origin="note",
+            session, stage.id, title="被拆分的原始经历", status="split",
+            revision=1, origin="note",
         )
-        session.add_all([merged_source, split_source])
-        session.flush()
         session.add_all([
             models.EventReview(
-                event_id=merged_source.id, decision="merged", note=None,
+                event_id=merged_source, decision="merged", note=None,
                 previous_status="candidate", revision=1,
             ),
             models.EventReview(
-                event_id=split_source.id, decision="split", note=None,
+                event_id=split_source, decision="split", note=None,
                 previous_status="candidate", revision=1,
             ),
         ])
         session.commit()
-        # commit 会过期 ORM 属性：在 session 关闭前把 id 固化为普通字符串。
         ids = {
-            "note_event": note_event.id,
-            "photo_event": photo_event.id,
-            "mixed_event": mixed_event.id,
-            "note_occ": note_occ.id,
-            "photo_occ": photo_occ.id,
-            "git_occ": git_occ.id,
-            "merged_source": merged_source.id,
-            "split_source": split_source.id,
+            "note_event": note_event,
+            "photo_event": photo_event,
+            "mixed_event": mixed_event,
+            "note_occ": note_occ,
+            "photo_occ": photo_occ,
+            "git_occ": git_occ,
+            "merged_source": merged_source,
+            "split_source": split_source,
         }
     seed_engine.dispose()
 

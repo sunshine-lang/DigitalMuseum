@@ -7,7 +7,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy import delete, exists, func, select, update
+from sqlalchemy import delete, exists, func, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errors import ApiError
@@ -87,16 +87,11 @@ def rename_stage(session: Session, stage_id: str, payload: StageUpdate) -> dict:
     return serialize_stage(session, stage)
 
 
-def delete_stage(session: Session, stage_id: str, *, upload_dir: Path) -> None:
+def delete_stage(session: Session, stage_id: str) -> None:
+    """阶段是档案库上的视图（ADR-0001）：删除只移除视图行，不动任何档案数据。"""
     stage = require_stage(session, stage_id)
-    # 走 Core DELETE 让数据库 FK（ondelete=CASCADE）清理 occurrences、
-    # coverage、events、claims、anchors、reviews；EvidenceBlob 不在级联链上。
-    session.execute(delete(Stage).where(Stage.id == stage.id))
+    session.delete(stage)
     session.commit()
-    session.expire_all()
-    # Blob 引用回收：occurrences 与 evidence_anchors 都不再引用的 blob 删行并
-    # 清理文件；被其他阶段共享（仍有引用）的内容寻址 blob 必须保留。
-    _reclaim_orphan_blobs(session, upload_dir)
 
 
 def _reclaim_orphan_blobs(session: Session, upload_dir: Path) -> None:
@@ -129,25 +124,28 @@ def resolve_blob_media(session: Session, sha256: str, upload_dir: Path) -> tuple
 
 
 def serialize_stage(session: Session, stage: Stage) -> dict:
+    """阶段序列化 = 视图元数据 + 档案库在时间窗内的投影计数。
+
+    evidence_count 同样按窗口投影：统计窗口内事件的 claims 实际引用的
+    occurrence 数（项目快照跨多天，按引用归属而不是按日期截断）。
+    """
+    in_window = _stage_window_filter(stage)
     evidence_count = session.scalar(
-        select(func.count(EvidenceOccurrence.id)).where(
-            EvidenceOccurrence.stage_id == stage.id,
-            EvidenceOccurrence.blob_sha256.is_not(None),
-        )
+        select(func.count(func.distinct(Claim.occurrence_id)))
+        .join(CandidateEvent, Claim.event_id == CandidateEvent.id)
+        .where(in_window, Claim.occurrence_id.is_not(None))
     )
     event_count = session.scalar(
-        select(func.count(CandidateEvent.id)).where(CandidateEvent.stage_id == stage.id)
+        select(func.count(CandidateEvent.id)).where(in_window)
     )
     confirmed_count = session.scalar(
         select(func.count(CandidateEvent.id)).where(
-            CandidateEvent.stage_id == stage.id,
-            CandidateEvent.status == "confirmed",
+            in_window, CandidateEvent.status == "confirmed"
         )
     )
     verified_count = session.scalar(
         select(func.count(CandidateEvent.id)).where(
-            CandidateEvent.stage_id == stage.id,
-            CandidateEvent.status == "verified",
+            in_window, CandidateEvent.status == "verified"
         )
     )
     return {
@@ -163,6 +161,14 @@ def serialize_stage(session: Session, stage: Stage) -> dict:
     }
 
 
+def _stage_window_filter(stage: Stage):
+    """时间窗视图的确定性过滤：日期在窗内，或日期未知（不隐藏无日期事件）。"""
+    return or_(
+        CandidateEvent.occurred_on.is_(None),
+        CandidateEvent.occurred_on.between(stage.starts_on, stage.ends_on),
+    )
+
+
 def require_stage(session: Session, stage_id: str) -> Stage:
     stage = session.get(Stage, stage_id)
     if stage is None:
@@ -173,14 +179,11 @@ def require_stage(session: Session, stage_id: str) -> Stage:
 def record_failed_import(
     session: Session,
     *,
-    stage_id: str,
     original_filename: str,
     step: str,
     error_code: str,
 ) -> None:
-    stage = require_stage(session, stage_id)
     occurrence = EvidenceOccurrence(
-        stage_id=stage.id,
         blob_sha256=None,
         original_filename=original_filename,
         status="failed",
@@ -195,13 +198,12 @@ def record_failed_import(
 def start_note_import(
     session: Session,
     *,
-    stage_id: str,
     original_filename: str,
     media_type: str,
     content: bytes,
     upload_dir: Path,
+    source_key: str | None = None,
 ) -> EvidenceOccurrence:
-    stage = require_stage(session, stage_id)
     blob, created_path = _get_or_create_blob(
         session,
         original_filename=original_filename,
@@ -211,7 +213,7 @@ def start_note_import(
     )
 
     occurrence = EvidenceOccurrence(
-        stage_id=stage.id,
+        source_key=source_key,
         blob_sha256=blob.sha256,
         original_filename=original_filename,
         status="processing",
@@ -268,13 +270,10 @@ def persist_note_candidate(
     occurrence = session.get(EvidenceOccurrence, occurrence_id)
     if occurrence is None:
         raise ApiError(404, "occurrence_not_found", "没有找到这次笔记导入")
-    stage = require_stage(session, occurrence.stage_id)
-    if parsed.occurred_on and not (stage.starts_on <= parsed.occurred_on <= stage.ends_on):
-        raise ApiError(422, "note_outside_stage", "笔记日期不在当前建馆阶段内")
     if occurrence.blob is None:
         raise ApiError(500, "missing_evidence_blob", "原始证据没有完成本地保存")
 
-    target = _find_aggregation_target(session, stage.id, parsed.title, parsed.occurred_on)
+    target = _find_aggregation_target(session, parsed.title, parsed.occurred_on)
     if target is not None:
         event = target
         claim = Claim(
@@ -303,7 +302,6 @@ def persist_note_candidate(
         session.add(claim)
     else:
         event = CandidateEvent(
-            stage_id=stage.id,
             occurrence=occurrence,
             title=parsed.title,
             occurred_on=parsed.occurred_on,
@@ -353,7 +351,7 @@ def persist_note_candidate(
     return {
         "occurrence": serialize_occurrence(occurrence),
         "event": serialize_event(reloaded_event, session),
-        "coverage": _occurrence_coverage(session, stage.id, occurrence.id),
+        "coverage": _occurrence_coverage(session, occurrence.id),
     }
 
 
@@ -374,7 +372,6 @@ def import_git_evidence(
     )
     return _import_activity_evidence(
         session,
-        stage=stage,
         upload_dir=upload_dir,
         document=evidence.document,
         items=evidence.items,
@@ -405,7 +402,6 @@ def import_claude_sessions(
     )
     return _import_activity_evidence(
         session,
-        stage=stage,
         upload_dir=upload_dir,
         document=evidence.document,
         items=evidence.items,
@@ -436,7 +432,6 @@ def import_codex_sessions(
     )
     return _import_activity_evidence(
         session,
-        stage=stage,
         upload_dir=upload_dir,
         document=evidence.document,
         items=evidence.items,
@@ -451,7 +446,6 @@ def import_codex_sessions(
 def _import_activity_evidence(
     session: Session,
     *,
-    stage: Stage,
     upload_dir: Path,
     document: str,
     items: tuple[GitActivityItem | AgentActivityItem, ...],
@@ -460,6 +454,7 @@ def _import_activity_evidence(
     origin: str,
     origins: tuple[str, ...],
     processor_version: str,
+    source_key: str | None = None,
 ) -> dict:
     """Git / Claude / Codex 三条导入链路的公共尾部：
 
@@ -468,11 +463,11 @@ def _import_activity_evidence(
     """
     occurrence = start_note_import(
         session,
-        stage_id=stage.id,
         original_filename=f"{label}{filename_suffix}",
         media_type="text/plain",
         content=document.encode("utf-8"),
         upload_dir=upload_dir,
+        source_key=source_key,
     )
     occurrence_id = occurrence.id
     try:
@@ -496,7 +491,7 @@ def _import_activity_evidence(
     return {
         "occurrence": serialize_occurrence(occurrence),
         "events": events,
-        "coverage": _occurrence_coverage(session, stage.id, occurrence_id),
+        "coverage": _occurrence_coverage(session, occurrence_id),
     }
 
 
@@ -512,7 +507,6 @@ def _persist_machine_candidates(
     occurrence = session.get(EvidenceOccurrence, occurrence_id)
     if occurrence is None:
         raise ApiError(404, "occurrence_not_found", "没有找到这次导入")
-    stage = require_stage(session, occurrence.stage_id)
     if occurrence.blob is None:
         raise ApiError(500, "missing_evidence_blob", "原始证据没有完成本地保存")
 
@@ -520,7 +514,6 @@ def _persist_machine_candidates(
     for item in items:
         event, created = _resolve_machine_event(
             session,
-            stage,
             occurrence,
             title=item.title,
             occurred_on=item.occurred_on,
@@ -589,8 +582,7 @@ def set_exhibit_caption(session: Session, event_id: str, caption: str | None) ->
     return serialize_event(event, session)
 
 
-def merge_events(session: Session, stage_id: str, payload: MergeCreate) -> dict:
-    require_stage(session, stage_id)
+def merge_events(session: Session, payload: MergeCreate) -> dict:
     unique_ids = list(dict.fromkeys(payload.event_ids))
     if len(unique_ids) < 2:
         raise ApiError(422, "merge_needs_multiple_events", "合并至少需要选择两个不同事件")
@@ -598,7 +590,7 @@ def merge_events(session: Session, stage_id: str, payload: MergeCreate) -> dict:
     events: list[CandidateEvent] = []
     for event_id in unique_ids:
         event = session.get(CandidateEvent, event_id)
-        if event is None or event.stage_id != stage_id:
+        if event is None:
             raise ApiError(404, "event_not_found", "没有找到这个候选事件")
         events.append(event)
     for event in events:
@@ -614,7 +606,6 @@ def merge_events(session: Session, stage_id: str, payload: MergeCreate) -> dict:
     dates_agree = len(known_dates) == len(ordered) and len(set(known_dates)) == 1
 
     merged = CandidateEvent(
-        stage_id=stage_id,
         occurrence_id=None,
         title=(requested_title or ordered[0].title)[:200],
         occurred_on=known_dates[0] if dates_agree else None,
@@ -676,7 +667,6 @@ def split_event(session: Session, event_id: str) -> dict:
         first_claim = claims[0]
         children.append(
             CandidateEvent(
-                stage_id=event.stage_id,
                 occurrence_id=occurrence_id,
                 title=first_claim.source_title[:200],
                 occurred_on=first_claim.source_occurred_on,
@@ -724,7 +714,6 @@ def split_event(session: Session, event_id: str) -> dict:
 
 def _resolve_machine_event(
     session: Session,
-    stage: Stage,
     occurrence: EvidenceOccurrence,
     *,
     title: str,
@@ -733,7 +722,7 @@ def _resolve_machine_event(
     origin: str,
     origins: tuple[str, ...],
 ) -> tuple[CandidateEvent, bool]:
-    """确定性证据（Git/Agent 会话）的事件落位规则。
+    """确定性证据（Git/Agent 会话）的事件落位规则（档案库全局）。
 
     1. 同题同日的未审阅事件（candidate/verified，revision=0）→ 并入聚合；
     2. 同题同日、用户已审阅且仍可见（confirmed/disputed/unknown，revision>0）
@@ -744,16 +733,14 @@ def _resolve_machine_event(
     4. 都没有 → 按 initial_status 新建（提交日/会话日 = verified，推断性
        标题 = candidate）。
     """
-    target = _find_aggregation_target(
-        session, stage.id, title, occurred_on, origins=origins
-    )
+    target = _find_aggregation_target(session, title, occurred_on, origins=origins)
     if target is not None:
         target.origin = "aggregated"
         target.aggregation_rule = AGGREGATION_RULE_VERSION
         target.updated_at = utc_now()
         return target, False
 
-    absorb = _find_reviewed_absorb_target(session, stage.id, title, occurred_on, origins)
+    absorb = _find_reviewed_absorb_target(session, title, occurred_on, origins)
     if absorb is not None:
         absorb.origin = "aggregated"
         absorb.aggregation_rule = AGGREGATION_RULE_VERSION
@@ -761,10 +748,9 @@ def _resolve_machine_event(
         return absorb, False
 
     status = initial_status
-    if _has_rejected_target(session, stage.id, title, occurred_on, origins):
+    if _has_rejected_target(session, title, occurred_on, origins):
         status = "candidate"
     event = CandidateEvent(
-        stage_id=stage.id,
         occurrence=occurrence,
         title=title,
         occurred_on=occurred_on,
@@ -779,14 +765,12 @@ def _resolve_machine_event(
 
 def _find_reviewed_absorb_target(
     session: Session,
-    stage_id: str,
     title: str,
     occurred_on: date,
     origins: tuple[str, ...],
 ) -> CandidateEvent | None:
     events = session.scalars(
         select(CandidateEvent).where(
-            CandidateEvent.stage_id == stage_id,
             CandidateEvent.status.in_(("confirmed", "disputed", "unknown")),
             CandidateEvent.revision > 0,
             CandidateEvent.occurred_on == occurred_on,
@@ -801,14 +785,12 @@ def _find_reviewed_absorb_target(
 
 def _has_rejected_target(
     session: Session,
-    stage_id: str,
     title: str,
     occurred_on: date,
     origins: tuple[str, ...],
 ) -> bool:
     events = session.scalars(
         select(CandidateEvent).where(
-            CandidateEvent.stage_id == stage_id,
             CandidateEvent.status == "rejected",
             CandidateEvent.occurred_on == occurred_on,
         )
@@ -818,7 +800,6 @@ def _has_rejected_target(
 
 def _find_aggregation_target(
     session: Session,
-    stage_id: str,
     title: str,
     occurred_on: date | None,
     origins: tuple[str, ...] = NOTE_AGGREGATION_ORIGINS,
@@ -830,7 +811,6 @@ def _find_aggregation_target(
         return None
     events = session.scalars(
         select(CandidateEvent).where(
-            CandidateEvent.stage_id == stage_id,
             CandidateEvent.status.in_(AGGREGATABLE_STATUSES),
             CandidateEvent.revision == 0,
             CandidateEvent.occurred_on == occurred_on,
@@ -845,16 +825,33 @@ def _normalized_title(title: str) -> str:
 
 
 def list_events(session: Session, stage_id: str) -> list[dict]:
-    if session.get(Stage, stage_id) is None:
-        raise ApiError(404, "stage_not_found", "没有找到这个建馆阶段")
+    """阶段视图：档案库全局事件按时间窗过滤（无日期事件不隐藏）。"""
+    stage = require_stage(session, stage_id)
     events = session.scalars(
         select(CandidateEvent)
-        .where(CandidateEvent.stage_id == stage_id)
+        .where(_stage_window_filter(stage))
         .options(
             selectinload(CandidateEvent.claims).selectinload(Claim.anchors),
             selectinload(CandidateEvent.reviews),
         )
         .order_by(CandidateEvent.created_at)
+    ).all()
+    return [serialize_event(event, session) for event in events]
+
+
+def list_archive_events(session: Session) -> list[dict]:
+    """档案库时间线：全部事件按发生日升序（无日期排最后）。"""
+    events = session.scalars(
+        select(CandidateEvent)
+        .options(
+            selectinload(CandidateEvent.claims).selectinload(Claim.anchors),
+            selectinload(CandidateEvent.reviews),
+        )
+        .order_by(
+            CandidateEvent.occurred_on.is_(None),
+            CandidateEvent.occurred_on,
+            CandidateEvent.created_at,
+        )
     ).all()
     return [serialize_event(event, session) for event in events]
 
@@ -910,13 +907,11 @@ def review_event(session: Session, event_id: str, payload: ReviewCreate) -> dict
     return serialize_event(_load_event(session, event_id), session)
 
 
-def list_coverage(session: Session, stage_id: str) -> list[dict]:
-    if session.get(Stage, stage_id) is None:
-        raise ApiError(404, "stage_not_found", "没有找到这个建馆阶段")
+def list_coverage(session: Session) -> list[dict]:
+    """档案库导入日志：全部 coverage 按导入时间排序（阶段无关）。"""
     rows = session.execute(
         select(CoverageItem, EvidenceOccurrence.original_filename)
         .join(EvidenceOccurrence, CoverageItem.occurrence_id == EvidenceOccurrence.id)
-        .where(EvidenceOccurrence.stage_id == stage_id)
         .order_by(EvidenceOccurrence.imported_at, CoverageItem.created_at)
     ).all()
     serialized = [
@@ -944,16 +939,15 @@ def list_coverage(session: Session, stage_id: str) -> list[dict]:
     )
 
 
-def _occurrence_coverage(session: Session, stage_id: str, occurrence_id: str) -> list[dict]:
-    """导入返回只携带本次 occurrence 的 coverage（全阶段列表按 occurrence 过滤）。"""
-    coverage = list_coverage(session, stage_id)
+def _occurrence_coverage(session: Session, occurrence_id: str) -> list[dict]:
+    """导入返回只携带本次 occurrence 的 coverage（全档案列表按 occurrence 过滤）。"""
+    coverage = list_coverage(session)
     return [item for item in coverage if item["occurrence_id"] == occurrence_id]
 
 
 def serialize_occurrence(occurrence: EvidenceOccurrence) -> dict:
     return {
         "id": occurrence.id,
-        "stage_id": occurrence.stage_id,
         "blob_sha256": occurrence.blob_sha256,
         "original_filename": occurrence.original_filename,
         "status": occurrence.status,
@@ -965,7 +959,6 @@ def serialize_event(event: CandidateEvent, session: Session) -> dict:
     latest_review = event.reviews[-1] if event.reviews else None
     return {
         "id": event.id,
-        "stage_id": event.stage_id,
         "title": event.title,
         "occurred_on": event.occurred_on,
         "time_precision": event.time_precision,
@@ -1082,3 +1075,163 @@ def _add_months(value: date, months: int) -> date:
     month = zero_based_month % 12 + 1
     day = min(value.day, monthrange(year, month)[1])
     return date(year, month, day)
+
+
+# ---------------------------------------------------------------------------
+# 档案库同步（ADR-0001 / PRD v0.3 S1）
+# ---------------------------------------------------------------------------
+
+
+def sync_archive(
+    session: Session,
+    *,
+    upload_dir: Path,
+    allowed_repo_roots: str,
+    claude_projects_root: str,
+    codex_sessions_root: str,
+) -> dict:
+    """一键同步本机全部 Agent 会话项目到档案库。
+
+    幂等语义（source_key 内容寻址 upsert）：
+    - 项目证据文档字节不变 → 跳过（自动增量的零开销路径）；
+    - 内容有变化（新增会话）→ 替换该项目的 occurrence 快照（旧 claims 随
+      旧快照级联清理），事件按全局同题同日并入、用户判定保持；
+    - 换掉的旧快照 blob 由 _reclaim_orphan_blobs 回收。
+    """
+    products: list[dict] = []
+    for project in claude_evidence.list_claude_projects(claude_projects_root):
+        products.append(
+            _sync_agent_project(
+                session,
+                kind="claude",
+                project=project,
+                upload_dir=upload_dir,
+                allowed_repo_roots=allowed_repo_roots,
+                root=claude_projects_root,
+            )
+        )
+    for project in codex_evidence.list_codex_projects(codex_sessions_root):
+        products.append(
+            _sync_agent_project(
+                session,
+                kind="codex",
+                project=project,
+                upload_dir=upload_dir,
+                allowed_repo_roots=allowed_repo_roots,
+                root=codex_sessions_root,
+            )
+        )
+    _reclaim_orphan_blobs(session, upload_dir)
+    return {
+        "products": products,
+        "projects_imported": sum(1 for item in products if item["status"] == "imported"),
+        "projects_skipped": sum(1 for item in products if item["status"] == "skipped"),
+        "projects_failed": sum(1 for item in products if item["status"] == "failed"),
+        "events_created": sum(item["events_created"] for item in products),
+    }
+
+
+def _sync_agent_project(
+    session: Session,
+    *,
+    kind: str,
+    project: dict,
+    upload_dir: Path,
+    allowed_repo_roots: str,
+    root: str,
+) -> dict:
+    import_path = project["import_path"]
+    source_key = f"{kind}:{Path(import_path).expanduser().resolve()}"
+    entry = {
+        "product": kind,
+        "project": project["project"],
+        "session_count": project["session_count"],
+        "status": "failed",
+        "error_code": None,
+        "events_created": 0,
+    }
+    try:
+        if kind == "claude":
+            evidence = claude_evidence.import_claude_sessions(
+                import_path,
+                starts_on=None,
+                ends_on=None,
+                allowed_roots=allowed_repo_roots,
+                projects_root=root,
+            )
+            suffix, origin, origins, processor_version = (
+                "-claude-sessions.txt",
+                "claude",
+                CLAUDE_AGGREGATION_ORIGINS,
+                claude_evidence.CLAUDE_PROCESSOR_VERSION,
+            )
+        else:
+            evidence = codex_evidence.import_codex_sessions(
+                import_path,
+                starts_on=None,
+                ends_on=None,
+                allowed_roots=allowed_repo_roots,
+                sessions_root=root,
+            )
+            suffix, origin, origins, processor_version = (
+                "-codex-sessions.txt",
+                "codex",
+                CODEX_AGGREGATION_ORIGINS,
+                codex_evidence.CODEX_PROCESSOR_VERSION,
+            )
+    except ApiError as exc:
+        entry["error_code"] = exc.code
+        return entry
+
+    document_sha = hashlib.sha256(evidence.document.encode("utf-8")).hexdigest()
+    existing = session.scalar(
+        select(EvidenceOccurrence).where(EvidenceOccurrence.source_key == source_key)
+    )
+    # 只有「已完整导入」（completed 且字节相同）才允许跳过。上次同步中断/
+    # 失败留下的 occurrence（processing/failed）即使字节相同也必须重建——
+    # 否则 source_key 被永久毒化，该项目再也不会导入（对抗性审查 P0）。
+    if (
+        existing is not None
+        and existing.status == "completed"
+        and existing.blob_sha256 == document_sha
+    ):
+        entry["status"] = "skipped"
+        return entry
+    if existing is not None:
+        # 快照替换：先摘开仍指向旧快照的事件（occurrence_id 置空，事件与
+        # 用户审阅判定保留），再删旧 occurrence（级联清旧 claims/coverage），
+        # 由新快照的导入重新并入。替换后若导入失败，occurrence 停在
+        # failed/processing 态，下一轮 sync 会再次进入本分支自愈。
+        session.execute(
+            update(CandidateEvent)
+            .where(CandidateEvent.occurrence_id == existing.id)
+            .values(occurrence_id=None)
+        )
+        session.execute(
+            delete(EvidenceOccurrence).where(EvidenceOccurrence.id == existing.id)
+        )
+        session.commit()
+
+    try:
+        result = _import_activity_evidence(
+            session,
+            upload_dir=upload_dir,
+            document=evidence.document,
+            items=evidence.items,
+            label=evidence.project_label,
+            filename_suffix=suffix,
+            origin=origin,
+            origins=origins,
+            processor_version=processor_version,
+            source_key=source_key,
+        )
+    except ApiError as exc:
+        entry["error_code"] = exc.code
+        return entry
+    except Exception as exc:  # noqa: BLE001 —— 单项目落库失败只降级该项目，不得中断整轮同步
+        entry["error_code"] = type(exc).__name__
+        session.rollback()
+        return entry
+    entry["status"] = "imported"
+    entry["events_created"] = len(result["events"])
+    return entry

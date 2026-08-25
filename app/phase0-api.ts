@@ -61,7 +61,6 @@ type EventReview = {
 
 export type CandidateEvent = {
   id: string;
-  stage_id: string;
   title: string;
   occurred_on: string | null;
   time_precision: "exact" | "unknown";

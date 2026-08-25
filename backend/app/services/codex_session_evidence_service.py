@@ -76,29 +76,38 @@ def preview_codex_sessions(
 def import_codex_sessions(
     path_raw: str,
     *,
-    starts_on: date,
-    ends_on: date,
+    starts_on: date | None = None,
+    ends_on: date | None = None,
     allowed_roots: str,
     sessions_root: str,
 ) -> AgentEvidence:
+    """读取项目会话并渲染证据文档。窗口为 None 时读全部（档案库同步），
+    文档头的时间范围改用会话实际的首尾日期，保证内容是数据的纯函数。"""
     project_root, label = _resolve_project(path_raw, allowed_roots=allowed_roots)
-    sessions = [
-        session
-        for session in _project_sessions(project_root, sessions_root)
-        if starts_on <= session.started_at.date() <= ends_on
-    ]
+    sessions = _project_sessions(project_root, sessions_root)
+    if starts_on is not None and ends_on is not None:
+        sessions = [
+            session
+            for session in sessions
+            if starts_on <= session.started_at.date() <= ends_on
+        ]
     if not sessions:
+        if starts_on is None or ends_on is None:
+            raise ApiError(
+                422, "no_codex_sessions", "这个项目还没有可读取的 Codex 会话"
+            )
         raise ApiError(
             422,
             "no_codex_sessions_in_range",
             "这个项目的 Codex 会话都不在当前建馆阶段内",
         )
+    days = [session.started_at.date() for session in sessions]
     return render_evidence_document(
         source_label="codex sessions",
         project_label=label,
         project_display=str(project_root),
-        starts_on=starts_on,
-        ends_on=ends_on,
+        starts_on=starts_on if starts_on is not None else min(days),
+        ends_on=ends_on if ends_on is not None else max(days),
         sessions=sessions,
         collaboration_title=f"在 {label} 与 Codex 协作",
         claim_noun="Codex",

@@ -108,30 +108,28 @@ def test_blob_endpoint_returns_404_when_file_is_missing(
 
 
 # ---------------------------------------------------------------------------
-# 阶段删除时的 Blob 引用回收
+# 阶段删除的视图语义（ADR-0001）：删视图不删档案
 # ---------------------------------------------------------------------------
 
 
-def test_delete_stage_keeps_shared_blob_until_last_reference(
-    client: TestClient, app_paths: tuple[str, Path]
-):
+def test_delete_stage_keeps_archive_blobs(client: TestClient, app_paths: tuple[str, Path]):
     database_url, upload_dir = app_paths
-    stage_a = create_stage(client, "共享阶段甲")
-    stage_b = create_stage(client, "共享阶段乙")
+    stage_a = create_stage(client, "视图阶段甲")
+    stage_b = create_stage(client, "视图阶段乙")
 
-    # 两个阶段导入同一份笔记 → 内容寻址共享同一个 blob。
+    # 两个视图共享同一份笔记证据（内容寻址同一个 blob）。
     note = upload_note(client, stage_a, "2026-05-20-shared.md")
     upload_note(client, stage_b, "2026-05-20-shared.md")
     sha256 = hashlib.sha256(note).hexdigest()
 
     deleted_first = client.delete(f"/api/v1/stages/{stage_a}")
     assert deleted_first.status_code == 200
-    # 乙阶段仍引用：blob 行与文件都必须保留。
+    # 阶段是视图：删除不触碰档案库的任何证据。
     assert _blob_row_count(database_url, sha256) == 1
     assert _blob_file(upload_dir, sha256) is not None
 
     deleted_last = client.delete(f"/api/v1/stages/{stage_b}")
     assert deleted_last.status_code == 200
-    # 零引用：行与文件都被回收。
-    assert _blob_row_count(database_url, sha256) == 0
-    assert _blob_file(upload_dir, sha256) is None
+    # 删光全部视图，档案依旧完整——清空档案是唯一破坏性操作。
+    assert _blob_row_count(database_url, sha256) == 1
+    assert _blob_file(upload_dir, sha256) is not None

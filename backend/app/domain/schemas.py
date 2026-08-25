@@ -82,7 +82,6 @@ EventStatus = Literal[
 
 class EventOut(BaseModel):
     id: str
-    stage_id: str
     title: str
     occurred_on: date | None
     time_precision: Literal["exact", "unknown"]
@@ -101,7 +100,6 @@ class EventOut(BaseModel):
 
 class OccurrenceOut(BaseModel):
     id: str
-    stage_id: str
     blob_sha256: str | None
     original_filename: str
     status: str
@@ -182,3 +180,21 @@ class ActivityImportOut(BaseModel):
     occurrence: OccurrenceOut
     events: list[EventOut]
     coverage: list[CoverageOut]
+
+
+# 档案库同步（ADR-0001）：source_key 内容寻址的幂等 upsert 结果。
+class ArchiveSyncProductOut(BaseModel):
+    product: Literal["claude", "codex"]
+    project: str
+    session_count: int
+    status: Literal["imported", "skipped", "failed"]
+    error_code: str | None = None
+    events_created: int
+
+
+class ArchiveSyncOut(BaseModel):
+    products: list[ArchiveSyncProductOut]
+    projects_imported: int
+    projects_skipped: int
+    projects_failed: int
+    events_created: int

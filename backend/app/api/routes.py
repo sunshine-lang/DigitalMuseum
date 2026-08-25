@@ -12,6 +12,7 @@ from app.domain.schemas import (
     ActivityImportOut,
     AgentSessionPreviewOut,
     AgentSessionProjectOut,
+    ArchiveSyncOut,
     CoverageOut,
     DataEnvelope,
     EventOut,
@@ -104,6 +105,28 @@ def create_api_router(session_provider) -> APIRouter:
         )
         return {"data": summary}
 
+    @router.post("/archive/sync", response_model=DataEnvelope[ArchiveSyncOut])
+    def sync_archive(request: Request, session: SessionDependency) -> dict:
+        # 档案库一键同步（ADR-0001）：只读扫描本机全部 Agent 会话项目，
+        # source_key 内容寻址幂等 upsert——内容不变跳过、有变化换快照。
+        return {
+            "data": museum_service.sync_archive(
+                session,
+                upload_dir=request.app.state.settings.upload_dir,
+                allowed_repo_roots=request.app.state.settings.allowed_repo_roots,
+                claude_projects_root=request.app.state.settings.claude_projects_root,
+                codex_sessions_root=request.app.state.settings.codex_sessions_root,
+            )
+        }
+
+    @router.get("/archive/events", response_model=DataEnvelope[list[EventOut]])
+    def archive_events(session: SessionDependency) -> dict:
+        return {"data": museum_service.list_archive_events(session)}
+
+    @router.get("/archive/coverage", response_model=DataEnvelope[list[CoverageOut]])
+    def archive_coverage(session: SessionDependency) -> dict:
+        return {"data": museum_service.list_coverage(session)}
+
     @router.post("/stages", status_code=201, response_model=DataEnvelope[StageOut])
     def create_stage(
         payload: StageCreate,
@@ -128,12 +151,8 @@ def create_api_router(session_provider) -> APIRouter:
         return {"data": museum_service.rename_stage(session, stage_id, payload)}
 
     @router.delete("/stages/{stage_id}", response_model=DataEnvelope[dict])
-    def delete_stage(stage_id: str, request: Request, session: SessionDependency) -> dict:
-        museum_service.delete_stage(
-            session,
-            stage_id,
-            upload_dir=request.app.state.settings.upload_dir,
-        )
+    def delete_stage(stage_id: str, session: SessionDependency) -> dict:
+        museum_service.delete_stage(session, stage_id)
         return {"data": {"id": stage_id}}
 
     @router.get("/blobs/{sha256}")
@@ -194,7 +213,6 @@ def create_api_router(session_provider) -> APIRouter:
 
             occurrence = museum_service.start_note_import(
                 session,
-                stage_id=stage_id,
                 original_filename=filename,
                 media_type=ALLOWED_SUFFIXES[suffix],
                 content=content,
@@ -213,7 +231,6 @@ def create_api_router(session_provider) -> APIRouter:
             error = ApiError(415, "invalid_note_content", "笔记必须是 UTF-8 纯文本")
             museum_service.record_failed_import(
                 session,
-                stage_id=stage_id,
                 original_filename=filename,
                 step=failure_step,
                 error_code=error.code,
@@ -223,7 +240,6 @@ def create_api_router(session_provider) -> APIRouter:
             if occurrence_id is None:
                 museum_service.record_failed_import(
                     session,
-                    stage_id=stage_id,
                     original_filename=filename,
                     step=failure_step,
                     error_code=exc.code,
@@ -375,8 +391,8 @@ def create_api_router(session_provider) -> APIRouter:
         "/stages/{stage_id}/coverage",
         response_model=DataEnvelope[list[CoverageOut]],
     )
-    def coverage(stage_id: str, session: SessionDependency) -> dict:
-        return {"data": museum_service.list_coverage(session, stage_id)}
+    def coverage(session: SessionDependency) -> dict:
+        return {"data": museum_service.list_coverage(session)}
 
     @router.get(
         "/stages/{stage_id}/events",
@@ -402,11 +418,10 @@ def create_api_router(session_provider) -> APIRouter:
         response_model=DataEnvelope[MergeOut],
     )
     def merge_events(
-        stage_id: str,
         payload: MergeCreate,
         session: SessionDependency,
     ) -> dict:
-        return {"data": museum_service.merge_events(session, stage_id, payload)}
+        return {"data": museum_service.merge_events(session, payload)}
 
     @router.post("/events/{event_id}/split", response_model=DataEnvelope[SplitOut])
     def split_event(event_id: str, session: SessionDependency) -> dict:

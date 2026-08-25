@@ -106,7 +106,7 @@ export default function StageLibraryPage() {
       setDeleteArmed(false);
       setNotice({
         kind: "success",
-        message: `已删除「${deleteTarget.name}」。仅这个阶段使用的原始文件已一并清理；被其他阶段共享的按内容寻址保留。`,
+        message: `已删除「${deleteTarget.name}」这个回顾视图。档案库里的经历与原始记录都完好保留，随时可新建视图重新框选。`,
       });
       await refresh();
     } catch (error) {
@@ -133,7 +133,7 @@ export default function StageLibraryPage() {
         <div>
           <p className="mvp-kicker">MY ARCHIVES · 我的回顾</p>
           <h1>管理你的回顾阶段</h1>
-          <p>每个阶段是一段独立的回顾范围。可以重新进入其中任意一段，也可以改名或删除不再需要的阶段；原始文件按内容寻址共享：仍被其他阶段引用的会保留，仅本阶段使用的会随删除一并清理。</p>
+          <p>每个阶段是对档案库的一个命名时间窗视图。可以重新进入其中任意一段，也可以改名或删除不再需要的视图；删除视图不会动档案库里的任何经历与原始记录。</p>
         </div>
       </section>
 
@@ -195,17 +195,17 @@ export default function StageLibraryPage() {
                     <div className="mvp-stage-danger" role="alertdialog" aria-label={`删除确认：${stage.name}`}>
                       {deleteArmed ? (
                         <>
-                          <strong>请再次确认：删除后无法恢复</strong>
-                          <p>「{stage.name}」的 {stage.event_count} 段经历、{stage.evidence_count} 份记录的整理结果将被永久删除。仅这个阶段使用的原始文件会一并清理；被其他阶段共享的按内容寻址保留。</p>
+                          <strong>请再次确认：删除这个视图</strong>
+                          <p>将删除「{stage.name}」这个时间窗视图（名称与范围）。档案库里的 {stage.event_count} 段经历与全部原始记录都会完好保留，新建同范围的视图即可找回。</p>
                           <div className="mvp-stage-danger-actions">
-                            <button className="mvp-primary" type="button" disabled={busy} onClick={() => void confirmDelete()}>{busy ? "正在删除…" : "确认永久删除"}</button>
+                            <button className="mvp-primary" type="button" disabled={busy} onClick={() => void confirmDelete()}>{busy ? "正在删除…" : "确认删除视图"}</button>
                             <button className="mvp-secondary" type="button" disabled={busy} onClick={() => { setDeleteTarget(null); setDeleteArmed(false); }}>取消</button>
                           </div>
                         </>
                       ) : (
                         <>
-                          <strong>确定要删除这个阶段吗？</strong>
-                          <p>将永久删除「{stage.name}」整理出的 {stage.event_count} 段经历、{stage.evidence_count} 份记录的整理结果。仅这个阶段使用的原始文件会一并清理，无法恢复；被其他阶段共享的按内容寻址保留。</p>
+                          <strong>确定要删除这个阶段视图吗？</strong>
+                          <p>只删除「{stage.name}」的名称与时间范围；档案里的经历和原始记录不会被动到，随时可以新建视图重新框选。</p>
                           <div className="mvp-stage-danger-actions">
                             <button className="mvp-secondary" type="button" disabled={busy} onClick={() => setDeleteArmed(true)}>删除这个阶段</button>
                             <button className="mvp-stage-remove cancel" type="button" disabled={busy} onClick={() => setDeleteTarget(null)}>取消</button>
@@ -222,8 +222,8 @@ export default function StageLibraryPage() {
       )}
 
       <footer className="mvp-footer">
-        <span>当前体验：本地 Markdown/TXT → 经历草稿 → 关键核对 → 私人回顾</span>
-        <span>删除阶段会一并清理仅该阶段使用的原始文件；被其他阶段共享的按内容寻址保留</span>
+        <span>当前体验：本机 Agent 会话同步 → 经历档案 → 回顾视图 → 静态展览导出</span>
+        <span>删除阶段视图不会动档案库；清空档案库是唯一会删除数据的操作</span>
       </footer>
     </main>
   );

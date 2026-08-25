@@ -34,7 +34,7 @@ from app.domain.models import (
     new_id,
 )
 
-ARCHIVE_FORMAT_VERSION = "archive-v1"
+ARCHIVE_FORMAT_VERSION = "archive-v2"
 MANIFEST_NAME = "archive.json"
 MAX_ARCHIVE_BYTES = 200 * 1024 * 1024
 
@@ -71,7 +71,7 @@ def export_archive(session: Session, *, upload_dir: Path) -> bytes:
         "occurrences": [
             {
                 "id": o.id,
-                "stage_id": o.stage_id,
+                "source_key": o.source_key,
                 "blob_sha256": o.blob_sha256,
                 "original_filename": o.original_filename,
                 "status": o.status,
@@ -94,7 +94,6 @@ def export_archive(session: Session, *, upload_dir: Path) -> bytes:
         "events": [
             {
                 "id": e.id,
-                "stage_id": e.stage_id,
                 "occurrence_id": e.occurrence_id,
                 "title": e.title,
                 "occurred_on": _iso(e.occurred_on),
@@ -191,16 +190,17 @@ def import_archive(session: Session, archive_bytes: bytes, *, upload_dir: Path) 
         "blobs_reused": 0,
     }
 
-    stage_ids = {row["id"] for row in manifest.get("stages", [])}
     occurrence_ids = {row["id"] for row in manifest.get("occurrences", [])}
     event_ids = {row["id"] for row in manifest.get("events", [])}
     claim_ids = {row["id"] for row in manifest.get("claims", [])}
-    for row in manifest.get("occurrences", []):
-        if row.get("stage_id") not in stage_ids:
-            raise ApiError(422, "archive_invalid", "备份结构不完整（occurrence 缺少所属阶段）")
     for row in manifest.get("events", []):
-        if row.get("stage_id") not in stage_ids:
-            raise ApiError(422, "archive_invalid", "备份结构不完整（event 缺少所属阶段）")
+        if row.get("occurrence_id") and row["occurrence_id"] not in occurrence_ids:
+            raise ApiError(422, "archive_invalid", "备份结构不完整（event 的 occurrence 引用断裂）")
+    for row in manifest.get("coverage_items", []):
+        if row.get("occurrence_id") not in occurrence_ids:
+            raise ApiError(
+                422, "archive_invalid", "备份结构不完整（coverage 的 occurrence 引用断裂）"
+            )
     for row in manifest.get("claims", []):
         if row.get("event_id") not in event_ids or row.get("occurrence_id") not in occurrence_ids:
             raise ApiError(422, "archive_invalid", "备份结构不完整（claim 的引用断裂）")
@@ -255,7 +255,7 @@ def import_archive(session: Session, archive_bytes: bytes, *, upload_dir: Path) 
         )
         counts["stages"] += 1
 
-    session.flush()  # stage 先落库
+    session.flush()  # stage 先落库（仅作为视图元数据导出）
     occurrence_map: dict[str, str] = {}
     for row in manifest.get("occurrences", []):
         new_occurrence_id = new_id()
@@ -263,7 +263,9 @@ def import_archive(session: Session, archive_bytes: bytes, *, upload_dir: Path) 
         session.add(
             EvidenceOccurrence(
                 id=new_occurrence_id,
-                stage_id=stage_map[row["stage_id"]],
+                # 恢复行不携带 source_key：重复导入同一备份必须仍然可行
+                # （全库换新 id 的复制语义），同步身份由下次 sync 重新建立。
+                source_key=None,
                 blob_sha256=row.get("blob_sha256"),
                 original_filename=row["original_filename"],
                 status=row["status"],
@@ -294,7 +296,6 @@ def import_archive(session: Session, archive_bytes: bytes, *, upload_dir: Path) 
         session.add(
             CandidateEvent(
                 id=new_event_id,
-                stage_id=stage_map[row["stage_id"]],
                 occurrence_id=(
                     occurrence_map[row["occurrence_id"]]
                     if row.get("occurrence_id")

@@ -39,9 +39,14 @@ class EvidenceBlob(Base):
 
 class EvidenceOccurrence(Base):
     __tablename__ = "evidence_occurrences"
+    # 与迁移 c1d2a4f6b8e0 的命名一致，避免 alembic autogenerate 伪差异。
+    __table_args__ = (UniqueConstraint("source_key", name="uq_evidence_occurrences_source_key"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    stage_id: Mapped[str] = mapped_column(ForeignKey("stages.id", ondelete="CASCADE"))
+    # 档案库为根（ADR-0001）：occurrence 全局归属档案库，不再挂阶段。
+    # source_key 是同步幂等的身份键（如 "codex:/Users/x/proj"）；
+    # 人工上传（笔记等）没有稳定身份，保持 NULL、不参与去重。
+    source_key: Mapped[str | None] = mapped_column(String(300), nullable=True)
     blob_sha256: Mapped[str | None] = mapped_column(
         ForeignKey("evidence_blobs.sha256"), nullable=True
     )
@@ -76,7 +81,8 @@ class CandidateEvent(Base):
     __tablename__ = "candidate_events"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    stage_id: Mapped[str] = mapped_column(ForeignKey("stages.id", ondelete="CASCADE"))
+    # 档案库为根（ADR-0001）：事件全局归属档案库；阶段只是对档案的
+    # 时间窗视图，不再拥有数据。
     occurrence_id: Mapped[str | None] = mapped_column(
         ForeignKey("evidence_occurrences.id", ondelete="CASCADE"), nullable=True
     )

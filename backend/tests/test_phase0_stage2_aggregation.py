@@ -234,27 +234,13 @@ def test_merge_rejects_invalid_inputs(client: TestClient) -> None:
     assert single.status_code == 422
     assert single.json()["error"]["code"] == "merge_needs_multiple_events"
 
-    missing_stage = client.post(
-        "/api/v1/stages/not-a-stage/events/merge",
-        json={"event_ids": [event_id, "another"]},
-    )
-    assert missing_stage.status_code == 404
-    assert missing_stage.json()["error"]["code"] == "stage_not_found"
-
+    # 档案库为根：事件不再挂阶段，未知事件 id 一律 404（ADR-0001）。
     unknown_event = client.post(
         f"/api/v1/stages/{stage_id}/events/merge",
         json={"event_ids": [event_id, "does-not-exist"]},
     )
     assert unknown_event.status_code == 404
     assert unknown_event.json()["error"]["code"] == "event_not_found"
-
-    other_stage = create_stage(client)
-    cross_stage = client.post(
-        f"/api/v1/stages/{other_stage}/events/merge",
-        json={"event_ids": [event_id, "does-not-exist"]},
-    )
-    assert cross_stage.status_code == 404
-    assert cross_stage.json()["error"]["code"] == "event_not_found"
 
     companion = upload_note(
         client,

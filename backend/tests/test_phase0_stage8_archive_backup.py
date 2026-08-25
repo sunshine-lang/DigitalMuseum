@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from app.main import create_app
 from tests.helpers import create_stage
 
 NOTE_CONTENT = "# 2026-05-10 调通归档链路\n\n今天把备份导出与恢复跑通。\n"
@@ -36,7 +37,10 @@ def _import_archive(client: TestClient, archive_bytes: bytes):
     )
 
 
-def test_round_trip_restores_deleted_stage_events_and_blobs(client: TestClient) -> None:
+def test_round_trip_restores_events_and_blobs_into_fresh_archive(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """备份的意义在换机/重建：把整库恢复进一个全新的空档案库。"""
     stage_id = create_stage(client, "备份阶段")
     note = _import_note(client, stage_id)
     event_id = note["event"]["id"]
@@ -49,39 +53,42 @@ def test_round_trip_restores_deleted_stage_events_and_blobs(client: TestClient) 
 
     archive_bytes = _export(client)
 
-    # 误删：级联清空阶段并回收 blob（正常业务行为，备份的存在意义）。
-    deleted = client.delete(f"/api/v1/stages/{stage_id}")
-    assert deleted.status_code == 200
-    assert client.get(f"/api/v1/stages/{stage_id}/events").status_code == 404
-    assert client.get(f"/api/v1/blobs/{blob_sha}").status_code == 404
-
-    restored = _import_archive(client, archive_bytes)
-    assert restored.status_code == 201, restored.text
-    summary = restored.json()["data"]["restored"]
-    assert summary["stages"] == 1
-    assert summary["events"] == 1
-    assert summary["reviews"] == 1
-    assert summary["blobs_restored"] == 1
-
-    stages = client.get("/api/v1/stages").json()["data"]
-    assert len(stages) == 1
-    assert stages[0]["name"] == "备份阶段"
-    events = client.get(f"/api/v1/stages/{stages[0]['id']}/events").json()["data"]
-    assert len(events) == 1
-    event = events[0]
-    assert event["status"] == "confirmed"
-    assert event["title"] == note["event"]["title"]
-    assert event["occurred_on"] == note["event"]["occurred_on"]
-    assert len(event["claims"]) == len(note["event"]["claims"])
-    assert len(event["claims"][0]["anchors"]) == len(
-        note["event"]["claims"][0]["anchors"]
+    restored_client = TestClient(
+        create_app(
+            database_url=f"sqlite:///{tmp_path / 'restore.db'}",
+            upload_dir=tmp_path / "restore-uploads",
+        )
     )
-    assert event["latest_review"]["decision"] == "confirmed"
+    with restored_client:
+        restored = _import_archive(restored_client, archive_bytes)
+        assert restored.status_code == 201, restored.text
+        summary = restored.json()["data"]["restored"]
+        assert summary["stages"] == 1
+        assert summary["events"] == 1
+        assert summary["reviews"] == 1
+        assert summary["blobs_restored"] == 1
 
-    # 原文按内容哈希原样回来。
-    blob = client.get(f"/api/v1/blobs/{blob_sha}")
-    assert blob.status_code == 200
-    assert blob.content == NOTE_CONTENT.encode("utf-8")
+        stages = restored_client.get("/api/v1/stages").json()["data"]
+        assert len(stages) == 1
+        assert stages[0]["name"] == "备份阶段"
+        events = restored_client.get(
+            f"/api/v1/stages/{stages[0]['id']}/events"
+        ).json()["data"]
+        assert len(events) == 1
+        event = events[0]
+        assert event["status"] == "confirmed"
+        assert event["title"] == note["event"]["title"]
+        assert event["occurred_on"] == note["event"]["occurred_on"]
+        assert len(event["claims"]) == len(note["event"]["claims"])
+        assert len(event["claims"][0]["anchors"]) == len(
+            note["event"]["claims"][0]["anchors"]
+        )
+        assert event["latest_review"]["decision"] == "confirmed"
+
+        # 原文按内容哈希原样回来。
+        blob = restored_client.get(f"/api/v1/blobs/{blob_sha}")
+        assert blob.status_code == 200
+        assert blob.content == NOTE_CONTENT.encode("utf-8")
 
 
 def test_reimport_reuses_existing_blobs_and_duplicates_stages(client: TestClient) -> None:
@@ -101,14 +108,12 @@ def test_reimport_reuses_existing_blobs_and_duplicates_stages(client: TestClient
     assert len(stages) == 3  # 原阶段 + 两次恢复
 
 
-def test_tampered_blob_rejected_without_residue(client: TestClient) -> None:
+def test_tampered_blob_rejected_without_residue(
+    client: TestClient, tmp_path: Path
+) -> None:
     stage_id = create_stage(client, "备份阶段")
     _import_note(client, stage_id)
     archive_bytes = _export(client)
-
-    # 删除阶段使 blob 被回收，恢复时必须从 ZIP 写回 → 此时校验内容哈希。
-    # （本地已有同 sha blob 时会直接复用本地副本、不信任 ZIP 字节，另行覆盖。）
-    assert client.delete(f"/api/v1/stages/{stage_id}").status_code == 200
 
     source = zipfile.ZipFile(io.BytesIO(archive_bytes))
     buffer = io.BytesIO()
@@ -119,13 +124,19 @@ def test_tampered_blob_rejected_without_residue(client: TestClient) -> None:
                 data = b"tampered content"
             target.writestr(name, data)
 
-    response = _import_archive(client, buffer.getvalue())
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "archive_integrity_error"
-
-    # fail closed：没有任何半成品残留。
-    stages = client.get("/api/v1/stages").json()["data"]
-    assert stages == []
+    # 恢复到全新空档案库：本地没有同 sha blob 可复用，必须从 ZIP 写回，
+    # 此时逐字节校验内容哈希——不符即 fail closed，不留半成品。
+    restored_client = TestClient(
+        create_app(
+            database_url=f"sqlite:///{tmp_path / 'tamper-restore.db'}",
+            upload_dir=tmp_path / "tamper-restore-uploads",
+        )
+    )
+    with restored_client:
+        response = _import_archive(restored_client, buffer.getvalue())
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "archive_integrity_error"
+        assert restored_client.get("/api/v1/stages").json()["data"] == []
 
 
 def test_invalid_archives_rejected(client: TestClient) -> None:
@@ -151,7 +162,7 @@ def test_invalid_archives_rejected(client: TestClient) -> None:
 def test_empty_archive_exports_and_reimports_cleanly(client: TestClient) -> None:
     archive_bytes = _export(client)
     manifest = json.loads(zipfile.ZipFile(io.BytesIO(archive_bytes)).read("archive.json"))
-    assert manifest["version"] == "archive-v1"
+    assert manifest["version"] == "archive-v2"
     assert manifest["stages"] == []
 
     restored = _import_archive(client, archive_bytes)

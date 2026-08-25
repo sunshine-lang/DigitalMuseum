@@ -10,7 +10,6 @@ from app.domain.models import (
     CandidateEvent,
     Claim,
     CoverageItem,
-    EventReview,
     EvidenceAnchor,
     EvidenceBlob,
     EvidenceOccurrence,
@@ -46,7 +45,9 @@ def test_stage_list_orders_by_created_at_desc_with_confirmed_count(
     assert first_summary["confirmed_count"] == 1
     assert first_summary["event_count"] == 2
     assert first_summary["evidence_count"] == 2
-    assert stages[0]["confirmed_count"] == 0
+    # 视图语义（ADR-0001）：两个视图同一时间窗，投影到同一份档案——
+    # 确认数一致，而不是各自的私有副本。
+    assert stages[0]["confirmed_count"] == 1
 
 
 def test_rename_stage_updates_name_and_keeps_contract(client: TestClient) -> None:
@@ -72,29 +73,24 @@ def test_rename_stage_updates_name_and_keeps_contract(client: TestClient) -> Non
     assert missing.json()["error"]["code"] == "stage_not_found"
 
 
-def test_delete_stage_cascades_rows_but_keeps_shared_blobs(
+def test_delete_stage_keeps_archive_rows_and_blobs(
     client: TestClient,
     app_paths: tuple[str, Path],
 ) -> None:
-    survivor_stage = create_stage(client, "保留的阶段")
-    deleted_stage = create_stage(client, "将被删除的阶段")
+    """视图语义（ADR-0001）：删阶段只删视图行；档案库的 occurrences /
+    events / claims / anchors / reviews 与 blob 全部保留。"""
+    survivor_stage = create_stage(client, "保留的视图")
+    deleted_stage = create_stage(client, "将被删除的视图")
 
-    # 两个阶段导入同一份内容 → 内容寻址共享同一个 blob。
-    # 删除其中一个阶段后 blob 仍被幸存阶段引用，必须保留
-    # （零引用回收的边界场景在 test_blob_media.py 覆盖）。
+    # 同一份内容导入两次（不同视图路径）→ 内容寻址共享 blob、全局聚合进
+    # 同一事件。
     note = upload_note(client, deleted_stage, "2026-05-20-delete-me.md")
-    survivor_note = upload_note(client, survivor_stage, "2026-05-20-delete-me.md")
-    assert hashlib.sha256(survivor_note).hexdigest() == hashlib.sha256(note).hexdigest()
+    upload_note(client, survivor_stage, "2026-05-20-delete-me.md")
+    note_hash = hashlib.sha256(note).hexdigest()
     events = client.get(f"/api/v1/stages/{deleted_stage}/events").json()["data"]
     assert len(events) == 1
-    confirmed = client.post(
-        f"/api/v1/events/{events[0]['id']}/reviews",
-        json={"decision": "confirmed", "note": None, "expected_revision": 0},
-    )
-    assert confirmed.status_code == 200
+    assert events[0]["source_count"] == 2
 
-    deleted_hash = hashlib.sha256(note).hexdigest()
-    survivor_hash = hashlib.sha256(survivor_note).hexdigest()
     database_url, upload_dir = app_paths
     response = client.delete(f"/api/v1/stages/{deleted_stage}")
 
@@ -104,33 +100,20 @@ def test_delete_stage_cascades_rows_but_keeps_shared_blobs(
     events_after = client.get(f"/api/v1/stages/{deleted_stage}/events")
     assert events_after.status_code == 404
     assert events_after.json()["error"]["code"] == "stage_not_found"
-    coverage_after = client.get(f"/api/v1/stages/{deleted_stage}/coverage")
-    assert coverage_after.status_code == 404
 
-    # 级联必须真正落到磁盘上的同一数据库：occurrences / coverage / events /
-    # claims / anchors / reviews 全部消失，EvidenceBlob 行保留。
+    # 档案数据一行不少：两个 occurrence、一个聚合事件、两条 claim 与锚点。
     engine = create_engine(database_url)
     try:
         with engine.connect() as connection:
-            stage_events = connection.scalars(
-                select(CandidateEvent.id).where(CandidateEvent.stage_id == deleted_stage)
-            ).all()
-            assert stage_events == []
-            stage_occurrences = connection.scalars(
-                select(EvidenceOccurrence.id).where(
-                    EvidenceOccurrence.stage_id == deleted_stage
-                )
-            ).all()
-            assert stage_occurrences == []
-            assert connection.scalar(select(func.count(CoverageItem.id))) == 3
+            assert connection.scalar(select(func.count(EvidenceOccurrence.id))) == 2
             assert connection.scalar(select(func.count(CandidateEvent.id))) == 1
-            assert connection.scalar(select(func.count(Claim.id))) == 1
-            assert connection.scalar(select(func.count(EvidenceAnchor.id))) == 1
-            assert connection.scalar(select(func.count(EventReview.id))) == 0
+            assert connection.scalar(select(func.count(Claim.id))) == 2
+            assert connection.scalar(select(func.count(EvidenceAnchor.id))) == 2
+            assert connection.scalar(select(func.count(CoverageItem.id))) == 6
             assert (
                 connection.scalar(
                     select(func.count(EvidenceBlob.sha256)).where(
-                        EvidenceBlob.sha256 == deleted_hash
+                        EvidenceBlob.sha256 == note_hash
                     )
                 )
                 == 1
@@ -138,11 +121,10 @@ def test_delete_stage_cascades_rows_but_keeps_shared_blobs(
     finally:
         engine.dispose()
 
-    # 内容寻址的原始文件必须仍然存在（blob 仍被幸存阶段引用，跨阶段共享保留）。
-    assert (upload_dir / deleted_hash[:2] / f"{deleted_hash}.md").read_bytes() == note
-    assert (upload_dir / survivor_hash[:2] / f"{survivor_hash}.md").exists()
+    # 内容寻址的原始文件原地未动。
+    assert (upload_dir / note_hash[:2] / f"{note_hash}.md").read_bytes() == note
 
-    # 新建 app 实例（同库）再验一次级联的持久性，并确认其他阶段不受影响。
+    # 幸存视图照常投影同一份档案。
     with TestClient(
         create_app(
             database_url=database_url,
@@ -150,14 +132,12 @@ def test_delete_stage_cascades_rows_but_keeps_shared_blobs(
             max_upload_bytes=1024,
         )
     ) as restarted:
-        assert restarted.get(f"/api/v1/stages/{deleted_stage}").status_code == 404
         stages = restarted.get("/api/v1/stages").json()["data"]
         assert [stage["id"] for stage in stages] == [survivor_stage]
         survivor_events = restarted.get(
             f"/api/v1/stages/{survivor_stage}/events"
         ).json()["data"]
         assert len(survivor_events) == 1
-        assert survivor_events[0]["status"] == "candidate"
 
 
 def test_delete_missing_stage_returns_contract_error(client: TestClient) -> None:
@@ -167,9 +147,8 @@ def test_delete_missing_stage_returns_contract_error(client: TestClient) -> None
     assert response.json()["error"]["code"] == "stage_not_found"
 
 
-def test_delete_stage_with_merge_split_lineage(app_paths):
-    """对抗性审查修复：含 split 血缘（parent_event_id 自引用）的阶段
-    删除必须整链级联干净，不留孤儿行。"""
+def test_delete_stage_keeps_merge_split_lineage(app_paths):
+    """视图删除不破坏档案库的血缘链（split/merged 事件与审计行保留）。"""
     from sqlalchemy import text
 
     database_url, upload_dir = app_paths
@@ -196,6 +175,11 @@ def test_delete_stage_with_merge_split_lineage(app_paths):
         deleted = client.delete(f"/api/v1/stages/{stage_id}")
         assert deleted.status_code == 200
 
+        # 删视图后档案时间线仍然完整：split 源 + 两个产物事件。
+        archive_events = client.get("/api/v1/archive/events").json()["data"]
+        assert len(archive_events) == 3
+        assert {event["status"] for event in archive_events} == {"split", "candidate"}
+
     engine = create_engine(database_url)
     with engine.connect() as connection:
         for table in [
@@ -207,5 +191,5 @@ def test_delete_stage_with_merge_split_lineage(app_paths):
             "coverage_items",
         ]:
             count = connection.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar()
-            assert count == 0, f"{table} 残留 {count} 行"
+            assert count > 0, f"{table} 不应有任何行被视图删除清掉"
     engine.dispose()

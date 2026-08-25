@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./backend";
 
 // 用本仓库真实路径制造 verified 事件；E2E 后端 allowed_repo_roots 默认 "~" 覆盖它。
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));

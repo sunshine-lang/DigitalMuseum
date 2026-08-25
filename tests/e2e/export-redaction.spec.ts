@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./backend";
 
 const fixtureDir = fileURLToPath(
   new URL("../../test-data/recent-sessions-2026-08-22", import.meta.url),

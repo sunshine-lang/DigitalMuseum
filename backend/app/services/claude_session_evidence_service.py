@@ -69,31 +69,40 @@ def preview_claude_sessions(
 def import_claude_sessions(
     path_raw: str,
     *,
-    starts_on: date,
-    ends_on: date,
+    starts_on: date | None = None,
+    ends_on: date | None = None,
     allowed_roots: str,
     projects_root: str,
 ) -> AgentEvidence:
+    """读取项目会话并渲染证据文档。窗口为 None 时读全部（档案库同步），
+    文档头的时间范围改用会话实际的首尾日期，保证内容是数据的纯函数。"""
     directory, label, display = _resolve_session_directory(
         path_raw, allowed_roots=allowed_roots, projects_root=projects_root
     )
-    sessions = [
-        session
-        for session in _scan_project_sessions(directory)
-        if starts_on <= session.started_at.date() <= ends_on
-    ]
+    sessions = _scan_project_sessions(directory)
+    if starts_on is not None and ends_on is not None:
+        sessions = [
+            session
+            for session in sessions
+            if starts_on <= session.started_at.date() <= ends_on
+        ]
     if not sessions:
+        if starts_on is None or ends_on is None:
+            raise ApiError(
+                422, "no_claude_sessions", "这个项目还没有可读取的 Claude Code 会话"
+            )
         raise ApiError(
             422,
             "no_claude_sessions_in_range",
             "这个项目的 Claude Code 会话都不在当前建馆阶段内",
         )
+    days = [session.started_at.date() for session in sessions]
     return render_evidence_document(
         source_label="claude-code sessions",
         project_label=label,
         project_display=display,
-        starts_on=starts_on,
-        ends_on=ends_on,
+        starts_on=starts_on if starts_on is not None else min(days),
+        ends_on=ends_on if ends_on is not None else max(days),
         sessions=sessions,
         collaboration_title=f"在 {label} 与 Claude Code 协作",
         claim_noun="Claude Code",

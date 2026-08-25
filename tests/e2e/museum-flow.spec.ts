@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./backend";
 
 const fixtureDir = fileURLToPath(
   new URL("../../test-data/recent-sessions-2026-08-22", import.meta.url),
@@ -204,16 +204,16 @@ test("阶段管理：创建两个阶段可互相切换、重命名、删除", as
     page.locator(".mvp-stage-card", { hasText: "E2E 阶段管理·甲改名" }),
   ).toBeVisible();
 
-  // 两步确认删除乙；甲不受影响。
+  // 两步确认删除乙的视图；档案数据保留、甲不受影响。
   const stageBCard = page.locator(".mvp-stage-card", {
     hasText: "E2E 阶段管理·乙",
   });
   await stageBCard.getByRole("button", { name: "删除", exact: true }).click();
-  await expect(stageBCard.getByText("将永久删除")).toBeVisible();
+  await expect(stageBCard.getByText("只删除「E2E 阶段管理·乙」的名称与时间范围")).toBeVisible();
   await stageBCard.getByRole("button", { name: "删除这个阶段" }).click();
-  await stageBCard.getByRole("button", { name: "确认永久删除" }).click();
+  await stageBCard.getByRole("button", { name: "确认删除视图" }).click();
   await expect(page.getByRole("status")).toContainText(
-    "已删除「E2E 阶段管理·乙」",
+    "已删除「E2E 阶段管理·乙」这个回顾视图",
   );
   await expect(stageBCard).toHaveCount(0);
 
