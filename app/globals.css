@@ -2166,6 +2166,55 @@ a.mvp-primary {
   font-size: 12px;
 }
 
+/* 导出前风险确认：命中密钥/路径/邮箱时拦截，人工确认才落盘 */
+.expo-export-confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(6px);
+}
+.expo-export-confirm > div {
+  max-width: min(92vw, 560px);
+  border: 1px solid var(--e-line, rgba(245, 245, 247, 0.1));
+  border-radius: 14px;
+  padding: 28px;
+  background: var(--e-card, #141416);
+  color: var(--e-ink, #f5f5f7);
+  display: grid;
+  gap: 14px;
+}
+.expo-export-confirm h2 { font-family: var(--e-heading-font, serif); font-weight: 400; font-size: 22px; }
+.expo-export-confirm p { margin: 0; color: var(--e-muted, #9f9fa0); font-size: 13px; line-height: 1.8; }
+.expo-export-confirm ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.expo-export-confirm li {
+  border: 1px solid var(--e-line, rgba(245, 245, 247, 0.1));
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 4px;
+}
+.expo-export-confirm li strong { font-size: 13px; }
+.expo-export-confirm li span { color: var(--e-muted, #9f9fa0); font-size: 12px; overflow-wrap: anywhere; }
+.expo-export-confirm code { font-family: var(--e-mono, ui-monospace, monospace); font-size: 11px; }
+.expo-export-confirm > div > div { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+.expo-export-confirm button {
+  border: 1px solid rgba(245, 245, 247, 0.2);
+  border-radius: 8px;
+  padding: 9px 18px;
+  font-size: 13px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--e-ink, #f5f5f7);
+}
+.expo-export-confirm button:last-child {
+  border-color: var(--hall-accent, var(--e-accent, #847dff));
+  color: var(--hall-accent, var(--e-accent, #847dff));
+}
+
 /* —— Stage 8 收官：大数字尾声 / 档案落款 / 厅头吸顶 —— */
 .expo-epilogue-stats {
   display: grid;

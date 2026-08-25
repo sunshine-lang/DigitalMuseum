@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildExhibitionHtml,
+  scanExportRisks,
   type ExportExhibitEvent,
 } from "../app/exhibition/export-html.ts";
 
@@ -107,4 +108,60 @@ test("用户文本全部转义，无 HTML 注入", () => {
   assert.ok(!html.includes("<b>"));
   assert.match(html, /&lt;script&gt;/);
   assert.match(html, /&lt;b&gt;/);
+});
+
+test("风险扫描：干净内容不拦截", () => {
+  const html = buildExhibitionHtml({
+    stageName: "我的 AI 半年",
+    startsOn: "2026-03-01",
+    endsOn: "2026-08-31",
+    events,
+    exportedAt: "2026-08-23T00:00:00.000Z",
+  });
+  assert.deepEqual(scanExportRisks(html), []);
+});
+
+test("风险扫描：标题带本机路径时命中并给出样例", () => {
+  const html = buildExhibitionHtml({
+    stageName: "阶段",
+    startsOn: "2026-03-01",
+    endsOn: "2026-08-31",
+    events: [
+      {
+        title: "调试 /Users/sunshine/secret-project 的部署",
+        occurred_on: "2026-05-01",
+        status: "confirmed",
+        origin: "note",
+        exhibit_caption: null,
+        claims: [{ text: "记录。" }],
+      },
+    ],
+    exportedAt: "2026-08-23T00:00:00.000Z",
+  });
+  const risks = scanExportRisks(html);
+  assert.equal(risks.length, 1);
+  assert.equal(risks[0].kind, "path");
+  assert.ok(risks[0].count >= 1);
+  assert.ok(risks[0].sample.startsWith("/Users/"));
+});
+
+test("风险扫描：展签里的密钥与阶段名里的邮箱分别命中", () => {
+  const html = buildExhibitionHtml({
+    stageName: "me@example.com 的半年",
+    startsOn: "2026-03-01",
+    endsOn: "2026-08-31",
+    events: [
+      {
+        title: "一次部署",
+        occurred_on: "2026-05-01",
+        status: "confirmed",
+        origin: "note",
+        exhibit_caption: "用的 key 是 sk-ant-abcdefghijklmnopqrst 处理的",
+        claims: [{ text: "记录。" }],
+      },
+    ],
+    exportedAt: "2026-08-23T00:00:00.000Z",
+  });
+  const kinds = scanExportRisks(html).map((risk) => risk.kind).sort();
+  assert.deepEqual(kinds, ["email", "secret"]);
 });

@@ -5,7 +5,8 @@
  * - 只含用户勾选进入展览的事件；证据链细节（原文锚点、文件指纹、blob）
  *   默认不随导出公开；
  * - 无外部资源、无脚本：断网双击 file:// 可看，手机 390px 可读；
- * - 所有用户产生的文本一律 HTML 转义。
+ * - 所有用户产生的文本一律 HTML 转义；
+ * - 导出前做敏感信息风险扫描（密钥/路径/邮箱），命中必须经人工确认。
  */
 
 import { statusLabel } from "../events-shared.ts";
@@ -19,6 +20,44 @@ export type ExportExhibitEvent = {
   exhibit_caption: string | null;
   claims: { text: string }[];
 };
+
+/** 导出内容里的疑似敏感信息（PRD §9：导出前需单独检查密钥、邮箱、路径）。 */
+export type ExportRisk = {
+  kind: "secret" | "path" | "email";
+  count: number;
+  sample: string;
+};
+
+export const EXPORT_RISK_LABELS: Record<ExportRisk["kind"], string> = {
+  secret: "常见密钥 / 令牌",
+  path: "本机绝对路径",
+  email: "邮箱地址",
+};
+
+// 高精度模式优先：宁可漏报交还人工，不可误报淹没确认弹窗。
+const RISK_PATTERNS: Array<[ExportRisk["kind"], RegExp]> = [
+  [
+    "secret",
+    /\b(?:sk-ant-[A-Za-z0-9_-]{16,}|sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[A-Za-z0-9_-]{30,}|glpat-[A-Za-z0-9_-]{20,})/g,
+  ],
+  [
+    "path",
+    /(?:\/(?:Users|home|Volumes)\/[^\s"'<>）。，、；]+|~\/[^\s"'<>）。，、；]+|[A-Za-z]:\\Users\\[^\s"'<>）。，、；]+)/g,
+  ],
+  ["email", /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g],
+];
+
+/** 扫描最终导出 HTML：命中任意一类即返回清单（UI 据此拦截并要求人工确认）。 */
+export function scanExportRisks(html: string): ExportRisk[] {
+  const risks: ExportRisk[] = [];
+  for (const [kind, pattern] of RISK_PATTERNS) {
+    const matches = html.match(pattern);
+    if (matches?.length) {
+      risks.push({ kind, count: matches.length, sample: matches[0].slice(0, 24) });
+    }
+  }
+  return risks;
+}
 
 export type ExportExhibitionInput = {
   stageName: string;

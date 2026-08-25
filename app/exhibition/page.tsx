@@ -12,7 +12,12 @@ import {
   updateExhibitCaption,
 } from "../phase0-api";
 import { isVisibleExperience, sortEvents, statusLabel } from "../events-shared";
-import { buildExhibitionHtml } from "./export-html";
+import {
+  EXPORT_RISK_LABELS,
+  buildExhibitionHtml,
+  scanExportRisks,
+  type ExportRisk,
+} from "./export-html";
 import { exhibitNarrative } from "./narrative";
 
 const STAGE_STORAGE_KEY = "digital-museum-phase0-stage-id";
@@ -186,6 +191,8 @@ export default function ExhibitionWorkspace() {
   const [captionEdit, setCaptionEdit] = useState<{ id: string; value: string } | null>(null);
   const [captionBusy, setCaptionBusy] = useState(false);
   const [captionError, setCaptionError] = useState<string | null>(null);
+  // 导出风险拦截：扫描命中后暂存待确认的 HTML，人工确认才允许落盘。
+  const [exportConfirm, setExportConfirm] = useState<{ html: string; risks: ExportRisk[] } | null>(null);
 
   async function saveCaption(eventId: string) {
     if (!captionEdit || captionBusy) return;
@@ -220,8 +227,24 @@ export default function ExhibitionWorkspace() {
       })),
       exportedAt: new Date().toISOString(),
     });
+    // PRD §9：导出前单独检查密钥、邮箱、路径。命中即拦截，交还人工逐项确认。
+    const risks = scanExportRisks(html);
+    if (risks.length > 0) {
+      setExportConfirm({ html, risks });
+      return;
+    }
+    downloadExhibitionHtml(html, stage.name);
+  }
+
+  function confirmExport() {
+    if (!exportConfirm || !stage) return;
+    downloadExhibitionHtml(exportConfirm.html, stage.name);
+    setExportConfirm(null);
+  }
+
+  function downloadExhibitionHtml(html: string, stageName: string) {
     // 只含展出内容、不含证据链细节；文件名取阶段名，去除文件系统危险字符。
-    const safeName = stage.name.replace(/[\\/:*?"<>|\s]+/g, "-").slice(0, 60) || "exhibition";
+    const safeName = stageName.replace(/[\\/:*?"<>|\s]+/g, "-").slice(0, 60) || "exhibition";
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -513,6 +536,31 @@ export default function ExhibitionWorkspace() {
           </p>
         </div>
       </section>
+
+      {exportConfirm && (
+        <div className="expo-export-confirm" role="dialog" aria-label="导出内容风险确认">
+          <div>
+            <span className="expo-kicker">EXPORT CHECK · 导出前检查</span>
+            <h2>导出内容包含疑似敏感信息</h2>
+            <p>
+              静态导出不携带证据链，但标题与展签取自你的记录原文。以下内容将随文件一起离开本机，
+              请逐项确认可以公开；不确定时请取消并先改写对应展签。
+            </p>
+            <ul>
+              {exportConfirm.risks.map((risk) => (
+                <li key={risk.kind}>
+                  <strong>{EXPORT_RISK_LABELS[risk.kind]}</strong>
+                  <span>命中 {risk.count} 处，如 <code>{risk.sample}…</code></span>
+                </li>
+              ))}
+            </ul>
+            <div>
+              <button type="button" onClick={() => setExportConfirm(null)}>取消，回去修改</button>
+              <button type="button" onClick={confirmExport}>我已逐项核对，仍然导出</button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
