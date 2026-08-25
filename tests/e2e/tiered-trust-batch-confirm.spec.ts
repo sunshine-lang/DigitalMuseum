@@ -20,7 +20,7 @@ async function createStage(page: Page, name: string): Promise<void> {
 }
 
 test("分级信任：笔记批量确认快速通道", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/?all-sources");
   await createStage(page, "临时·批量确认");
   await page.locator('input[name="notes"]').setInputFiles(noteFiles);
   await page.getByRole("button", { name: "开始整理这些记录" }).click();

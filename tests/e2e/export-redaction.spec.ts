@@ -17,7 +17,7 @@ async function createStage(page: Page, name: string): Promise<void> {
 }
 
 test("导出脱敏：路径命中弹确认框，取消后不导出", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/?all-sources");
   await createStage(page, "临时·导出脱敏");
   await page.locator('input[name="notes"]').setInputFiles([riskyNote]);
   await page.getByRole("button", { name: "开始整理这些记录" }).click();

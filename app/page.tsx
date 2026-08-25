@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties } from "react";
 import {
   AgentSessionProject,
@@ -802,7 +802,7 @@ export default function MuseumMvpWorkspace() {
       )}
 
       <footer className="mvp-footer">
-        <span>当前体验：笔记 / Git 仓库 / Claude Code / Codex 会话 → 经历草稿 → 关键核对 → 私人回顾</span>
+        <span>当前体验：Claude Code / Codex 会话同步 → 经历草稿 → 关键核对 → 私人回顾</span>
         <span>静态展览导出已就绪（导出前有敏感信息检查）；ChatGPT / WorkBuddy 导入尚未实现</span>
       </footer>
     </main>
@@ -881,6 +881,19 @@ function ResumeStages({ stages, onEnter }: {
   );
 }
 
+// 临时收敛导入入口（2026-08-25）：默认只保留 Agent 会话同步；URL 带 ?all-sources
+// 时恢复笔记上传与 Git 仓库通道（E2E 覆盖与恢复验证用）。URL 在页面存续期内
+// 不变，订阅为空操作；服务端快照固定 false，保证 SSR 与客户端首帧一致。
+const subscribeUrlNoop = () => () => {};
+
+function useAllSources(): boolean {
+  return useSyncExternalStore(
+    subscribeUrlNoop,
+    () => new URLSearchParams(window.location.search).has("all-sources"),
+    () => false,
+  );
+}
+
 // 十秒开馆 · 冷启动：主路径「从一个 Git 仓库开始」只读预览帮填表，次路径
 // 「手动选择时间范围」与主路径共用同一张建馆表单（一套受控 state），确认权
 // 始终留给用户——预览只做预填，不自动保存。
@@ -903,6 +916,7 @@ function StageGate({ busy, onSubmit, onNotice, onRecentGitPath }: {
   const [name, setName] = useState("");
   const [startsOn, setStartsOn] = useState("");
   const [endsOn, setEndsOn] = useState("");
+  const allSources = useAllSources();
 
   // 与服务端 invalid_stage_range 同口径的 3–12 个月即时校验。
   const rangeError = stageRangeError(startsOn, endsOn);
@@ -950,25 +964,27 @@ function StageGate({ busy, onSubmit, onNotice, onRecentGitPath }: {
 
   return (
     <section className="mvp-stage-form">
-      <header><span>第一步</span><div><h2>选择回顾时间</h2><p>从一个本地 Git 仓库开始最快：贴上路径，系统只读提交记录帮你预填；也可以手动选择时间范围。</p></div></header>
-      <form className="mvp-gate-git" onSubmit={handlePreview}>
-        <label>
-          <span>从一个 Git 仓库开始（推荐）</span>
-          <input name="gateRepoPath" value={repoPath} placeholder="/Users/you/Projects/your-repo" autoComplete="off" onChange={(changeEvent) => setRepoPath(changeEvent.target.value)} />
-        </label>
-        <div className="mvp-gate-git-actions">
-          <button className="mvp-secondary" type="submit" disabled={previewBusy || !repoPath.trim()}>{previewBusy ? "正在读取仓库…" : "预览这个仓库"}</button>
-          <small>只读取提交日期与提交说明来帮填下方表单，确认权在你；不会修改仓库内容。</small>
-        </div>
-        {preview && (
-          <div className="mvp-gate-preview">
-            <div><strong>{preview.repo_name}</strong><small>{preview.commit_count} 个提交 · {preview.first_commit_on} — {preview.last_commit_on}</small></div>
-            <p>已按最早与最近提交预填下方表单{adjustNote ? `（${adjustNote}）` : ""}，可再手动调整后保存。</p>
+      <header><span>第一步</span><div><h2>选择回顾时间</h2><p>{allSources ? "从一个本地 Git 仓库开始最快：贴上路径，系统只读提交记录帮你预填；也可以手动选择时间范围。" : "手动框定一段 3–12 个月的时间；进入后在导入页一键同步本机 Claude Code / Codex 会话。"}</p></div></header>
+      {allSources && (
+        <form className="mvp-gate-git" onSubmit={handlePreview}>
+          <label>
+            <span>从一个 Git 仓库开始（推荐）</span>
+            <input name="gateRepoPath" value={repoPath} placeholder="/Users/you/Projects/your-repo" autoComplete="off" onChange={(changeEvent) => setRepoPath(changeEvent.target.value)} />
+          </label>
+          <div className="mvp-gate-git-actions">
+            <button className="mvp-secondary" type="submit" disabled={previewBusy || !repoPath.trim()}>{previewBusy ? "正在读取仓库…" : "预览这个仓库"}</button>
+            <small>只读取提交日期与提交说明来帮填下方表单，确认权在你；不会修改仓库内容。</small>
           </div>
-        )}
-      </form>
+          {preview && (
+            <div className="mvp-gate-preview">
+              <div><strong>{preview.repo_name}</strong><small>{preview.commit_count} 个提交 · {preview.first_commit_on} — {preview.last_commit_on}</small></div>
+              <p>已按最早与最近提交预填下方表单{adjustNote ? `（${adjustNote}）` : ""}，可再手动调整后保存。</p>
+            </div>
+          )}
+        </form>
+      )}
       <form onSubmit={handleSubmit}>
-        <p className="mvp-gate-divider"><span>或手动选择时间范围</span></p>
+        {allSources && <p className="mvp-gate-divider"><span>或手动选择时间范围</span></p>}
         <label><span>给这段时间取个名字</span><input name="name" required maxLength={120} value={name} placeholder="例如：我的 AI 产品半年" onChange={(changeEvent) => setName(changeEvent.target.value)} /></label>
         <div className="mvp-date-grid">
           <label><span>从哪一天开始</span><input name="starts_on" required type="date" value={startsOn} onChange={(changeEvent) => setStartsOn(changeEvent.target.value)} /></label>
@@ -1024,43 +1040,48 @@ function ImportView({ busy, coverage, files, results, gitPath, recentGitPaths, c
   onCodexSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onImportSessions: (kind: "claude" | "codex", path: string) => void;
 }) {
+  const allSources = useAllSources();
   return (
     <section className="mvp-view mvp-import-view">
       <article className="mvp-panel mvp-import-panel">
-        <header className="mvp-section-heading"><span>01 · 导入</span><div><h2>一次导入这段时间的记录</h2><p>现在支持整理过的 Markdown/TXT、本地 Git 仓库、Claude Code 与 Codex 会话。ChatGPT、WorkBuddy 原生导出文件将在后续适配。</p></div></header>
+        <header className="mvp-section-heading"><span>01 · 导入</span><div><h2>一次导入这段时间的记录</h2><p>{allSources ? "现在支持整理过的 Markdown/TXT、本地 Git 仓库、Claude Code 与 Codex 会话。ChatGPT、WorkBuddy 原生导出文件将在后续适配。" : "自动发现本机 Claude Code 与 Codex 的会话记录，点一下即可导入。ChatGPT、WorkBuddy 原生导出文件将在后续适配。"}</p></div></header>
         <SessionDiscoveryPanel busy={busy} onImportSessions={onImportSessions} />
-        <form onSubmit={onSubmit}>
-          <label className="mvp-dropzone">
-            <input name="notes" type="file" multiple onChange={(event) => onFileSelection(event.target.files)} />
-            <span>选择多份 Markdown / TXT 记录</span>
-            <small>单次最多 {MAX_BATCH_FILES} 份，总计不超过 {MAX_BATCH_BYTES_LABEL}；不支持的文件会单独提示</small>
-          </label>
-          {files.length > 0 && <FileSelectionList files={files} unit="份" moreNoun="份文件" />}
-          <button className="mvp-primary" disabled={busy || files.length === 0} type="submit">{busy ? "正在逐份保存和整理…" : "开始整理这些记录"}</button>
-        </form>
-        <form className="mvp-git-import" onSubmit={onGitSubmit}>
-          <span className="mvp-git-divider">或</span>
-          <label>
-            <span>导入一个本地 Git 仓库（只读提交记录）</span>
-            <input name="gitPath" value={gitPath} placeholder="/Users/you/Projects/your-repo" autoComplete="off" onChange={(changeEvent) => onGitPathChange(changeEvent.target.value)} />
-          </label>
-          {recentGitPaths.length > 0 && (
-            <div className="mvp-git-recent">
-              <span>最近仓库</span>
-              <ul>
-                {recentGitPaths.map((recentPath) => (
-                  <li key={recentPath}>
-                    <button type="button" title={recentPath} onClick={() => onPickRecentGitPath(recentPath)}>{displayRepoPath(recentPath)}</button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          <button className="mvp-secondary" disabled={busy} type="submit">{busy ? "正在读取仓库…" : "读取仓库提交记录"}</button>
-          <small>系统只读取建馆阶段内的提交日期与提交说明，不会修改仓库内容。</small>
-        </form>
+        {allSources && (
+          <>
+            <form onSubmit={onSubmit}>
+              <label className="mvp-dropzone">
+                <input name="notes" type="file" multiple onChange={(event) => onFileSelection(event.target.files)} />
+                <span>选择多份 Markdown / TXT 记录</span>
+                <small>单次最多 {MAX_BATCH_FILES} 份，总计不超过 {MAX_BATCH_BYTES_LABEL}；不支持的文件会单独提示</small>
+              </label>
+              {files.length > 0 && <FileSelectionList files={files} unit="份" moreNoun="份文件" />}
+              <button className="mvp-primary" disabled={busy || files.length === 0} type="submit">{busy ? "正在逐份保存和整理…" : "开始整理这些记录"}</button>
+            </form>
+            <form className="mvp-git-import" onSubmit={onGitSubmit}>
+              <span className="mvp-git-divider">或</span>
+              <label>
+                <span>导入一个本地 Git 仓库（只读提交记录）</span>
+                <input name="gitPath" value={gitPath} placeholder="/Users/you/Projects/your-repo" autoComplete="off" onChange={(changeEvent) => onGitPathChange(changeEvent.target.value)} />
+              </label>
+              {recentGitPaths.length > 0 && (
+                <div className="mvp-git-recent">
+                  <span>最近仓库</span>
+                  <ul>
+                    {recentGitPaths.map((recentPath) => (
+                      <li key={recentPath}>
+                        <button type="button" title={recentPath} onClick={() => onPickRecentGitPath(recentPath)}>{displayRepoPath(recentPath)}</button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <button className="mvp-secondary" disabled={busy} type="submit">{busy ? "正在读取仓库…" : "读取仓库提交记录"}</button>
+              <small>系统只读取建馆阶段内的提交日期与提交说明，不会修改仓库内容。</small>
+            </form>
+          </>
+        )}
         <form className="mvp-git-import" onSubmit={onClaudeSubmit}>
-          <span className="mvp-git-divider">或</span>
+          {allSources && <span className="mvp-git-divider">或</span>}
           <label>
             <span>导入 Claude Code 会话（只读本地会话记录）</span>
             <input name="claudePath" value={claudePath} placeholder="/Users/you/Projects/your-project 或 ~/.claude/projects 下的会话目录" autoComplete="off" onChange={(changeEvent) => onClaudePathChange(changeEvent.target.value)} />
@@ -1129,7 +1150,7 @@ function SessionDiscoveryPanel({ busy, onImportSessions }: {
         <p className="mvp-session-discovery-hint">暂时扫不到会话：{error}。可在下方手动填写项目路径。</p>
       )}
       {!error && !loading && total === 0 && (
-        <p className="mvp-session-discovery-hint">没有发现 Claude Code / Codex 会话；也可以先导入笔记或 Git 仓库。</p>
+        <p className="mvp-session-discovery-hint">没有发现 Claude Code / Codex 会话；可点「刷新」重试，或在下方手动填写项目路径。</p>
       )}
       {[
         { kind: "claude" as const, title: "Claude Code", projects: claudeProjects },

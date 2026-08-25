@@ -24,7 +24,7 @@ async function createStage(page: Page, name: string): Promise<void> {
 test("完整链路：导入 → 自动聚合 → 合并 → 拆分 → 确认 → 刷新恢复", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/?all-sources");
   await createStage(page, "E2E 自动验收·主链路");
 
   await page.locator('input[name="notes"]').setInputFiles(noteFiles);
@@ -73,7 +73,7 @@ test("完整链路：导入 → 自动聚合 → 合并 → 拆分 → 确认 �
 });
 
 test("坏文件单独失败：PDF 不影响其他记录导入", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/?all-sources");
   await expect(
     page
       .getByRole("button", { name: "切换回顾范围" })
@@ -108,7 +108,7 @@ test("坏文件单独失败：PDF 不影响其他记录导入", async ({ page })
 test("十秒开馆：从一个 Git 仓库路径开始，全程不手填任何日期", async ({ page }) => {
   // 用本仓库真实路径作为零门槛入口；E2E 后端 allowed_repo_roots 默认 "~" 覆盖它。
   const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
-  await page.goto("/");
+  await page.goto("/?all-sources");
 
   await expect(
     page
@@ -159,7 +159,7 @@ test("十秒开馆：从一个 Git 仓库路径开始，全程不手填任何日
 });
 
 test("阶段管理：创建两个阶段可互相切换、重命名、删除", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/?all-sources");
   await createStage(page, "E2E 阶段管理·甲");
   await page.locator('input[name="notes"]').setInputFiles([noteFiles[0]]);
   await page.getByRole("button", { name: "开始整理这些记录" }).click();

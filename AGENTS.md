@@ -4,7 +4,7 @@
 
 ## 项目是什么
 
-Digital Museum · AI 人生档案馆。开源本地工具（方向见 PRD v0.2，2026-08-23 起）：目标用户是 AI 编码 Agent 开发者，第一燃料是本机的 Agent 会话记录与 Git、笔记等文本痕迹；交付终点是静态展览导出（Stage 8 最小版已落地：`/exhibition` 一键导出无脚本自包含单文件 HTML），明确不做云部署与多用户。当前首页 `/` 为“导入记录 → 发现经历（含合并/拆分整理）→ 核对关键内容 → 私人回顾草稿”的价值先行 MVP，支持整理过的 `.md/.txt` 笔记、本地 Git 仓库（只读提交记录）、Claude Code 会话（`~/.claude/projects` 只读）与 Codex 会话（`~/.codex/sessions` 只读）。照片适配器 `photo-evidence-v1` 已于 2026-08-25 整体删除，存量照片谱系数据经迁移 e5a2c7f91b4d 清理（spec 见 stage-4 文档）；7 套展览换肤与本地分享海报同日删除，站内展览视觉收敛为午夜档案馆一种（与导出文件同色系）。ChatGPT/WorkBuddy 适配器尚未实现。`/demo` 静态演示已于 2026-08 移除；站内 `/` 与 `/exhibition` 均读取真实档案数据。
+Digital Museum · AI 人生档案馆。开源本地工具（方向见 PRD v0.2，2026-08-23 起）：目标用户是 AI 编码 Agent 开发者，第一燃料是本机的 Agent 会话记录与 Git、笔记等文本痕迹；交付终点是静态展览导出（Stage 8 最小版已落地：`/exhibition` 一键导出无脚本自包含单文件 HTML），明确不做云部署与多用户。当前首页 `/` 为“导入记录 → 发现经历（含合并/拆分整理）→ 核对关键内容 → 私人回顾草稿”的价值先行 MVP，支持整理过的 `.md/.txt` 笔记、本地 Git 仓库（只读提交记录）、Claude Code 会话（`~/.claude/projects` 只读）与 Codex 会话（`~/.codex/sessions` 只读）。照片适配器 `photo-evidence-v1` 已于 2026-08-25 整体删除，存量照片谱系数据经迁移 e5a2c7f91b4d 清理（spec 见 stage-4 文档）；7 套展览换肤与本地分享海报同日删除，站内展览视觉收敛为午夜档案馆一种（与导出文件同色系）。ChatGPT/WorkBuddy 适配器尚未实现。2026-08-25 起首页界面默认只显示 Agent 会话同步入口（开馆门与导入表单均如此）；URL 加 `?all-sources` 临时恢复笔记上传与 Git 仓库表单——后端能力与 E2E 全部保留，只是默认藏起。`/demo` 静态演示已于 2026-08 移除；站内 `/` 与 `/exhibition` 均读取真实档案数据。
 
 文档阅读顺序：`docs/prd/digital-museum-prd-v0.2.md`（当前有效）→ `docs/technical-adaptation.md` → `docs/mvp-value-first-ai-records-flow.md` → `docs/phase-0-stage-1-note-event-review.md` 及后续 `docs/phase-0-stage-*.md`。PRD v0.1 的真实性契约、对象模型与 Event Review 信息层级继续有效；`docs/references/` 下的三份手册是通用外部方法论参考资料，不是本项目规范。
 

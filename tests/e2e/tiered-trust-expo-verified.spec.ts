@@ -13,7 +13,7 @@ async function createStage(page: Page, name: string): Promise<void> {
 }
 
 test("分级信任：展览页系统核实徽标与默认选展", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/?all-sources");
   await createStage(page, "临时·展览核实");
 
   // Git 提交日是确定性读数：导入即 verified，不进人工核对队列。
