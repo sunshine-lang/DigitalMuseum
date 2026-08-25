@@ -40,15 +40,6 @@ def git_client(app_paths: tuple[str, Path], tmp_path: Path) -> TestClient:
 
 
 @pytest.fixture
-def photo_client(app_paths: tuple[str, Path]) -> TestClient:
-    database_url, upload_dir = app_paths
-    with TestClient(
-        create_app(database_url=database_url, upload_dir=upload_dir)
-    ) as test_client:
-        yield test_client
-
-
-@pytest.fixture
 def claude_client(app_paths: tuple[str, Path], tmp_path: Path) -> TestClient:
     database_url, upload_dir = app_paths
     with TestClient(

@@ -50,11 +50,6 @@ class AnchorOut(BaseModel):
     char_end: int
 
 
-class SourceMediaOut(BaseModel):
-    sha256: str
-    media_type: str
-
-
 class ClaimOut(BaseModel):
     id: str
     text: str
@@ -62,8 +57,6 @@ class ClaimOut(BaseModel):
     evidence_role: Literal["user_statement", "artifact"]
     processor_version: str
     anchors: list[AnchorOut]
-    # 可展示的原始媒体：照片事件指向原图 blob；笔记/Git/照片元数据文档为 null。
-    source_media: SourceMediaOut | None = None
 
 
 class ReviewOut(BaseModel):
@@ -96,6 +89,7 @@ class EventOut(BaseModel):
     status: EventStatus
     revision: int
     is_formal: bool
+    # "photo" 仅为兼容历史数据中的旧照片事件保留；照片适配器已于 2026-08-25 删除。
     origin: Literal[
         "note", "aggregated", "merged", "split", "git", "photo", "claude", "codex"
     ]
@@ -126,12 +120,6 @@ class CoverageOut(BaseModel):
 
 
 class NoteImportOut(BaseModel):
-    occurrence: OccurrenceOut
-    event: EventOut
-    coverage: list[CoverageOut]
-
-
-class PhotoImportOut(BaseModel):
     occurrence: OccurrenceOut
     event: EventOut
     coverage: list[CoverageOut]

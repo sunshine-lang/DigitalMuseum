@@ -58,12 +58,10 @@ def run_evaluation(workdir: Path) -> dict:
         "processor_versions": {
             "note": "note-development-v2",
             "git": "git-evidence-v1",
-            "photo": "photo-evidence-v1",
             "aggregation": "note-aggregation-v1",
         },
         "dataset": {
             "notes": len(dataset["notes"]),
-            "photos": len(dataset["photos"]),
             "git_repo": manifest["git_repo"]["repo_dirname"],
             "rejected": len(dataset["rejected"]),
             "expected_events": len(manifest["expected_events"]),
@@ -94,27 +92,15 @@ def _import_all(client: TestClient, stage_id: str, dataset: dict) -> None:
         json={"path": str(dataset["git_repo"])},
     )
     assert response.status_code == 201, response.text
-    for path in dataset["photos"]:
-        response = client.post(
-            f"/api/v1/stages/{stage_id}/photos",
-            files={"file": (path.name, path.read_bytes(), "image/jpeg")},
-        )
-        assert response.status_code == 201, f"{path.name}: {response.text}"
 
 
 def _import_rejected(client: TestClient, stage_id: str, rejected: list[dict]) -> list[dict]:
     results = []
     for item in rejected:
-        if item["kind"] == "photo":
-            response = client.post(
-                f"/api/v1/stages/{stage_id}/photos",
-                files={"file": (item["filename"], item["path"].read_bytes(), "image/png")},
-            )
-        else:
-            response = client.post(
-                f"/api/v1/stages/{stage_id}/notes",
-                files={"file": (item["filename"], item["path"].read_bytes(), "text/markdown")},
-            )
+        response = client.post(
+            f"/api/v1/stages/{stage_id}/notes",
+            files={"file": (item["filename"], item["path"].read_bytes(), "text/markdown")},
+        )
         body = response.json()
         results.append(
             {

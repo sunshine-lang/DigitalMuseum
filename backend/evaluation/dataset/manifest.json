@@ -16,21 +16,8 @@
       { "name": "v1.0.0", "date": "2026-06-05", "message": "first release" }
     ]
   },
-  "photos": [
-    { "filename": "IMG_20260704_090000.jpg", "taken_at": "2026:07:04 09:00:00", "make": "Acme", "model": "Phone 15" },
-    { "filename": "IMG_20260704_183012.jpg", "taken_at": "2026:07:04 18:30:12" },
-    { "filename": "IMG_20260720_101500.jpg", "taken_at": "2026:07:20 10:15:00", "make": "Acme", "model": "Phone 15" }
-  ],
   "rejected": [
     {
-      "kind": "photo",
-      "filename": "screenshot-no-exif.png",
-      "format": "PNG",
-      "status": 422,
-      "error_code": "photo_missing_timestamp"
-    },
-    {
-      "kind": "note",
       "filename": "out-of-range-note.md",
       "content": "---\ntitle: 阶段之外的旧笔记\ndate: 2025-12-01\n---\n\n这段内容发生在建馆阶段开始之前。",
       "status": 422,
@@ -44,8 +31,6 @@
     { "title": "在 demo-eval-repo 提交代码", "occurred_on": "2026-05-10", "source_count": 1 },
     { "title": "在 demo-eval-repo 提交代码", "occurred_on": "2026-06-02", "source_count": 1 },
     { "title": "在 demo-eval-repo 创建标签 v1.0.0", "occurred_on": "2026-06-05", "source_count": 1 },
-    { "title": "拍摄照片", "occurred_on": "2026-07-04", "source_count": 2 },
-    { "title": "拍摄照片", "occurred_on": "2026-07-20", "source_count": 1 },
     { "title": "无日期的读书笔记", "occurred_on": null, "source_count": 1, "claim_contains": "永久笔记" },
     { "title": "关于档案馆命名的一页草稿", "occurred_on": null, "source_count": 1 }
   ]

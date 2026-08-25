@@ -1,10 +1,8 @@
 import { fileURLToPath } from "node:url";
 import { expect, test, type Page } from "@playwright/test";
 
-const photoDir = fileURLToPath(
-  new URL("../../test-data/phase0-stage4-photos", import.meta.url),
-);
-const photoWithExif = `${photoDir}/IMG_20260615_103000.jpg`;
+// 用本仓库真实路径制造 verified 事件；E2E 后端 allowed_repo_roots 默认 "~" 覆盖它。
+const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 
 async function createStage(page: Page, name: string): Promise<void> {
   await page.getByRole("textbox", { name: "给这段时间取个名字" }).fill(name);
@@ -17,11 +15,11 @@ async function createStage(page: Page, name: string): Promise<void> {
 test("分级信任：展览页系统核实徽标与默认选展", async ({ page }) => {
   await page.goto("/");
   await createStage(page, "临时·展览核实");
-  await page
-    .locator('input[name="photos"]')
-    .setInputFiles([photoWithExif]);
-  await page.getByRole("button", { name: "开始整理这些照片" }).click();
-  await expect(page.getByRole("status")).toContainText("已导入 1 张照片");
+
+  // Git 提交日是确定性读数：导入即 verified，不进人工核对队列。
+  await page.locator('input[name="gitPath"]').fill(repoRoot);
+  await page.getByRole("button", { name: "读取仓库提交记录" }).click();
+  await expect(page.getByRole("status")).toContainText("已从 Git 仓库整理出");
 
   // 直接进展览馆：verified 事件默认选中并展示方章徽标。
   await page.goto("/exhibition");
@@ -29,19 +27,12 @@ test("分级信任：展览页系统核实徽标与默认选展", async ({ page 
     page.getByRole("heading", { name: "第一步 · 选择要展出的经历" }),
   ).toBeVisible();
   await expect(
-    page.locator(".expo-module li label.checked"),
-  ).toHaveCount(1);
-  await expect(
-    page.getByText("1 段已确认（含系统核实 1）"),
+    page.locator(".expo-module li label.checked").first(),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: /下一步 · 选择展览风格/ })
-    .click();
-  await page
-    .getByRole("button", { name: /暖纸档案馆/ })
-    .click();
-  const badge = page.locator(".expo-seal.sys");
-  await expect(badge).toHaveCount(1);
+  await expect(page.getByText(/段已确认（含系统核实/).first()).toBeVisible();
+  await page.getByRole("button", { name: /开馆 · 展出已选的/ }).click();
+  const badge = page.locator(".expo-seal.sys").first();
+  await expect(badge).toBeVisible();
   await expect(badge).toHaveText("系统核实");
   await expect(
     page.getByText("都由系统从确定性记录自动核实"),

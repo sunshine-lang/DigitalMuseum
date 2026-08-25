@@ -15,7 +15,7 @@
 → 审阅状态持久化并可恢复
 ```
 
-这不是整个 Phase 0，也不是完整产品。当前“AI 协作记录”支持用户已经整理成 `.md/.txt` 的非敏感测试资料、本地 Git 仓库（只读提交记录）、Claude Code 会话（只读 `~/.claude/projects`）与 Codex 会话（只读 `~/.codex/sessions`）；照片适配器已暂缓投入（代码保留）。ChatGPT/WorkBuddy 原生 Session 解析、真实模型、静态展览导出和 Share 尚未实现。首页展览区是读取真实 Event 状态的本地草稿，不是可发布展览。`/demo` 静态演示已于 2026-08 移除。
+这不是整个 Phase 0，也不是完整产品。当前“AI 协作记录”支持用户已经整理成 `.md/.txt` 的非敏感测试资料、本地 Git 仓库（只读提交记录）、Claude Code 会话（只读 `~/.claude/projects`）与 Codex 会话（只读 `~/.codex/sessions`）。照片适配器已于 2026-08-25 整体删除（spec 留档于阶段文档）；`/exhibition` 支持把勾选展出的事件一键导出为无脚本自包含单文件 HTML（午夜档案馆视觉），但 ChatGPT/WorkBuddy 原生 Session 解析、真实模型与 Share 尚未实现，首页展览区仍是读取真实 Event 状态的本地草稿。`/demo` 静态演示已于 2026-08 移除。
 
 ## 技术适配
 
@@ -25,7 +25,7 @@
 - 解析器：确定性 `note-development-v1`，只生成 Candidate，不调用模型、不推断因果和动机。
 - 测试：pytest 通过公开 API 验证；TypeScript、ESLint、构建与渲染测试验证前端。
 
-完整取舍见 [PRD](docs/prd/digital-museum-prd-v0.1.md)、[MVP 用户流程](docs/mvp-value-first-ai-records-flow.md)、[技术适配声明](docs/technical-adaptation.md)、[第一阶段技术开发文档](docs/phase-0-stage-1-note-event-review.md) 和 [第二阶段技术开发文档](docs/phase-0-stage-2-aggregation-merge-split.md)。第二阶段的完整能力规划另见 [docs/phase-0-stage-2-multi-note-event-operations.md](docs/phase-0-stage-2-multi-note-event-operations.md)，其中服务端 Import Batch、事件元数据编辑与操作历史 API 尚未实现。
+完整取舍见 [PRD](docs/prd/digital-museum-prd-v0.2.md)、[MVP 用户流程](docs/mvp-value-first-ai-records-flow.md)、[技术适配声明](docs/technical-adaptation.md) 和各阶段技术开发文档（`docs/phase-0-stage-*.md`）。
 
 ## 项目结构
 

@@ -26,11 +26,6 @@ type Anchor = {
   char_end: number;
 };
 
-type SourceMedia = {
-  sha256: string;
-  media_type: string;
-};
-
 type Claim = {
   id: string;
   text: string;
@@ -38,8 +33,6 @@ type Claim = {
   evidence_role: "user_statement" | "artifact";
   processor_version: string;
   anchors: Anchor[];
-  /** 可展示的原始媒体：照片事件指向原图 blob；笔记/Git 为 null。 */
-  source_media: SourceMedia | null;
 };
 
 export type ReviewDecision = "confirmed" | "disputed" | "unknown" | "rejected";
@@ -50,6 +43,7 @@ type EventOrigin =
   | "merged"
   | "split"
   | "git"
+  // "photo" 仅为兼容历史数据中的旧照片事件保留；照片适配器已于 2026-08-25 删除。
   | "photo"
   | "claude"
   | "codex";
@@ -136,11 +130,6 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return body.data;
 }
 
-/** 内容寻址的本地 Blob 媒体地址（GET 只读端点，可永久缓存）。 */
-export function blobUrl(sha256: string): string {
-  return `${apiBaseUrl}/api/v1/blobs/${sha256}`;
-}
-
 export function createStage(payload: {
   name: string;
   starts_on: string;
@@ -187,17 +176,6 @@ export function importNote(stageId: string, file: File): Promise<CandidateEvent>
   return apiRequest<{
     event: CandidateEvent;
   }>(`/api/v1/stages/${stageId}/notes`, {
-    method: "POST",
-    body: formData,
-  }).then((result) => result.event);
-}
-
-export function importPhoto(stageId: string, file: File): Promise<CandidateEvent> {
-  const formData = new FormData();
-  formData.append("file", file);
-  return apiRequest<{
-    event: CandidateEvent;
-  }>(`/api/v1/stages/${stageId}/photos`, {
     method: "POST",
     body: formData,
   }).then((result) => result.event);

@@ -2,14 +2,13 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, MouseEvent } from "react";
+import type { CSSProperties } from "react";
 import {
   CoverageItem,
   GitRepoPreview,
   Phase0ApiError,
   ReviewDecision,
   Stage,
-  blobUrl,
   claudeProjectLabel,
   codexProjectLabel,
   createStage,
@@ -20,7 +19,6 @@ import {
   importCodexSessions,
   importGitRepo,
   importNote,
-  importPhoto,
   listStages,
   mergeEvents,
   previewGitRepo,
@@ -41,8 +39,6 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_BATCH_FILES = 20;
 const MAX_BATCH_BYTES = 20 * 1024 * 1024;
 const MAX_BATCH_BYTES_LABEL = "20 MiB";
-const MAX_PHOTO_BYTES = 25 * 1024 * 1024;
-const MAX_PHOTO_BYTES_LABEL = "25 MiB";
 
 type WorkspaceView = "import" | "discover" | "review" | "summary" | "exhibition";
 
@@ -136,7 +132,6 @@ export default function MuseumMvpWorkspace() {
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [reviewOverrideId, setReviewOverrideId] = useState<string | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [selectedPhotos, setSelectedPhotos] = useState<File[]>([]);
   const [importResults, setImportResults] = useState<ImportResult[]>([]);
   const [reviewNote, setReviewNote] = useState("");
   const [leavingDecision, setLeavingDecision] = useState<ReviewDecision | null>(null);
@@ -150,7 +145,6 @@ export default function MuseumMvpWorkspace() {
   const [confirmingAction, setConfirmingAction] = useState<StructureConfirm>(null);
   const [loadingSavedStage, setLoadingSavedStage] = useState(true);
   const [recentStages, setRecentStages] = useState<Stage[]>([]);
-  const [curtainActive, setCurtainActive] = useState(false);
   const [notice, setNotice] = useState<{
     kind: "error" | "success";
     message: string;
@@ -363,7 +357,7 @@ export default function MuseumMvpWorkspace() {
     }
   }
 
-  // 换选笔记/照片共用（#10）：覆盖旧选择并清空逐文件结果与全局提示。
+  // 换选笔记（#10）：覆盖旧选择并清空逐文件结果与全局提示。
   function fileSelectionHandler(setter: (files: File[]) => void) {
     return (files: FileList | null) => {
       setter(files ? Array.from(files) : []);
@@ -468,24 +462,9 @@ export default function MuseumMvpWorkspace() {
     });
   }
 
-  // 照片批量导入（#7）：同样走 runBatchImport，差异是“单张限重”校验与照片文案。
-  async function handleImportPhotos(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!stage) return;
-    await runBatchImport(stage, selectedPhotos, {
-      validationError: photoValidationError(selectedPhotos),
-      pendingMessage: "正在保存和读取拍摄时间",
-      importFile: importPhoto,
-      clearSelection: () => setSelectedPhotos([]),
-      summary: (succeeded, failed) =>
-        failed ? `已导入 ${succeeded} 张，${failed} 张需要处理。成功照片没有受到影响。` : `已导入 ${succeeded} 张照片。拍摄时间相同的照片会整理在同一段经历里。`,
-    });
-  }
-
   // 批量导入共用骨架（#7）：仍是前端顺序调用单文件 API，不是服务端 Import
   // Batch。流程为校验提示 → 置 pending → 逐文件导入 → refreshStage → 清空
-  // 选择并汇总通知；逐条失败不中断批次，成功文件的结果保持可见。笔记按总
-  // 字节数限重、照片按单张限重，差异全部经 config 注入。
+  // 选择并汇总通知；逐条失败不中断批次，成功文件的结果保持可见。
   async function runBatchImport(
     stage: Stage,
     files: File[],
@@ -722,15 +701,6 @@ export default function MuseumMvpWorkspace() {
     setView("review");
   }
 
-  function openExhibitionWithCurtain(clickEvent: MouseEvent<HTMLAnchorElement>) {
-    clickEvent.preventDefault();
-    if (curtainActive) return;
-    setCurtainActive(true);
-    window.setTimeout(() => {
-      window.location.href = "/exhibition";
-    }, 220);
-  }
-
   function openStageLibrary() {
     window.location.assign("/stages");
   }
@@ -766,7 +736,7 @@ export default function MuseumMvpWorkspace() {
         <>
           <StageSummary stage={stage} experienceCount={visibleEvents.length} pendingCount={candidateEvents.length} onSwitch={openStageLibrary} />
           {view === "import" && (
-            <ImportView busy={busy} coverage={coverage} files={selectedFiles} photoFiles={selectedPhotos} results={importResults} gitPath={gitPath} recentGitPaths={recentGitPaths} claudePath={claudePath} codexPath={codexPath} onGitPathChange={setGitPath} onPickRecentGitPath={setGitPath} onClaudePathChange={setClaudePath} onCodexPathChange={setCodexPath} onFileSelection={fileSelectionHandler(setSelectedFiles)} onPhotoSelection={fileSelectionHandler(setSelectedPhotos)} onSubmit={handleImport} onPhotoSubmit={handleImportPhotos} onGitSubmit={handleImportGit} onClaudeSubmit={handleImportClaude} onCodexSubmit={handleImportCodex} />
+            <ImportView busy={busy} coverage={coverage} files={selectedFiles} results={importResults} gitPath={gitPath} recentGitPaths={recentGitPaths} claudePath={claudePath} codexPath={codexPath} onGitPathChange={setGitPath} onPickRecentGitPath={setGitPath} onClaudePathChange={setClaudePath} onCodexPathChange={setCodexPath} onFileSelection={fileSelectionHandler(setSelectedFiles)} onSubmit={handleImport} onGitSubmit={handleImportGit} onClaudeSubmit={handleImportClaude} onCodexSubmit={handleImportCodex} />
           )}
           {view === "discover" && (
             <DiscoverView
@@ -819,18 +789,13 @@ export default function MuseumMvpWorkspace() {
               experienceCount={visibleEvents.length}
               onOpenExhibition={() => setView("exhibition")}
               onBackToDiscover={() => setView("discover")}
-              onOpenExhibitionHall={openExhibitionWithCurtain}
             />
           )}
           {view === "exhibition" && (
-            <ExhibitionView stage={stage} events={visibleEvents} confirmedCount={confirmedEvents.length} pendingCount={candidateEvents.length} onOpenExperience={openExperience} onReview={() => startReview()} onImport={() => setView("import")} onOpenExhibitionHall={openExhibitionWithCurtain} />
+            <ExhibitionView stage={stage} events={visibleEvents} confirmedCount={confirmedEvents.length} pendingCount={candidateEvents.length} onOpenExperience={openExperience} onReview={() => startReview()} onImport={() => setView("import")} />
           )}
         </>
       )}
-
-      <div className={`mvp-curtain${curtainActive ? " active" : ""}`} aria-hidden="true">
-        <span>DIGITAL MUSEUM · 开馆</span>
-      </div>
 
       <footer className="mvp-footer">
         <span>当前体验：本地 Markdown/TXT → 经历草稿 → 关键核对 → 私人回顾</span>
@@ -1035,11 +1000,10 @@ function StageSummary({ stage, experienceCount, pendingCount, onSwitch }: {
   );
 }
 
-function ImportView({ busy, coverage, files, photoFiles, results, gitPath, recentGitPaths, claudePath, codexPath, onGitPathChange, onPickRecentGitPath, onClaudePathChange, onCodexPathChange, onFileSelection, onPhotoSelection, onSubmit, onPhotoSubmit, onGitSubmit, onClaudeSubmit, onCodexSubmit }: {
+function ImportView({ busy, coverage, files, results, gitPath, recentGitPaths, claudePath, codexPath, onGitPathChange, onPickRecentGitPath, onClaudePathChange, onCodexPathChange, onFileSelection, onSubmit, onGitSubmit, onClaudeSubmit, onCodexSubmit }: {
   busy: boolean;
   coverage: CoverageItem[];
   files: File[];
-  photoFiles: File[];
   results: ImportResult[];
   gitPath: string;
   recentGitPaths: string[];
@@ -1050,9 +1014,7 @@ function ImportView({ busy, coverage, files, photoFiles, results, gitPath, recen
   onClaudePathChange: (value: string) => void;
   onCodexPathChange: (value: string) => void;
   onFileSelection: (files: FileList | null) => void;
-  onPhotoSelection: (files: FileList | null) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  onPhotoSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onGitSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onClaudeSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onCodexSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -1060,7 +1022,7 @@ function ImportView({ busy, coverage, files, photoFiles, results, gitPath, recen
   return (
     <section className="mvp-view mvp-import-view">
       <article className="mvp-panel mvp-import-panel">
-        <header className="mvp-section-heading"><span>01 · 导入</span><div><h2>一次导入这段时间的记录</h2><p>现在支持整理过的 Markdown/TXT、JPEG/PNG 照片、本地 Git 仓库、Claude Code 与 Codex 会话。ChatGPT、WorkBuddy 原生导出文件将在后续适配。</p></div></header>
+        <header className="mvp-section-heading"><span>01 · 导入</span><div><h2>一次导入这段时间的记录</h2><p>现在支持整理过的 Markdown/TXT、本地 Git 仓库、Claude Code 与 Codex 会话。ChatGPT、WorkBuddy 原生导出文件将在后续适配。</p></div></header>
         <form onSubmit={onSubmit}>
           <label className="mvp-dropzone">
             <input name="notes" type="file" multiple onChange={(event) => onFileSelection(event.target.files)} />
@@ -1069,16 +1031,6 @@ function ImportView({ busy, coverage, files, photoFiles, results, gitPath, recen
           </label>
           {files.length > 0 && <FileSelectionList files={files} unit="份" moreNoun="份文件" />}
           <button className="mvp-primary" disabled={busy || files.length === 0} type="submit">{busy ? "正在逐份保存和整理…" : "开始整理这些记录"}</button>
-        </form>
-        <form className="mvp-photo-import" onSubmit={onPhotoSubmit}>
-          <span className="mvp-git-divider">或</span>
-          <label className="mvp-dropzone">
-            <input name="photos" type="file" multiple accept=".jpg,.jpeg,.png" onChange={(event) => onPhotoSelection(event.target.files)} />
-            <span>选择 JPEG / PNG 照片</span>
-            <small>单次最多 {MAX_BATCH_FILES} 张、每张不超过 {MAX_PHOTO_BYTES_LABEL}；按照片自带的拍摄时间（EXIF）归入时间线</small>
-          </label>
-          {photoFiles.length > 0 && <FileSelectionList files={photoFiles} unit="张" moreNoun="张照片" />}
-          <button className="mvp-secondary" disabled={busy || photoFiles.length === 0} type="submit">{busy ? "正在逐张保存和整理…" : "开始整理这些照片"}</button>
         </form>
         <form className="mvp-git-import" onSubmit={onGitSubmit}>
           <span className="mvp-git-divider">或</span>
@@ -1126,7 +1078,7 @@ function ImportView({ busy, coverage, files, photoFiles, results, gitPath, recen
   );
 }
 
-// 已选文件清单（#9）：笔记/照片共用，只差量词与“剩余文件”的措辞。
+// 已选文件清单（#9）：笔记导入前的选择概览。
 function FileSelectionList({ files, unit, moreNoun }: { files: File[]; unit: string; moreNoun: string }) {
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   return (
@@ -1355,7 +1307,7 @@ function ReviewView({ event, remaining, note, busy, leaving, noteRef, evidenceRe
   );
 }
 
-function ReviewSummaryView({ stage, confirmedCount, disputedCount, unknownCount, excludedCount, experienceCount, onOpenExhibition, onBackToDiscover, onOpenExhibitionHall }: {
+function ReviewSummaryView({ stage, confirmedCount, disputedCount, unknownCount, excludedCount, experienceCount, onOpenExhibition, onBackToDiscover }: {
   stage: Stage;
   confirmedCount: number;
   disputedCount: number;
@@ -1364,7 +1316,6 @@ function ReviewSummaryView({ stage, confirmedCount, disputedCount, unknownCount,
   experienceCount: number;
   onOpenExhibition: () => void;
   onBackToDiscover: () => void;
-  onOpenExhibitionHall: (clickEvent: MouseEvent<HTMLAnchorElement>) => void;
 }) {
   return (
     <section className="mvp-view mvp-review-summary">
@@ -1383,7 +1334,7 @@ function ReviewSummaryView({ stage, confirmedCount, disputedCount, unknownCount,
       </dl>
       <p className="mvp-summary-note">不确定的内容不会被补写；它们会带着草稿标识进入展览，等你以后再核对。</p>
       <div className="mvp-next-actions centered">
-        <Link className="mvp-primary" href="/exhibition" onClick={onOpenExhibitionHall}>进入展览馆，选一种风格开馆 →</Link>
+        <Link className="mvp-primary" href="/exhibition">进入展览馆开馆 →</Link>
         <button className="mvp-secondary" type="button" onClick={onBackToDiscover}>回到发现经历</button>
       </div>
       <button className="mvp-text-button" type="button" onClick={onOpenExhibition}>先看首页里的展览草稿</button>
@@ -1391,7 +1342,7 @@ function ReviewSummaryView({ stage, confirmedCount, disputedCount, unknownCount,
   );
 }
 
-function ExhibitionView({ stage, events, confirmedCount, pendingCount, onOpenExperience, onReview, onImport, onOpenExhibitionHall }: {
+function ExhibitionView({ stage, events, confirmedCount, pendingCount, onOpenExperience, onReview, onImport }: {
   stage: Stage;
   events: CandidateEvent[];
   confirmedCount: number;
@@ -1399,7 +1350,6 @@ function ExhibitionView({ stage, events, confirmedCount, pendingCount, onOpenExp
   onOpenExperience: (eventId: string) => void;
   onReview: () => void;
   onImport: () => void;
-  onOpenExhibitionHall: (clickEvent: MouseEvent<HTMLAnchorElement>) => void;
 }) {
   return (
     <section className="mvp-view mvp-exhibition-view">
@@ -1425,7 +1375,7 @@ function ExhibitionView({ stage, events, confirmedCount, pendingCount, onOpenExp
         <div><span>保存之前</span><h3>档案和公开展示是两件事</h3><p>当前结果只保存在本地。以后开放分享时，系统仍需单独检查人名、邮箱、路径、密钥和原始对话。</p></div>
         <ul><li><i>✓</i> 当前没有公开或分享功能</li><li><i>✓</i> 暂时不确定的内容不会被自动补写</li><li><i>✓</i> 候选内容保持草稿标识</li></ul>
       </section>
-      <div className="mvp-next-actions centered"><Link className="mvp-primary" href="/exhibition" onClick={onOpenExhibitionHall}>进入展览馆 · 选一种风格开馆 →</Link>{pendingCount > 0 && <button className="mvp-secondary" type="button" onClick={onReview}>继续核对 {pendingCount} 段经历</button>}<button className="mvp-secondary" type="button" onClick={onImport}>继续导入记录</button></div>
+      <div className="mvp-next-actions centered"><Link className="mvp-primary" href="/exhibition">进入展览馆开馆 →</Link>{pendingCount > 0 && <button className="mvp-secondary" type="button" onClick={onReview}>继续核对 {pendingCount} 段经历</button>}<button className="mvp-secondary" type="button" onClick={onImport}>继续导入记录</button></div>
     </section>
   );
 }
@@ -1442,28 +1392,6 @@ function EvidenceDetails({ event, activeAnchor, onAnchorActivate }: {
         return (
           <details key={claim.id} open={index === 0}>
             <summary><span>原文摘录 {event.claims.length > 1 ? index + 1 : ""}</span><small>{claim.anchors.length} 个来源位置</small></summary>
-            {claim.source_media && (
-              <a
-                className="mvp-source-media"
-                href={blobUrl(claim.source_media.sha256)}
-                target="_blank"
-                rel="noreferrer"
-                title="在新窗口打开原始照片"
-              >
-                {/* 内容寻址的本地 blob 无法走 next/image 加载器，直接用 img 缩略 */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={blobUrl(claim.source_media.sha256)}
-                  alt="这份经历对应的原始照片"
-                  loading="lazy"
-                  onError={(error) => {
-                    // 文件缺失时静默隐藏缩略图，不阻断核对流。
-                    error.currentTarget.closest("a.mvp-source-media")?.setAttribute("hidden", "");
-                  }}
-                />
-                <span>原始照片 · 点击查看原图</span>
-              </a>
-            )}
             <blockquote>{highlightQuote ? <HighlightedExcerpt text={claim.text} quote={highlightQuote} pulseKey={activeAnchor?.key} /> : claim.text}</blockquote>
             {claim.anchors.map((anchor) => {
               const anchorKey = `${anchor.blob_sha256}-${anchor.char_start}`;
@@ -1535,21 +1463,12 @@ function StatusPendingGlyph() {
   );
 }
 
-// 笔记批量校验（#7）：按总字节数限重（MAX_BATCH_BYTES），与照片的单张限重不同。
+// 笔记批量校验（#7）：按总字节数限重（MAX_BATCH_BYTES）。
 function noteValidationError(files: File[]): string | null {
   if (!files.length) return "请先选择 Markdown 或 TXT 文件。";
   if (files.length > MAX_BATCH_FILES) return `一次最多选择 ${MAX_BATCH_FILES} 份记录。`;
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   if (totalBytes > MAX_BATCH_BYTES) return `本次文件总大小不能超过 ${MAX_BATCH_BYTES_LABEL}。`;
-  return null;
-}
-
-// 照片批量校验（#7）：按单张限重（MAX_PHOTO_BYTES），超限时点名具体文件。
-function photoValidationError(files: File[]): string | null {
-  if (!files.length) return "请先选择 JPEG 或 PNG 照片。";
-  if (files.length > MAX_BATCH_FILES) return `一次最多选择 ${MAX_BATCH_FILES} 张照片。`;
-  const oversized = files.find((file) => file.size > MAX_PHOTO_BYTES);
-  if (oversized) return `单张照片不能超过 ${MAX_PHOTO_BYTES_LABEL}（${oversized.name} 超限）。`;
   return null;
 }
 

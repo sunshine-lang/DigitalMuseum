@@ -1,5 +1,7 @@
 # 第四阶段技术开发文档｜Photo 照片导入
 
+> **状态更新（2026-08-25）**：照片适配器 `photo-evidence-v1` 已按第一性原理精简整体删除——后端服务/路由/测试/评测数据集、前端导入与上墙展示、Pillow 依赖一并移除；真实数据检验证实照片是最小的一类素材（PRD v0.2 §2.1）。本文档保留为将来恢复该链路时的需求 spec，历史数据中的旧照片事件仍按既有 schema 与状态机展示。
+>
 > 配套文档：`docs/prd/digital-museum-prd-v0.1.md`、`docs/technical-adaptation.md`、`docs/phase-0-stage-1-note-event-review.md`、`docs/phase-0-stage-2-aggregation-merge-split.md`、`docs/phase-0-stage-3-git-evidence-adapter.md`。
 > 本文档只覆盖 Phase 0 的第四条纵向切片。开发时不得提前实现 OCR、场景/人脸识别、HEIC、模型调用、Story/Share。
 

@@ -13,13 +13,6 @@ const noteFiles = [
 ];
 const unsupportedPdf = join(fixtureDir, "09-intentionally-unsupported.pdf");
 
-const photoDir = fileURLToPath(
-  new URL("../../test-data/phase0-stage4-photos", import.meta.url),
-);
-// JPEG 自带 EXIF 拍摄时间（2026-06-15，在阶段范围内）；PNG 没有拍摄时间，应被单独拒绝。
-const photoWithExif = join(photoDir, "IMG_20260615_103000.jpg");
-const photoWithoutExif = join(photoDir, "screenshot-no-exif.png");
-
 async function createStage(page: Page, name: string): Promise<void> {
   await page.getByRole("textbox", { name: "给这段时间取个名字" }).fill(name);
   await page.getByRole("textbox", { name: "从哪一天开始" }).fill("2026-05-22");
@@ -77,67 +70,6 @@ test("完整链路：导入 → 自动聚合 → 合并 → 拆分 → 确认 �
   await page.reload();
   await expect(page.getByText("正在回顾")).toBeVisible();
   await expect(page.getByText("你已确认")).toBeVisible();
-});
-
-test("照片导入：EXIF 时间归入时间线，无拍摄时间的照片单独失败", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await createStage(page, "E2E 自动验收·照片");
-
-  await page
-    .locator('input[name="photos"]')
-    .setInputFiles([photoWithExif, photoWithoutExif]);
-  await page.getByRole("button", { name: "开始整理这些照片" }).click();
-  await expect(page.getByRole("status")).toContainText("已导入 1 张，1 张需要处理");
-
-  await expect(page.getByText("来自照片")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "系统整理出 1 段可能的经历" }),
-  ).toBeVisible();
-
-  // 确定性证据获得“系统核实”身份：卡片带状态徽标，且不进入人工核对队列。
-  await expect(page.locator(".mvp-experience-card.st-verified")).toHaveCount(1);
-  await expect(
-    page.locator(".mvp-experience-card.st-verified .mvp-status.verified"),
-  ).toHaveText("系统核实");
-  await expect(
-    page.getByRole("button", { name: /用几分钟核对/ }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "查看整理后的回顾" }),
-  ).toBeVisible();
-
-  // 回到导入页核对逐份结果：成功的 JPEG 与被拒绝的 PNG 分别提示。
-  await page.getByRole("button", { name: /导入记录/ }).click();
-  const reportRows = page.locator(".mvp-import-rows > div");
-  await expect(reportRows).toHaveCount(2);
-  await expect(
-    reportRows.filter({ hasText: "IMG_20260615_103000.jpg" }),
-  ).toContainText("已导入并形成经历草稿");
-  await expect(
-    reportRows.filter({ hasText: "screenshot-no-exif.png" }),
-  ).toContainText("照片缺少可读的 EXIF 拍摄时间");
-
-  // 照片上墙：展览馆直接渲染原图（本地 blob 端点），而不是抽象版画。
-  await page.goto("/exhibition");
-  await expect(
-    page.getByRole("heading", { name: "第一步 · 选择要展出的经历" }),
-  ).toBeVisible();
-  await page
-    .getByRole("button", { name: /下一步 · 选择展览风格/ })
-    .click();
-  await page.getByRole("button", { name: /暖纸档案馆/ }).click();
-  const exhibitPhoto = page.locator(".expo-art img").first();
-  await expect(exhibitPhoto).toBeVisible();
-  await expect(exhibitPhoto).toHaveAttribute("src", /\/api\/v1\/blobs\//);
-  // 图片真实加载成功：blob 端点返回了字节（lazy 图需滚入视口触发加载）。
-  await exhibitPhoto.scrollIntoViewIfNeeded();
-  await expect
-    .poll(async () =>
-      exhibitPhoto.evaluate((element) => (element as HTMLImageElement).naturalWidth),
-    )
-    .toBeGreaterThan(0);
 });
 
 test("坏文件单独失败：PDF 不影响其他记录导入", async ({ page }) => {

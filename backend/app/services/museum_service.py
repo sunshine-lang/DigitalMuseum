@@ -26,36 +26,28 @@ from app.domain.schemas import MergeCreate, ReviewCreate, StageCreate, StageUpda
 from app.services import claude_session_evidence_service as claude_evidence
 from app.services import codex_session_evidence_service as codex_evidence
 from app.services import git_evidence_service as git_evidence
-from app.services import photo_evidence_service as photo_evidence
 from app.services.agent_session_evidence import AgentActivityItem
 from app.services.git_evidence_service import GitActivityItem
 from app.services.note_parser import PROCESSOR_VERSION, ParsedNote
-from app.services.photo_evidence_service import PhotoEvidence
 
 AGGREGATION_RULE_VERSION = "note-aggregation-v1"
 STRUCTURAL_STATUSES = {"merged", "split"}
 # 聚合可并入的状态：candidate 是待核对草稿；verified 是确定性证据的系统核实态
-# （Git 提交 / 照片元数据）。被用户审阅过的事件 revision > 0，天然不会匹配。
+# （Git 提交）。被用户审阅过的事件 revision > 0，天然不会匹配。
 AGGREGATABLE_STATUSES = ("candidate", "verified")
 
 # 机器证据同题同日聚合时的候选 origin 白名单。各家族只并入自身与笔记；
-# photo 额外包含 git：照片 EXIF 日期与 Git 提交日同为确定性机器读数，
-# 同题同日允许并入既有事件，而 Claude/Codex 会话事件不与 Git 聚合。
+# Claude/Codex 会话事件不与 Git 聚合。
 NOTE_AGGREGATION_ORIGINS = ("note", "aggregated")
 GIT_AGGREGATION_ORIGINS = ("note", "aggregated", "git")
 CLAUDE_AGGREGATION_ORIGINS = ("note", "aggregated", "claude")
 CODEX_AGGREGATION_ORIGINS = ("note", "aggregated", "codex")
-PHOTO_AGGREGATION_ORIGINS = ("note", "aggregated", "git", "photo")
 
 COVERAGE_ORDER = {
     "stored_locally": 0,
     "parsed_locally": 1,
     "candidate_generated": 2,
 }
-
-# claim.source_media 只暴露可直接展示的图片类型；照片事件的 occurrence.blob
-# 是原图，笔记 / Git / 照片元数据文档 blob 均不作为 source_media 返回。
-SOURCE_MEDIA_IMAGE_TYPES = ("image/jpeg", "image/png")
 
 
 def create_stage(session: Session, payload: StageCreate) -> dict:
@@ -584,127 +576,6 @@ def _persist_machine_candidates(
     return all_events
 
 
-def import_photo_evidence(
-    session: Session,
-    *,
-    stage_id: str,
-    filename: str,
-    media_type: str,
-    content: bytes,
-    upload_dir: Path,
-) -> dict:
-    stage = require_stage(session, stage_id)
-    occurrence = start_note_import(
-        session,
-        stage_id=stage.id,
-        original_filename=filename,
-        media_type=media_type,
-        content=content,
-        upload_dir=upload_dir,
-    )
-    occurrence_id = occurrence.id
-    try:
-        evidence = photo_evidence.analyze_photo(
-            content,
-            filename=filename,
-            starts_on=stage.starts_on,
-            ends_on=stage.ends_on,
-        )
-        descriptor_blob = _store_evidence_blob(
-            session,
-            original_filename=f"{Path(filename).stem}-photo-evidence.txt",
-            media_type="text/plain",
-            content=evidence.descriptor.encode("utf-8"),
-            upload_dir=upload_dir,
-        )
-        result = _persist_photo_candidate(
-            session,
-            occurrence_id=occurrence_id,
-            evidence=evidence,
-            descriptor_blob=descriptor_blob,
-        )
-    except ApiError as exc:
-        mark_import_failed(
-            session,
-            occurrence_id=occurrence_id,
-            step="parsed_locally",
-            error_code=exc.code,
-            processor_version=photo_evidence.PHOTO_PROCESSOR_VERSION,
-        )
-        raise
-    return result
-
-
-def _persist_photo_candidate(
-    session: Session,
-    *,
-    occurrence_id: str,
-    evidence: PhotoEvidence,
-    descriptor_blob: EvidenceBlob,
-) -> dict:
-    occurrence = session.get(EvidenceOccurrence, occurrence_id)
-    if occurrence is None:
-        raise ApiError(404, "occurrence_not_found", "没有找到这次照片导入")
-    stage = require_stage(session, occurrence.stage_id)
-
-    event, _created = _resolve_machine_event(
-        session,
-        stage,
-        occurrence,
-        title=evidence.event_title,
-        occurred_on=evidence.occurred_on,
-        initial_status="verified",
-        origin="photo",
-        origins=PHOTO_AGGREGATION_ORIGINS,
-    )
-    claim = Claim(
-        event=event,
-        occurrence_id=occurrence.id,
-        text=evidence.claim_text,
-        epistemic_status="unknown",
-        evidence_role="artifact",
-        processor_version=photo_evidence.PHOTO_PROCESSOR_VERSION,
-        source_title=f"照片 {evidence.filename}"[:200],
-        source_occurred_on=evidence.occurred_on,
-    )
-    claim.anchors.extend(
-        EvidenceAnchor(
-            blob=descriptor_blob,
-            quote=anchor.quote,
-            line_start=anchor.line_start,
-            line_end=anchor.line_end,
-            char_start=anchor.char_start,
-            char_end=anchor.char_end,
-        )
-        for anchor in evidence.anchors
-    )
-    session.add(claim)
-
-    occurrence.status = "completed"
-    occurrence.coverage_items.extend(
-        [
-            CoverageItem(
-                step="parsed_locally",
-                status="completed",
-                processor_version=photo_evidence.PHOTO_PROCESSOR_VERSION,
-            ),
-            CoverageItem(
-                step="candidate_generated",
-                status="completed",
-                processor_version=photo_evidence.PHOTO_PROCESSOR_VERSION,
-            ),
-        ]
-    )
-    session.add(event)
-    session.commit()
-    reloaded_event = _load_event(session, event.id)
-    return {
-        "occurrence": serialize_occurrence(occurrence),
-        "event": serialize_event(reloaded_event, session),
-        "coverage": _occurrence_coverage(session, stage.id, occurrence.id),
-    }
-
-
 def set_exhibit_caption(session: Session, event_id: str, caption: str | None) -> dict:
     """展签是展览态的人工策展文案：只改 display 层，不触碰状态机、
     审计与聚合语义（结构性事件也可改——拆分产物同样要展出）。"""
@@ -862,7 +733,7 @@ def _resolve_machine_event(
     origin: str,
     origins: tuple[str, ...],
 ) -> tuple[CandidateEvent, bool]:
-    """确定性证据（Git/照片）的事件落位规则。
+    """确定性证据（Git/Agent 会话）的事件落位规则。
 
     1. 同题同日的未审阅事件（candidate/verified，revision=0）→ 并入聚合；
     2. 同题同日、用户已审阅且仍可见（confirmed/disputed/unknown，revision>0）
@@ -870,7 +741,7 @@ def _resolve_machine_event(
        刚刚否认过的事实；
     3. 同题同日但被用户 rejected（已从可见列表排除）→ 新建事件降级为
        candidate（人工意见与机器读数冲突时，交还人工）；
-    4. 都没有 → 按 initial_status 新建（提交日/EXIF = verified，推断性
+    4. 都没有 → 按 initial_status 新建（提交日/会话日 = verified，推断性
        标题 = candidate）。
     """
     target = _find_aggregation_target(
@@ -1092,7 +963,6 @@ def serialize_occurrence(occurrence: EvidenceOccurrence) -> dict:
 
 def serialize_event(event: CandidateEvent, session: Session) -> dict:
     latest_review = event.reviews[-1] if event.reviews else None
-    source_media = _claim_source_media(event, session)
     return {
         "id": event.id,
         "stage_id": event.stage_id,
@@ -1123,7 +993,6 @@ def serialize_event(event: CandidateEvent, session: Session) -> dict:
                     }
                     for anchor in claim.anchors
                 ],
-                "source_media": source_media.get(claim.occurrence_id),
             }
             for claim in event.claims
         ],
@@ -1139,27 +1008,6 @@ def serialize_event(event: CandidateEvent, session: Session) -> dict:
             if latest_review
             else None
         ),
-    }
-
-
-def _claim_source_media(event: CandidateEvent, session: Session) -> dict[str, dict]:
-    """按事件内 claims 的 occurrence 批量解析一次可展示原图，避免逐 claim 查询。"""
-    occurrence_ids = {claim.occurrence_id for claim in event.claims}
-    if not occurrence_ids:
-        return {}
-    rows = session.execute(
-        select(
-            EvidenceOccurrence.id,
-            EvidenceOccurrence.blob_sha256,
-            EvidenceBlob.media_type,
-        )
-        .join(EvidenceBlob, EvidenceOccurrence.blob_sha256 == EvidenceBlob.sha256)
-        .where(EvidenceOccurrence.id.in_(occurrence_ids))
-    ).all()
-    return {
-        occurrence_id: {"sha256": sha256, "media_type": media_type}
-        for occurrence_id, sha256, media_type in rows
-        if sha256 is not None and media_type in SOURCE_MEDIA_IMAGE_TYPES
     }
 
 
@@ -1204,31 +1052,6 @@ def _get_or_create_blob(
     else:
         _write_content_once(upload_dir / blob.relative_path, content)
     return blob, created_path
-
-
-def _store_evidence_blob(
-    session: Session,
-    *,
-    original_filename: str,
-    media_type: str,
-    content: bytes,
-    upload_dir: Path,
-) -> EvidenceBlob:
-    blob, created_path = _get_or_create_blob(
-        session,
-        original_filename=original_filename,
-        media_type=media_type,
-        content=content,
-        upload_dir=upload_dir,
-    )
-    try:
-        session.commit()
-    except Exception:
-        session.rollback()
-        if created_path is not None:
-            created_path.unlink(missing_ok=True)
-        raise
-    return blob
 
 
 def _write_content_once(destination: Path, content: bytes) -> bool:

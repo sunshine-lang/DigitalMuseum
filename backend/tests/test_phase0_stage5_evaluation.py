@@ -11,9 +11,8 @@ def test_phase0_baseline_meets_all_thresholds(tmp_path: Path) -> None:
     assert report["passed"], report["failures"]
     for name, expected in THRESHOLDS.items():
         assert report["metrics"][name] == expected, f"{name} 未达基线"
-    assert report["dataset"]["expected_events"] == 10
+    assert report["dataset"]["expected_events"] == 8
     assert report["dataset"]["notes"] == 6
-    assert report["dataset"]["photos"] == 3
 
 
 def test_phase0_baseline_is_deterministic_across_runs(tmp_path: Path) -> None:

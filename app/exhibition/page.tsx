@@ -7,7 +7,6 @@ import {
   CandidateEvent,
   Phase0ApiError,
   Stage,
-  blobUrl,
   getEvents,
   getStage,
   updateExhibitCaption,
@@ -17,61 +16,12 @@ import { buildExhibitionHtml } from "./export-html";
 import { exhibitNarrative } from "./narrative";
 
 const STAGE_STORAGE_KEY = "digital-museum-phase0-stage-id";
-const THEME_STORAGE_KEY = "digital-museum-expo-theme";
 
-type ThemeId = "renaissance" | "fieldnotes" | "archive" | "midnight" | "glass" | "brutal" | "museum-night";
-type ExpoPhase = "select" | "style" | "show";
+type ExpoPhase = "select" | "show";
 type LoadStatus = "loading" | "ready" | "empty" | "error";
 
-const themes: Array<{
-  id: ThemeId;
-  name: string;
-  tagline: string;
-  description: string;
-}> = [
-  {
-    id: "museum-night",
-    name: "午夜档案馆",
-    tagline: "MIDNIGHT ARCHIVE",
-    description: "暗色画布上，轻衬线大字讲你的故事；证据压成档案编号般的等宽小签，色彩只从你的照片与版画里来。",
-  },
-  {
-    id: "renaissance",
-    name: "文艺复兴画廊",
-    tagline: "RENAISSANCE GALLERY",
-    description: "暖灰纸面、墨线与纪念碑式衬线标题，一座黑与米色交替的古典美术馆。",
-  },
-  {
-    id: "fieldnotes",
-    name: "研究手记",
-    tagline: "RESEARCH FIELD NOTES",
-    description: "暖白纸面上的薄荷与腮红色块，深青主色与手绘笔记的人情味。",
-  },
-  {
-    id: "archive",
-    name: "暖纸档案馆",
-    tagline: "WARM PAPER ARCHIVE",
-    description: "米色纸面与衬线标题，像翻开一本只属于你的档案。",
-  },
-  {
-    id: "midnight",
-    name: "午夜画廊",
-    tagline: "MIDNIGHT GALLERY",
-    description: "深色展厅与一束射灯，安静地照亮每一段经历。",
-  },
-  {
-    id: "glass",
-    name: "玻璃晨雾",
-    tagline: "FROSTED MORNING",
-    description: "半透明玻璃卡片与冷色晨光，轻盈而现代。",
-  },
-  {
-    id: "brutal",
-    name: "粗野宣言",
-    tagline: "BOLD STATEMENT",
-    description: "粗边框与高对比色块，把成就大声地贴在墙上。",
-  },
-];
+// 展览只有一种随静态导出携带的视觉：午夜档案馆（与 export-html 的内联样式同源）。
+const EXPO_THEME = "museum-night";
 
 const HALL_ACCENTS = ["#847dff", "#dd90d8", "#90b8f0", "#d1c9ff"];
 
@@ -98,8 +48,6 @@ export default function ExhibitionWorkspace() {
   const [events, setEvents] = useState<CandidateEvent[]>([]);
   const [phase, setPhase] = useState<ExpoPhase>("select");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [themeId, setThemeId] = useState<ThemeId>("archive");
-  const [themeIsRandom, setThemeIsRandom] = useState(false);
   const progressRef = useRef<HTMLDivElement | null>(null);
 
   const visibleEvents = useMemo(() => sortEvents(events.filter(isVisibleExperience)), [events]);
@@ -186,7 +134,7 @@ export default function ExhibitionWorkspace() {
     );
     elements.forEach((element) => observer.observe(element));
     return () => observer.disconnect();
-  }, [phase, themeId, selectedIds]);
+  }, [phase, selectedIds]);
 
   useEffect(() => {
     if (phase !== "show") return;
@@ -205,7 +153,7 @@ export default function ExhibitionWorkspace() {
       window.removeEventListener("scroll", updateProgress);
       window.removeEventListener("resize", updateProgress);
     };
-  }, [phase, themeId, selectedIds]);
+  }, [phase, selectedIds]);
 
   function toggleEvent(eventId: string) {
     setSelectedIds((current) => {
@@ -229,109 +177,15 @@ export default function ExhibitionWorkspace() {
     });
   }
 
-  function beginExhibition(nextTheme: ThemeId, isRandom: boolean) {
-    setThemeId(nextTheme);
-    setThemeIsRandom(isRandom);
-    window.localStorage.setItem(THEME_STORAGE_KEY, isRandom ? "" : nextTheme);
+  function openExhibition() {
     setPhase("show");
     window.scrollTo({ top: 0 });
-  }
-
-  function pickRandomTheme() {
-    const pool = themes.filter((theme) => theme.id !== themeId);
-    const picked = pool[Math.floor(Math.random() * pool.length)];
-    beginExhibition(picked.id, true);
   }
 
   // 展签改写：机器给底稿，人是策展人。只改展示层，不触碰证据与状态机。
   const [captionEdit, setCaptionEdit] = useState<{ id: string; value: string } | null>(null);
   const [captionBusy, setCaptionBusy] = useState(false);
   const [captionError, setCaptionError] = useState<string | null>(null);
-
-  const [posterUrl, setPosterUrl] = useState<string | null>(null);
-  const [posterBusy, setPosterBusy] = useState(false);
-
-  /**
-   * 分享海报：Canvas 本地绘制（1080×1350），不联网不上传。
-   * 全部元素确定性生成：阶段名、日期、四项统计、档案编号。
-   */
-  async function generatePoster() {
-    if (!stage || posterBusy) return;
-    setPosterBusy(true);
-    setCaptionError(null);
-    try {
-      await document.fonts.ready;
-      const canvas = document.createElement("canvas");
-      canvas.width = 1080;
-      canvas.height = 1350;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      ctx.fillStyle = "#0b0b0d";
-      ctx.fillRect(0, 0, 1080, 1350);
-      const glow = ctx.createRadialGradient(540, 180, 60, 540, 260, 900);
-      glow.addColorStop(0, "rgba(132, 125, 255, 0.22)");
-      glow.addColorStop(1, "rgba(132, 125, 255, 0)");
-      ctx.fillStyle = glow;
-      ctx.fillRect(0, 0, 1080, 1350);
-
-      const mono = '"JetBrains Mono", ui-monospace, Menlo, monospace';
-      const serif = '"Playfair Display", "Noto Serif SC", Georgia, serif';
-
-      ctx.fillStyle = "#9f9fa0";
-      ctx.font = `400 22px ${mono}`;
-      ctx.textAlign = "center";
-      ctx.fillText("D I G I T A L   M U S E U M · 人 生 档 案 馆", 540, 120);
-
-      ctx.fillStyle = "#f5f5f7";
-      ctx.font = `400 88px ${serif}`;
-      const name = stage.name.length > 12 ? `${stage.name.slice(0, 12)}…` : stage.name;
-      ctx.fillText(name, 540, 300);
-      ctx.font = `400 28px ${mono}`;
-      ctx.fillStyle = "#9f9fa0";
-      ctx.fillText(`${stage.starts_on}  —  ${stage.ends_on}`, 540, 370);
-
-      ctx.strokeStyle = "rgba(245, 245, 247, 0.16)";
-      ctx.beginPath();
-      ctx.moveTo(180, 460);
-      ctx.lineTo(900, 460);
-      ctx.stroke();
-
-      const stats: Array<[number, string]> = [
-        [selectedEvents.length, "段经历"],
-        [confirmedCount, "你亲自确认"],
-        [verifiedCount, "系统核实"],
-        [stage.evidence_count, "份原始记录"],
-      ];
-      stats.forEach(([value, label], index) => {
-        const y = 620 + index * 150;
-        ctx.fillStyle = "#f5f5f7";
-        ctx.font = `400 96px ${serif}`;
-        ctx.fillText(String(value), 540, y);
-        ctx.fillStyle = "#9f9fa0";
-        ctx.font = `400 24px ${mono}`;
-        ctx.fillText(label, 540, y + 48);
-      });
-
-      ctx.fillStyle = "#847dff";
-      ctx.font = `400 26px ${mono}`;
-      ctx.fillText(
-        `ARCHIVE-${stage.id.slice(0, 8).toUpperCase()} · ${new Date().toISOString().slice(0, 10)}`,
-        540,
-        1268,
-      );
-      ctx.fillStyle = "#6a6b6b";
-      ctx.font = `400 20px ${mono}`;
-      ctx.fillText("由本地真实档案确定性生成 · 未经模型补写", 540, 1310);
-
-      setPosterUrl(canvas.toDataURL("image/png"));
-    } catch (error) {
-      setCaptionError(
-        error instanceof Error ? `海报生成失败：${error.message}` : "海报生成失败，请重试",
-      );
-    } finally {
-      setPosterBusy(false);
-    }
-  }
 
   async function saveCaption(eventId: string) {
     if (!captionEdit || captionBusy) return;
@@ -449,8 +303,8 @@ export default function ExhibitionWorkspace() {
             })}
           </div>
           <div className="expo-prep-actions">
-            <button className="expo-button" type="button" disabled={!selectedIds.size} onClick={() => setPhase("style")}>
-              下一步 · 选择展览风格（已选 {selectedIds.size} 段）
+            <button className="expo-button" type="button" disabled={!selectedIds.size} onClick={openExhibition}>
+              开馆 · 展出已选的 {selectedIds.size} 段经历
             </button>
             <button className="expo-text-button" type="button" onClick={() => setSelectedIds(new Set(visibleEvents.map((event) => event.id)))}>
               全部展出
@@ -461,46 +315,6 @@ export default function ExhibitionWorkspace() {
     );
   }
 
-  if (phase === "style") {
-    const lastTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
-    return (
-      <main className="expo-shell expo-neutral">
-        <ExpoTopbar stageName={stage?.name ?? ""} />
-        <section className="expo-prep">
-          <header className="expo-prep-head">
-            <span className="expo-kicker">EXHIBITION SETUP · 布展</span>
-            <h1>第二步 · 为这次开馆选一种风格</h1>
-            <p>同一批经历，不同的策展气质。也可以交给随机——每次开馆都换一个展厅。</p>
-          </header>
-          <div className="expo-themes">
-            {themes.map((theme) => (
-              <button type="button" className="expo-theme-card" data-expo-theme={theme.id} key={theme.id} onClick={() => beginExhibition(theme.id, false)}>
-                <span className="expo-mini-cover">
-                  <i />
-                  <b />
-                  <em /><em /><em />
-                </span>
-                <strong>{theme.name}</strong>
-                <small>{theme.tagline}</small>
-                <p>{theme.description}</p>
-                {lastTheme === theme.id && <span className="expo-last-badge">上次风格</span>}
-              </button>
-            ))}
-          </div>
-          <div className="expo-prep-actions">
-            <button className="expo-button ghost" type="button" onClick={pickRandomTheme}>
-              随机开馆 · 让展厅决定气质
-            </button>
-            <button className="expo-text-button" type="button" onClick={() => setPhase("select")}>
-              返回上一步
-            </button>
-          </div>
-        </section>
-      </main>
-    );
-  }
-
-  const theme = themes.find((item) => item.id === themeId) ?? themes[0];
   const spanMonths = stage ? monthsBetween(stage.starts_on, stage.ends_on) : groups.length;
   const draftCount = selectedEvents.length - confirmedCount - verifiedCount;
   let closingLine: string;
@@ -522,7 +336,7 @@ export default function ExhibitionWorkspace() {
   }
 
   return (
-    <main className="expo-show" data-expo-theme={themeId}>
+    <main className="expo-show" data-expo-theme={EXPO_THEME}>
       {captionError && (
         <div className="expo-caption-toast" role="alert">
           <span>{captionError}</span>
@@ -532,7 +346,7 @@ export default function ExhibitionWorkspace() {
       <div className="expo-progress" ref={progressRef} aria-hidden="true" />
       <header className="expo-show-topbar">
         <span className="expo-show-brand">DIGITAL MUSEUM</span>
-        <span className="expo-show-theme">{theme.name}{themeIsRandom ? " · 随机" : ""}</span>
+        <span className="expo-show-theme">午夜档案馆</span>
         <Link href="/">回到工作台</Link>
       </header>
 
@@ -545,10 +359,10 @@ export default function ExhibitionWorkspace() {
           <h1>{stage?.name ?? "我的回顾"}</h1>
           <p className="expo-cover-dates">{stage?.starts_on} — {stage?.ends_on}</p>
           <dl className="expo-cover-stats">
-            <div><dt>展出经历</dt><dd><CountUp value={selectedEvents.length} /></dd></div>
-            <div><dt>本人确认</dt><dd><CountUp value={confirmedCount} /></dd></div>
-            <div><dt>原始记录</dt><dd><CountUp value={stage?.evidence_count ?? 0} /></dd></div>
-            <div><dt>时间跨度</dt><dd><CountUp value={spanMonths} /><small> 个月</small></dd></div>
+            <div><dt>展出经历</dt><dd>{selectedEvents.length}</dd></div>
+            <div><dt>本人确认</dt><dd>{confirmedCount}</dd></div>
+            <div><dt>原始记录</dt><dd>{stage?.evidence_count ?? 0}</dd></div>
+            <div><dt>时间跨度</dt><dd>{spanMonths}<small> 个月</small></dd></div>
           </dl>
           <button className="expo-cover-cta" type="button" onClick={() => document.getElementById("expo-prologue")?.scrollIntoView({ behavior: "smooth" })}>
             开始观展 <span aria-hidden>↓</span>
@@ -595,7 +409,7 @@ export default function ExhibitionWorkspace() {
                     key={event.id}
                   >
                     <figure className="expo-art">
-                      <ExhibitArt event={event} />
+                      <SpecimenArt seed={event.claims[0]?.anchors[0]?.blob_sha256 ?? event.id} />
                       <span className="expo-card-no">No. {String(chapterIndex + 1).padStart(2, "0")}{String(exhibitIndex + 1).padStart(2, "0")}</span>
                       {event.status === "confirmed" ? (
                         <span className="expo-seal">已入馆</span>
@@ -673,24 +487,16 @@ export default function ExhibitionWorkspace() {
         <div className="expo-reveal">
           <span className="expo-kicker">EPILOGUE · 尾声</span>
           <div className="expo-epilogue-stats" aria-label="阶段统计">
-            <div><strong><CountUp value={selectedEvents.length} /></strong><span>段经历</span></div>
-            <div><strong><CountUp value={confirmedCount} /></strong><span>你亲自确认</span></div>
-            <div><strong><CountUp value={verifiedCount} /></strong><span>系统核实</span></div>
-            <div><strong><CountUp value={stage?.evidence_count ?? 0} /></strong><span>份原始记录</span></div>
+            <div><strong>{selectedEvents.length}</strong><span>段经历</span></div>
+            <div><strong>{confirmedCount}</strong><span>你亲自确认</span></div>
+            <div><strong>{verifiedCount}</strong><span>系统核实</span></div>
+            <div><strong>{stage?.evidence_count ?? 0}</strong><span>份原始记录</span></div>
           </div>
           <h2>{closingLine}</h2>
           <p>所有展品由本地真实档案确定性生成，未经模型补写。</p>
           <div className="expo-show-actions">
-            <button
-              className="expo-button"
-              type="button"
-              disabled={posterBusy}
-              onClick={() => void generatePoster()}
-            >
-              {posterBusy ? "正在绘制…" : "生成分享海报"}
-            </button>
-            <button className="expo-button ghost" type="button" onClick={() => setPhase("style")}>
-              换一种风格再看一次
+            <button className="expo-button ghost" type="button" onClick={() => setPhase("select")}>
+              回到选展 · 调整展出内容
             </button>
             <button
               className="expo-button ghost"
@@ -707,18 +513,6 @@ export default function ExhibitionWorkspace() {
           </p>
         </div>
       </section>
-
-      {posterUrl && (
-        <div className="expo-poster-modal" role="dialog" aria-label="分享海报预览">
-          <div>
-            <img src={posterUrl} alt="阶段分享海报预览" />
-            <div>
-              <a href={posterUrl} download="digital-museum-poster.png">下载 PNG</a>
-              <button type="button" onClick={() => setPosterUrl(null)}>关闭</button>
-            </div>
-          </div>
-        </div>
-      )}
     </main>
   );
 }
@@ -733,55 +527,6 @@ function ExpoTopbar({ stageName }: { stageName: string }) {
       <Link href="/">回到工作台</Link>
     </header>
   );
-}
-
-function CountUp({ value }: { value: number }) {
-  const [display, setDisplay] = useState(0);
-
-  useEffect(() => {
-    let frame = 0;
-    const start = performance.now();
-    const duration = 900;
-    const tick = (now: number) => {
-      const progress = Math.min(1, (now - start) / duration);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setDisplay(Math.round(eased * value));
-      if (progress < 1) frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [value]);
-
-  return <>{display}</>;
-}
-
-/**
- * 展品画面：事件首个 claim 带可展示原图（source_media）时直接上墙，照片满框
- * 并叠一层装裱内衬刻线（照片 + 版式刻线 = 装裱感）；图片加载失败（例如文件
- * 被手动删除）静默回落确定性 SpecimenArt，无媒体事件维持标本版画。
- * 编号 / 钢印 / 草稿标层在 figure 内保持不变。
- */
-function ExhibitArt({ event }: { event: CandidateEvent }) {
-  const sourceMedia = event.claims[0]?.source_media ?? null;
-  const [photoFailed, setPhotoFailed] = useState(false);
-
-  if (sourceMedia && !photoFailed) {
-    return (
-      <>
-        {/* 内容寻址的本地 blob 无法走 next/image 加载器，直接用 img 满框展示 */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          className="expo-art-photo"
-          src={blobUrl(sourceMedia.sha256)}
-          alt=""
-          loading="lazy"
-          onError={() => setPhotoFailed(true)}
-        />
-        <span className="expo-art-mat" aria-hidden="true" />
-      </>
-    );
-  }
-  return <SpecimenArt seed={event.claims[0]?.anchors[0]?.blob_sha256 ?? event.id} />;
 }
 
 /**

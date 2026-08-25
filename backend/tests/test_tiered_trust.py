@@ -1,8 +1,8 @@
 """分级信任（切片 F）：确定性证据获得“系统核实”身份，不进人工核对队列。
 
 覆盖契约：
-- Git / 照片导入产生 status="verified" 的事件，与 "candidate"（需要人工核对）区分；
-- 聚合目标放宽到 verified：重复导入 git 仓库 / 同日照片并入既有 verified 事件，
+- Git 导入产生 status="verified" 的事件，与 "candidate"（需要人工核对）区分；
+- 聚合目标放宽到 verified：重复导入 git 仓库并入既有 verified 事件，
   不复制新事件（防回归重点）；
 - verified 事件仍可被 review（异议通道）：覆盖状态、revision 与审计行；
 - 笔记事件不受影响，保持 candidate；
@@ -17,13 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from tests.helpers import (
-    create_stage,
-    git,
-    jpeg_bytes,
-    make_git_repo,
-    upload_photo,
-)
+from tests.helpers import create_stage, git, make_git_repo
 
 
 @pytest.fixture
@@ -49,7 +43,7 @@ def _list_events(client: TestClient, stage_id: str) -> list[dict]:
     return client.get(f"/api/v1/stages/{stage_id}/events").json()["data"]
 
 
-def test_git_and_photo_events_are_system_verified_not_candidates(
+def test_git_events_are_system_verified_not_candidates(
     git_client: TestClient, git_repo: Path
 ):
     stage_id = create_stage(git_client, "分级信任阶段")
@@ -59,17 +53,6 @@ def test_git_and_photo_events_are_system_verified_not_candidates(
     assert len(git_events) == 1
     assert git_events[0]["status"] == "verified"
     assert git_events[0]["is_formal"] is False
-
-    photo = upload_photo(
-        git_client,
-        stage_id,
-        content=jpeg_bytes(taken_at="2026:06:02 09:00:00"),
-        filename="IMG_20260602_090000.jpg",
-    )
-    assert photo.status_code == 201
-    photo_event = photo.json()["data"]["event"]
-    assert photo_event["status"] == "verified"
-    assert photo_event["is_formal"] is False
 
     listed = _list_events(git_client, stage_id)
     assert {event["status"] for event in listed} == {"verified"}
@@ -101,49 +84,22 @@ def test_git_reimport_aggregates_into_existing_verified_event(
     assert listed[0]["status"] == "verified"
 
 
-def test_same_day_photo_aggregates_into_verified_photo_event(
-    photo_client: TestClient,
-):
-    stage_id = create_stage(photo_client, "分级信任阶段")
-    first = upload_photo(
-        photo_client,
-        stage_id,
-        content=jpeg_bytes(taken_at="2026:05:10 14:30:22", color=(200, 30, 30)),
-    )
-    assert first.status_code == 201
-    assert first.json()["data"]["event"]["status"] == "verified"
-
-    second = upload_photo(
-        photo_client,
-        stage_id,
-        content=jpeg_bytes(taken_at="2026:05:10 09:15:00", color=(30, 200, 120)),
-        filename="IMG_20260510_091500.jpg",
-    )
-    assert second.status_code == 201
-    second_event = second.json()["data"]["event"]
-    assert second_event["id"] == first.json()["data"]["event"]["id"]
-    assert second_event["source_count"] == 2
-    assert second_event["origin"] == "aggregated"
-    assert second_event["status"] == "verified"
-
-    assert len(_list_events(photo_client, stage_id)) == 1
-
-
 def test_verified_event_can_be_disputed_then_confirmed_with_audit(
-    photo_client: TestClient,
+    git_client: TestClient, git_repo: Path
 ):
-    stage_id = create_stage(photo_client, "分级信任阶段")
-    imported = upload_photo(photo_client, stage_id, content=jpeg_bytes())
-    assert imported.status_code == 201
-    event = imported.json()["data"]["event"]
+    stage_id = create_stage(git_client, "分级信任阶段")
+    events = git_client.post(
+        f"/api/v1/stages/{stage_id}/git-repos", json={"path": str(git_repo)}
+    ).json()["data"]["events"]
+    event = events[0]
     assert event["status"] == "verified"
     assert event["revision"] == 0
 
-    disputed = photo_client.post(
+    disputed = git_client.post(
         f"/api/v1/events/{event['id']}/reviews",
         json={
             "decision": "disputed",
-            "note": "拍摄时间读错了，实际是下午晚些时候。",
+            "note": "这天其实没有提交，机器读错了仓库。",
             "expected_revision": 0,
         },
     )
@@ -151,12 +107,12 @@ def test_verified_event_can_be_disputed_then_confirmed_with_audit(
     disputed_event = disputed.json()["data"]
     assert disputed_event["status"] == "disputed"
     assert disputed_event["revision"] == 1
-    audited = photo_client.get(f"/api/v1/events/{event['id']}").json()["data"]
+    audited = git_client.get(f"/api/v1/events/{event['id']}").json()["data"]
     assert audited["latest_review"]["decision"] == "disputed"
     assert audited["latest_review"]["previous_status"] == "verified"
     assert audited["latest_review"]["revision"] == 1
 
-    confirmed = photo_client.post(
+    confirmed = git_client.post(
         f"/api/v1/events/{event['id']}/reviews",
         json={"decision": "confirmed", "note": None, "expected_revision": 1},
     )
@@ -167,17 +123,17 @@ def test_verified_event_can_be_disputed_then_confirmed_with_audit(
     assert confirmed_event["is_formal"] is True
 
 
-def test_note_events_remain_candidates(photo_client: TestClient):
-    stage_id = create_stage(photo_client, "分级信任阶段")
+def test_note_events_remain_candidates(client: TestClient):
+    stage_id = create_stage(client, "分级信任阶段")
     imported = _import_note(
-        photo_client, stage_id, title="亲笔记录的一件事", day="2026-04-11"
+        client, stage_id, title="亲笔记录的一件事", day="2026-04-11"
     )
     assert imported.status_code == 201
     event = imported.json()["data"]["event"]
     assert event["status"] == "candidate"
     assert event["origin"] == "note"
 
-    listed = _list_events(photo_client, stage_id)
+    listed = _list_events(client, stage_id)
     assert [event["status"] for event in listed] == ["candidate"]
 
 
@@ -243,25 +199,31 @@ def test_disputed_verified_event_absorbs_reimport_without_duplicate(
 
 
 def test_rejected_target_downgrades_reimport_to_candidate(
-    photo_client: TestClient,
+    git_client: TestClient, git_repo: Path
 ):
     """对抗性审查修复：被用户排除的事件，机器再断言同题同日时降级回人工核对。"""
-    stage_id = create_stage(photo_client, "分级信任阶段")
-    first = upload_photo(photo_client, stage_id, content=jpeg_bytes())
+    stage_id = create_stage(git_client, "分级信任阶段")
+    first = git_client.post(
+        f"/api/v1/stages/{stage_id}/git-repos", json={"path": str(git_repo)}
+    )
     assert first.status_code == 201
-    event = first.json()["data"]["event"]
+    target = _list_events(git_client, stage_id)[0]
 
-    rejected = photo_client.post(
-        f"/api/v1/events/{event['id']}/reviews",
+    rejected = git_client.post(
+        f"/api/v1/events/{target['id']}/reviews",
         json={"decision": "rejected", "note": None, "expected_revision": 0},
     )
     assert rejected.status_code == 200
 
-    again = upload_photo(photo_client, stage_id, content=jpeg_bytes())
-    assert again.status_code == 201
-    new_event = again.json()["data"]["event"]
-    assert new_event["id"] != event["id"]
-    assert new_event["status"] == "candidate"
+    second = git_client.post(
+        f"/api/v1/stages/{stage_id}/git-repos", json={"path": str(git_repo)}
+    )
+    assert second.status_code == 201
+    new_event = next(
+        event for event in _list_events(git_client, stage_id)
+        if event["status"] == "candidate"
+    )
+    assert new_event["id"] != target["id"]
 
 
 def test_committer_date_defines_the_commit_day(app_paths, tmp_path: Path):

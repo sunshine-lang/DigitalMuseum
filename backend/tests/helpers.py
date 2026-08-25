@@ -11,12 +11,9 @@ from __future__ import annotations
 import os
 import subprocess
 from collections.abc import Sequence
-from io import BytesIO
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from PIL import Image
-from PIL.ExifTags import IFD
 
 STAGE_START = "2026-03-01"
 STAGE_END = "2026-08-31"
@@ -69,57 +66,6 @@ def make_git_repo(
     for name, message, day in tags:
         git(repo, "tag", "-a", name, "-m", message, date_iso=day)
     return repo
-
-
-def _to_dms(value: float) -> tuple[int, int, float]:
-    degrees = int(value)
-    minutes_float = (value - degrees) * 60
-    minutes = int(minutes_float)
-    seconds = round((minutes_float - minutes) * 60, 4)
-    return degrees, minutes, seconds
-
-
-def jpeg_bytes(
-    *,
-    taken_at: str | None = "2026:05:10 14:30:22",
-    make: str | None = None,
-    model: str | None = None,
-    gps: tuple[float, float] | None = None,
-    color: tuple[int, int, int] = (200, 30, 30),
-) -> bytes:
-    """生成带 EXIF（拍摄时间 / 器型 / GPS 可选）的测试 JPEG。"""
-    exif = Image.Exif()
-    if make is not None:
-        exif[271] = make
-    if model is not None:
-        exif[272] = model
-    if taken_at is not None:
-        exif.get_ifd(IFD.Exif)[36867] = taken_at
-    if gps is not None:
-        latitude, longitude = gps
-        gps_ifd = exif.get_ifd(IFD.GPSInfo)
-        gps_ifd[1] = "N"
-        gps_ifd[2] = _to_dms(latitude)
-        gps_ifd[3] = "E"
-        gps_ifd[4] = _to_dms(longitude)
-    image = Image.new("RGB", (32, 24), color)
-    buffer = BytesIO()
-    image.save(buffer, "JPEG", exif=exif)
-    return buffer.getvalue()
-
-
-def upload_photo(
-    client: TestClient,
-    stage_id: str,
-    *,
-    content: bytes,
-    filename: str = "IMG_20260510_143022.jpg",
-    media_type: str = "image/jpeg",
-):
-    return client.post(
-        f"/api/v1/stages/{stage_id}/photos",
-        files={"file": (filename, content, media_type)},
-    )
 
 
 def upload_note(client: TestClient, stage_id: str, filename: str) -> bytes:
