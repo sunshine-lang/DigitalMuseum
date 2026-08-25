@@ -200,6 +200,30 @@ def test_photo_purge_removes_photo_lineage_and_keeps_the_rest(tmp_path, monkeypa
                 quote="拍摄时间", line_start=1, line_end=1, char_start=0, char_end=4,
             ),
         ])
+
+        # merge/split 历史源事件：零 claim 是合法终态（claims 已移交产物事件，
+        # 作为审计行保留），清理必须跳过它们。
+        merged_source = _event(
+            stage.id, title="被合并的笔记经历", status="merged", revision=1,
+            origin="note",
+        )
+        merged_source.parent_event_id = note_event.id
+        split_source = _event(
+            stage.id, title="被拆分的原始经历", status="split", revision=1,
+            origin="note",
+        )
+        session.add_all([merged_source, split_source])
+        session.flush()
+        session.add_all([
+            models.EventReview(
+                event_id=merged_source.id, decision="merged", note=None,
+                previous_status="candidate", revision=1,
+            ),
+            models.EventReview(
+                event_id=split_source.id, decision="split", note=None,
+                previous_status="candidate", revision=1,
+            ),
+        ])
         session.commit()
         # commit 会过期 ORM 属性：在 session 关闭前把 id 固化为普通字符串。
         ids = {
@@ -209,6 +233,8 @@ def test_photo_purge_removes_photo_lineage_and_keeps_the_rest(tmp_path, monkeypa
             "note_occ": note_occ.id,
             "photo_occ": photo_occ.id,
             "git_occ": git_occ.id,
+            "merged_source": merged_source.id,
+            "split_source": split_source.id,
         }
     seed_engine.dispose()
 
@@ -234,6 +260,23 @@ def test_photo_purge_removes_photo_lineage_and_keeps_the_rest(tmp_path, monkeypa
 
             assert check.get(models.CandidateEvent, ids["note_event"]) is not None
             assert check.get(models.CandidateEvent, ids["photo_event"]) is None
+
+            # merge/split 历史源事件与其审计行原样保留；指向幸存事件的
+            # parent_event_id 不得被误置 NULL。
+            kept_merged = check.get(models.CandidateEvent, ids["merged_source"])
+            assert kept_merged is not None
+            assert kept_merged.parent_event_id == ids["note_event"]
+            kept_split = check.get(models.CandidateEvent, ids["split_source"])
+            assert kept_split is not None
+            kept_reviews = check.scalar(
+                select(func.count(models.EventReview.id)).where(
+                    models.EventReview.event_id.in_(
+                        [ids["merged_source"], ids["split_source"]]
+                    )
+                )
+            )
+            assert kept_reviews == 2
+
             assert check.get(models.EvidenceOccurrence, ids["photo_occ"]) is None
             assert check.get(models.EvidenceOccurrence, ids["note_occ"]) is not None
             assert check.get(models.EvidenceOccurrence, ids["git_occ"]) is not None

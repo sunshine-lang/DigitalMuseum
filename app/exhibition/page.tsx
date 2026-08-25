@@ -20,7 +20,7 @@ const STAGE_STORAGE_KEY = "digital-museum-phase0-stage-id";
 type ExpoPhase = "select" | "show";
 type LoadStatus = "loading" | "ready" | "empty" | "error";
 
-// 展览只有一种随静态导出携带的视觉：午夜档案馆（与 export-html 的内联样式同源）。
+// 展览只有一种视觉：午夜档案馆（与 export-html 导出文件的同色系精简模板呼应）。
 const EXPO_THEME = "museum-night";
 
 const HALL_ACCENTS = ["#847dff", "#dd90d8", "#90b8f0", "#d1c9ff"];
