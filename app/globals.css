@@ -2477,6 +2477,15 @@ a.mvp-primary {
   animation: mvp-card-in .38s ease-out both;
   animation-delay: calc(var(--i, 0) * 60ms);
 }
+/* 纸面卡片的文字契约：底色换浅后，深底时代的白标题（1.09:1）与
+   浅灰正文（约 2.4:1）一并归位。正文在 verified 绿罩+纸面渐变的
+   双重合成底上也要稳过 AA 4.5:1，故从 muted 向 ink 派生加深。 */
+.mvp-browse-view .mvp-timeline article > button h3 { color: var(--mvp-ink); }
+.mvp-browse-view .mvp-timeline article > button p,
+.mvp-browse-view .mvp-timeline article > button time,
+.mvp-browse-view .mvp-timeline article > button small {
+  color: color-mix(in srgb, var(--mvp-muted) 72%, var(--mvp-ink));
+}
 @keyframes mvp-card-in {
   from { opacity: 0; translate: 0 10px; }
   to { opacity: 1; translate: 0 0; }
