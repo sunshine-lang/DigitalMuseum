@@ -37,6 +37,17 @@ const AGENT_LABELS: Record<string, string> = {
   dsh: "dsh",
 };
 
+/** claim 中由后端逐字截断的首条用户消息摘录（「」内），主展引言用。 */
+export function openingQuoteOf(event: NarrativeEvent): string {
+  return topicOf(event.claims[0]?.text ?? "");
+}
+
+/** 展签媒介行：来源产品 → 馆藏措辞（真实展签的 medium + credit line）。 */
+export function mediumLineOf(origin: string, sourceCount: number): string {
+  const medium = AGENT_LABELS[origin] ? `${AGENT_LABELS[origin]} 会话` : "合并整理档案";
+  return `${medium} · ${sourceCount} 份原始记录 · 本机馆藏`;
+}
+
 export function cleanFragment(text: string): string {
   return text
     .replace(/\[@[^\]]*\]\(plugin:\/\/[^)]*\)/g, "")

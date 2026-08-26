@@ -14,7 +14,10 @@ import {
 import {
   buildProjectMilestones,
   exhibitNarrative,
+  mediumLineOf,
   milestoneKeyFor,
+  openingQuoteOf,
+  type ProjectMilestone,
 } from "./narrative";
 
 // 档案库为根（ADR-0001）：展览不再挂阶段，封面信息由档案数据推导。
@@ -73,6 +76,40 @@ function monthsBetween(startsOn: string, endsOn: string): number {
   return endYear * 12 + endMonth - (startYear * 12 + startMonth) + 1;
 }
 
+/* —— 主展位（刀一·展陈节奏）：每厅由里程碑数据选一件主展 ——
+ * 优先级：项目最密集的一天 > 第一次交手 > 收官之作；
+ * 同分依次比来源数、日期、标题，全程确定性。
+ */
+function heroRank(milestone: ProjectMilestone | undefined): number {
+  if (milestone?.isPeakDay) return 3;
+  if (milestone?.isFirstDay) return 2;
+  if (milestone?.isLastDay) return 1;
+  return 0;
+}
+
+function heroRoleLabel(milestone: ProjectMilestone | undefined): string {
+  if (milestone?.isPeakDay) return "最密集的一天";
+  if (milestone?.isFirstDay) return "第一次交手";
+  if (milestone?.isLastDay) return "收官之作";
+  return "";
+}
+
+function pickHallHero(
+  shown: CandidateEvent[],
+  milestoneFor: (event: CandidateEvent) => ProjectMilestone | undefined,
+): CandidateEvent | undefined {
+  if (!shown.length) return undefined;
+  return [...shown].sort((a, b) => {
+    const rank = heroRank(milestoneFor(b)) - heroRank(milestoneFor(a));
+    if (rank !== 0) return rank;
+    const sources = b.source_count - a.source_count;
+    if (sources !== 0) return sources;
+    const day = (a.occurred_on ?? "9999").localeCompare(b.occurred_on ?? "9999");
+    if (day !== 0) return day;
+    return a.title.localeCompare(b.title);
+  })[0];
+}
+
 export default function ExhibitionWorkspace() {
   const [status, setStatus] = useState<LoadStatus>("loading");
   const [errorMessage, setErrorMessage] = useState("");
@@ -109,6 +146,8 @@ export default function ExhibitionWorkspace() {
     () => buildProjectMilestones(selectedEvents),
     [selectedEvents],
   );
+  const milestoneFor = (event: CandidateEvent): ProjectMilestone | undefined =>
+    selectedMilestones.get(milestoneKeyFor(event));
   const verifiedCount = useMemo(
     () => selectedEvents.filter((event) => event.status === "verified").length,
     [selectedEvents],
@@ -412,6 +451,10 @@ export default function ExhibitionWorkspace() {
           const shown = groupEvents.filter((event) => selectedIds.has(event.id));
           const confirmedHere = shown.filter((event) => event.status === "confirmed").length;
           const verifiedHere = shown.filter((event) => event.status === "verified").length;
+          const hero = pickHallHero(shown, milestoneFor);
+          const ordered = hero
+            ? [hero, ...shown.filter((event) => event.id !== hero.id)]
+            : shown;
           return (
             <section
               className="expo-chapter"
@@ -419,6 +462,9 @@ export default function ExhibitionWorkspace() {
               key={key}
               style={{ "--hall-accent": HALL_ACCENTS[chapterIndex % HALL_ACCENTS.length] } as CSSProperties}
             >
+              <div className="expo-gate" aria-hidden="true">
+                <span className="expo-gate-month">{key === "undated" ? "··" : key.slice(5, 7)}</span>
+              </div>
               <header className="expo-reveal">
                 <span className="expo-chapter-num">{String(chapterIndex + 1).padStart(2, "0")}</span>
                 <div>
@@ -427,9 +473,14 @@ export default function ExhibitionWorkspace() {
                 </div>
               </header>
               <div className="expo-hall">
-                {shown.map((event, exhibitIndex) => (
+                {ordered.map((event, exhibitIndex) => {
+                  const isHero = event.id === hero?.id;
+                  const milestone = milestoneFor(event);
+                  const roleLabel = heroRoleLabel(milestone);
+                  const openingQuote = isHero ? openingQuoteOf(event) : "";
+                  return (
                   <article
-                    className={`expo-card expo-reveal${event.status === "confirmed" || event.status === "verified" ? "" : " draft"}`}
+                    className={`expo-card expo-reveal${isHero ? " hero" : ""}${event.status === "confirmed" || event.status === "verified" ? "" : " draft"}`}
                     key={event.id}
                   >
                     <figure className="expo-art">
@@ -446,9 +497,16 @@ export default function ExhibitionWorkspace() {
                       )}
                     </figure>
                     <div className="expo-card-caption">
+                      {isHero && (
+                        <span className="expo-hero-role">主展{roleLabel ? ` · ${roleLabel}` : ""}</span>
+                      )}
                       <time>{event.occurred_on ?? "时间待定"}</time>
                       <h3>{event.title}</h3>
-                      <p className="expo-card-narrative">{exhibitNarrative(event, selectedMilestones.get(milestoneKeyFor(event)))}</p>
+                      <p className="expo-card-medium">{mediumLineOf(event.origin, event.source_count)}</p>
+                      <p className="expo-card-narrative">{exhibitNarrative(event, milestone)}</p>
+                      {isHero && openingQuote && (
+                        <blockquote className="expo-hero-quote">「{openingQuote}」</blockquote>
+                      )}
                     </div>
                     <div className="expo-labels">
                       {event.claims.map((claim, claimIndex) => (
@@ -471,7 +529,8 @@ export default function ExhibitionWorkspace() {
                       ))}
                     </div>
                   </article>
-                ))}
+                  );
+                })}
               </div>
             </section>
           );
@@ -480,13 +539,13 @@ export default function ExhibitionWorkspace() {
       <section className="expo-epilogue">
         <div className="expo-reveal">
           <span className="expo-kicker">EPILOGUE · 尾声</span>
+          <h2>{closingLine}</h2>
           <div className="expo-epilogue-stats" aria-label="阶段统计">
             <div><strong>{selectedEvents.length}</strong><span>段经历</span></div>
             <div><strong>{confirmedCount}</strong><span>你亲自确认</span></div>
             <div><strong>{verifiedCount}</strong><span>系统核实</span></div>
             <div><strong>{archive?.evidence_count ?? 0}</strong><span>份原始记录</span></div>
           </div>
-          <h2>{closingLine}</h2>
           <p>所有展品由本地真实档案确定性生成，未经模型补写。</p>
           <div className="expo-show-actions">
             <button className="expo-button ghost" type="button" onClick={() => setPhase("select")}>
@@ -494,9 +553,15 @@ export default function ExhibitionWorkspace() {
             </button>
             <Link className="expo-button" href="/">回到工作台</Link>
           </div>
-          <p className="expo-archive-stamp">
-            ARCHIVE-{(archive?.ends_on ?? "").replaceAll("-", "") || "00000000"} · {new Date().toISOString().slice(0, 10)}
-          </p>
+          <div
+            className="expo-archive-stamp"
+            role="img"
+            aria-label={`馆藏编号 ARCHIVE-${(archive?.ends_on ?? "").replaceAll("-", "") || "00000000"}，入档 ${new Date().toISOString().slice(0, 10)}`}
+          >
+            <span>ARCHIVE</span>
+            <strong>{(archive?.ends_on ?? "").replaceAll("-", "") || "00000000"}</strong>
+            <span>数字档案馆 · {new Date().toISOString().slice(0, 10)}</span>
+          </div>
         </div>
       </section>
 
