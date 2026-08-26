@@ -1,33 +1,13 @@
+"""阶段视图与事件审阅的 API 契约（S3 起：会话同步为唯一导入通道）。"""
+
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
-from unittest.mock import patch
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from tests.helpers import create_half_year_stage as create_stage
-
-
-def upload_note(client: TestClient, stage_id: str) -> tuple[dict, bytes]:
-    note = (
-        "---\n"
-        "title: 第一次完成独立产品\n"
-        "date: 2026-05-20\n"
-        "---\n"
-        "\n"
-        "今天发布了我的第一个独立产品。\n"
-        "\n"
-        "我把演示地址发给了三位朋友。\n"
-    ).encode()
-    response = client.post(
-        f"/api/v1/stages/{stage_id}/notes",
-        files={"file": ("2026-05-20-launch.md", note, "text/markdown")},
-    )
-    assert response.status_code == 201, response.text
-    return response.json()["data"], note
+from tests.helpers import seed_codex_project, sync_archive
 
 
 def test_stage_requires_a_three_to_twelve_month_range(client: TestClient) -> None:
@@ -60,214 +40,20 @@ def test_stage_requires_a_three_to_twelve_month_range(client: TestClient) -> Non
     assert blank_name.json()["error"]["code"] == "invalid_stage_name"
 
 
-def test_note_import_creates_grounded_candidate_and_coverage(
-    client: TestClient,
-    app_paths: tuple[str, Path],
-) -> None:
-    stage_id = create_stage(client)
-    imported, note = upload_note(client, stage_id)
-
-    event = imported["event"]
-    claim = event["claims"][0]
-    anchor = claim["anchors"][0]
-    expected_hash = hashlib.sha256(note).hexdigest()
-
-    assert event["title"] == "第一次完成独立产品"
-    assert event["status"] == "candidate"
-    assert event["is_formal"] is False
-    assert claim["text"] == "今天发布了我的第一个独立产品。"
-    assert claim["epistemic_status"] == "unknown"
-    assert claim["evidence_role"] == "user_statement"
-    assert anchor == {
-        "blob_sha256": expected_hash,
-        "quote": "今天发布了我的第一个独立产品。",
-        "line_start": 6,
-        "line_end": 6,
-        "char_start": 43,
-        "char_end": 58,
-    }
-
-    assert imported["occurrence"]["original_filename"] == "2026-05-20-launch.md"
-    assert imported["occurrence"]["blob_sha256"] == expected_hash
-    stored_file = app_paths[1] / expected_hash[:2] / f"{expected_hash}.md"
-    assert stored_file.read_bytes() == note
-
-    coverage_response = client.get(f"/api/v1/stages/{stage_id}/coverage")
-    assert coverage_response.status_code == 200
-    coverage = coverage_response.json()["data"]
-    assert [item["step"] for item in coverage] == [
-        "stored_locally",
-        "parsed_locally",
-        "candidate_generated",
-    ]
-    assert all(item["status"] == "completed" for item in coverage)
-    assert coverage[-1]["processor_version"] == "note-development-v2"
-
-
-def test_note_leading_blockquote_is_skipped_when_picking_claim(
-    client: TestClient,
-) -> None:
-    stage_id = create_stage(client)
-    note = (
-        "# 阶段计划评审\n"
-        "\n"
-        "> 配套文档：docs/prd/digital-museum-prd-v0.1.md。\n"
-        "> 本文档只覆盖评审本身。\n"
-        "\n"
-        "这周完成了两条纵向切片的评审，所有锚点都能回溯到原文。\n"
-        "\n"
-        "下周计划补齐评测基线。\n"
-    ).encode()
-
-    response = client.post(
-        f"/api/v1/stages/{stage_id}/notes",
-        files={"file": ("review-notes.md", note, "text/markdown")},
-    )
-
-    assert response.status_code == 201
-    event = response.json()["data"]["event"]
-    assert event["title"] == "阶段计划评审"
-    claim = event["claims"][0]
-    assert claim["text"] == "这周完成了两条纵向切片的评审，所有锚点都能回溯到原文。"
-    assert claim["anchors"][0]["line_start"] == 6
-
-
-def test_identical_note_bytes_share_one_content_addressed_file(
-    client: TestClient,
-    app_paths: tuple[str, Path],
-) -> None:
-    stage_id = create_stage(client)
-    first_import, note = upload_note(client, stage_id)
-
-    duplicate = client.post(
-        f"/api/v1/stages/{stage_id}/notes",
-        files={"file": ("same-content.txt", note, "text/plain")},
-    )
-
-    assert duplicate.status_code == 201
-    assert (
-        duplicate.json()["data"]["occurrence"]["blob_sha256"]
-        == first_import["occurrence"]["blob_sha256"]
-    )
-    stored_files = [path for path in app_paths[1].rglob("*") if path.is_file()]
-    assert len(stored_files) == 1
-
-
-@pytest.mark.parametrize(
-    ("filename", "content", "content_type", "expected_status", "expected_code"),
-    [
-        ("archive.pdf", b"not really a pdf", "application/pdf", 415, "unsupported_note_type"),
-        ("binary.txt", b"hello\x00world", "text/plain", 415, "invalid_note_content"),
-        ("large.md", b"a" * 1025, "text/markdown", 413, "note_too_large"),
-    ],
-)
-def test_invalid_notes_fail_closed_without_creating_events(
-    client: TestClient,
-    filename: str,
-    content: bytes,
-    content_type: str,
-    expected_status: int,
-    expected_code: str,
-) -> None:
-    stage_id = create_stage(client)
-
-    response = client.post(
-        f"/api/v1/stages/{stage_id}/notes",
-        files={"file": (filename, content, content_type)},
-    )
-
-    assert response.status_code == expected_status
-    assert response.json()["error"]["code"] == expected_code
-    events = client.get(f"/api/v1/stages/{stage_id}/events")
-    assert events.status_code == 200
-    assert events.json()["data"] == []
-    coverage = client.get(f"/api/v1/stages/{stage_id}/coverage")
-    assert coverage.status_code == 200
-    assert coverage.json()["data"][-1]["status"] == "failed"
-    assert coverage.json()["data"][-1]["error_code"] == expected_code
-
-
-def test_note_extension_media_type_binary_signatures_and_controls_are_checked(
-    client: TestClient,
-) -> None:
-    stage_id = create_stage(client)
-
-    markdown_alias = client.post(
-        f"/api/v1/stages/{stage_id}/notes",
-        files={"file": ("note.markdown", b"hello", "text/markdown")},
-    )
-    disguised_pdf = client.post(
-        f"/api/v1/stages/{stage_id}/notes",
-        files={"file": ("note.txt", b"%PDF-1.7", "text/plain")},
-    )
-    mismatched_media_type = client.post(
-        f"/api/v1/stages/{stage_id}/notes",
-        files={"file": ("note.txt", b"plain text", "application/pdf")},
-    )
-    control_bytes = client.post(
-        f"/api/v1/stages/{stage_id}/notes",
-        files={"file": ("note.txt", b"hello\x01world", "text/plain")},
-    )
-
-    assert markdown_alias.status_code == 415
-    assert markdown_alias.json()["error"]["code"] == "unsupported_note_type"
-    assert disguised_pdf.status_code == 415
-    assert disguised_pdf.json()["error"]["code"] == "invalid_note_content"
-    assert mismatched_media_type.status_code == 415
-    assert mismatched_media_type.json()["error"]["code"] == "invalid_note_media_type"
-    assert control_bytes.status_code == 415
-    assert control_bytes.json()["error"]["code"] == "invalid_note_content"
-
-
-def test_yaml_timestamp_returns_the_note_date_validation_error(client: TestClient) -> None:
-    stage_id = create_stage(client)
-    note = b"---\ndate: 2026-05-20T12:00:00\n---\n\nA valid paragraph.\n"
-
-    response = client.post(
-        f"/api/v1/stages/{stage_id}/notes",
-        files={"file": ("timestamp.md", note, "text/markdown")},
-    )
-
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "invalid_note_date"
-    coverage = client.get(f"/api/v1/stages/{stage_id}/coverage").json()["data"]
-    assert coverage[-1]["step"] == "parsed_locally"
-    assert coverage[-1]["status"] == "failed"
-
-
-def test_new_content_file_is_removed_when_database_commit_fails(
-    client: TestClient,
-    app_paths: tuple[str, Path],
-) -> None:
-    stage_id = create_stage(client)
-    note = b"A database failure must not leave an orphan evidence file.\n"
-
-    with (
-        patch("sqlalchemy.orm.Session.commit", side_effect=RuntimeError("database offline")),
-        pytest.raises(RuntimeError, match="database offline"),
-    ):
-        client.post(
-            f"/api/v1/stages/{stage_id}/notes",
-            files={"file": ("failure.txt", note, "text/plain")},
-        )
-
-    expected_hash = hashlib.sha256(note).hexdigest()
-    assert not (app_paths[1] / expected_hash[:2] / f"{expected_hash}.txt").exists()
-
-
 def test_review_uses_revision_guard_and_survives_app_restart(
-    client: TestClient,
+    sync_client: TestClient,
     app_paths: tuple[str, Path],
+    tmp_path: Path,
 ) -> None:
-    stage_id = create_stage(client)
-    imported, _ = upload_note(client, stage_id)
-    event_id = imported["event"]["id"]
+    seed_codex_project(tmp_path)
+    sync_archive(sync_client)
+    event_id = sync_client.get("/api/v1/archive/events").json()["data"][0]["id"]
 
-    confirmed = client.post(
+    confirmed = sync_client.post(
         f"/api/v1/events/{event_id}/reviews",
         json={
             "decision": "confirmed",
-            "note": "我确认发布发生过，但“第一个”的含义只代表个人独立产品。",
+            "note": "我确认这段协作发生过。",
             "expected_revision": 0,
         },
     )
@@ -278,12 +64,9 @@ def test_review_uses_revision_guard_and_survives_app_restart(
     assert confirmed_event["revision"] == 1
     assert confirmed_event["claims"][0]["epistemic_status"] == "user_confirmed"
 
-    stale = client.post(
+    stale = sync_client.post(
         f"/api/v1/events/{event_id}/reviews",
-        json={
-            "decision": "rejected",
-            "expected_revision": 0,
-        },
+        json={"decision": "rejected", "expected_revision": 0},
     )
     assert stale.status_code == 409
     assert stale.json()["error"]["code"] == "stale_event_revision"
@@ -300,15 +83,17 @@ def test_review_uses_revision_guard_and_survives_app_restart(
         assert restored.status_code == 200
         assert restored.json()["data"]["status"] == "confirmed"
         assert restored.json()["data"]["revision"] == 1
-        assert restored.json()["data"]["latest_review"]["note"].startswith("我确认发布发生过")
+        assert restored.json()["data"]["latest_review"]["note"].startswith("我确认这段协作")
 
 
-def test_unknown_review_preserves_the_verbatim_claim(client: TestClient) -> None:
-    stage_id = create_stage(client)
-    imported, _ = upload_note(client, stage_id)
-    event = imported["event"]
+def test_unknown_review_preserves_the_verbatim_claim(
+    sync_client: TestClient, tmp_path: Path
+) -> None:
+    seed_codex_project(tmp_path, first_user="同步一条会话作为测试证据")
+    sync_archive(sync_client)
+    event = sync_client.get("/api/v1/archive/events").json()["data"][0]
 
-    response = client.post(
+    response = sync_client.post(
         f"/api/v1/events/{event['id']}/reviews",
         json={
             "decision": "unknown",
@@ -321,8 +106,8 @@ def test_unknown_review_preserves_the_verbatim_claim(client: TestClient) -> None
     reviewed = response.json()["data"]
     assert reviewed["status"] == "unknown"
     assert reviewed["is_formal"] is False
-    assert reviewed["claims"][0]["text"] == "今天发布了我的第一个独立产品。"
     assert reviewed["claims"][0]["epistemic_status"] == "unknown"
+    assert "同步一条会话作为测试证据" in reviewed["claims"][0]["text"]
 
 
 def test_unknown_route_uses_the_public_error_contract(client: TestClient) -> None:
@@ -330,8 +115,21 @@ def test_unknown_route_uses_the_public_error_contract(client: TestClient) -> Non
 
     assert response.status_code == 404
     assert response.json() == {
-        "error": {
-            "code": "route_not_found",
-            "message": "没有找到这个接口",
-        }
+        "error": {"code": "route_not_found", "message": "没有找到这个接口"}
     }
+
+
+def test_stage_view_filters_events_by_window(
+    sync_client: TestClient, tmp_path: Path
+) -> None:
+    from tests.helpers import create_stage
+
+    seed_codex_project(tmp_path, day="2026-05-10")
+    sync_archive(sync_client)
+    stage_id = create_stage(
+        sync_client, "窗口视图", starts_on="2026-01-01", ends_on="2026-06-30"
+    )
+    events = sync_client.get(f"/api/v1/stages/{stage_id}/events").json()["data"]
+    assert len(events) == 1
+    assert events[0]["occurred_on"] == "2026-05-10"
+    assert sync_client.get("/api/v1/archive/events").status_code == 200

@@ -58,14 +58,6 @@ class AgentEvidence:
     items: tuple[AgentActivityItem, ...]
 
 
-@dataclass(frozen=True, slots=True)
-class AgentSessionsPreview:
-    project_label: str
-    first_session_on: date
-    last_session_on: date
-    session_count: int
-
-
 # 单行记录的分类结果：("assistant", None) 计一条助手消息，("user", 文本)
 # 在文本为真实用户消息时计一条用户消息；None 表示该行不计入任何计数。
 RecordClassification = tuple[Literal["assistant", "user"], str | None]
@@ -74,8 +66,8 @@ RecordClassification = tuple[Literal["assistant", "user"], str | None]
 def parse_session_timestamp(value: object) -> datetime | None:
     """解析 Agent 会话文件里的 ISO 8601 时间戳。
 
-    会话文件里的时间戳是 UTC；按本机时区归日与显示——与 git 适配器读
-    committer date 的本地日期口径一致，也是用户真实体验到的日期。
+    会话文件里的时间戳是 UTC；按本机时区归日与显示——也是用户真实
+    体验到的日期。
     """
     if not isinstance(value, str) or not value:
         return None
@@ -157,21 +149,6 @@ def scan_session_file(
         user_messages=user_messages,
         assistant_messages=assistant_messages,
         first_user_message=first_user_message,
-    )
-
-
-def build_sessions_preview(
-    sessions: list[SessionSummary],
-    *,
-    project_label: str,
-) -> AgentSessionsPreview:
-    """由扫描出的会话列表构造预览：最早/最晚开始日期与数量。"""
-    days = [session.started_at.date() for session in sessions]
-    return AgentSessionsPreview(
-        project_label=project_label,
-        first_session_on=min(days),
-        last_session_on=max(days),
-        session_count=len(sessions),
     )
 
 

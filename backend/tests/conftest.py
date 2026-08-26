@@ -27,13 +27,16 @@ def client(app_paths: tuple[str, Path]) -> TestClient:
 
 
 @pytest.fixture
-def git_client(app_paths: tuple[str, Path], tmp_path: Path) -> TestClient:
+def sync_client(app_paths: tuple[str, Path], tmp_path: Path) -> TestClient:
+    """一次性会话根目录的双产品同步客户端（tests.helpers.seed_codex_project 配套）。"""
     database_url, upload_dir = app_paths
     with TestClient(
         create_app(
             database_url=database_url,
             upload_dir=upload_dir,
             allowed_repo_roots=str(tmp_path),
+            claude_projects_root=str(tmp_path / "claude-home" / "projects"),
+            codex_sessions_root=str(tmp_path / "codex-home" / "sessions"),
         )
     ) as test_client:
         yield test_client
@@ -48,6 +51,7 @@ def claude_client(app_paths: tuple[str, Path], tmp_path: Path) -> TestClient:
             upload_dir=upload_dir,
             allowed_repo_roots=str(tmp_path),
             claude_projects_root=str(tmp_path / "claude-home" / "projects"),
+            codex_sessions_root=str(tmp_path / "codex-home" / "sessions"),
         )
     ) as test_client:
         yield test_client
@@ -61,6 +65,7 @@ def codex_client(app_paths: tuple[str, Path], tmp_path: Path) -> TestClient:
             database_url=database_url,
             upload_dir=upload_dir,
             allowed_repo_roots=str(tmp_path),
+            claude_projects_root=str(tmp_path / "claude-home" / "projects"),
             codex_sessions_root=str(tmp_path / "codex-home" / "sessions"),
         )
     ) as test_client:

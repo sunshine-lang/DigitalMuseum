@@ -13,23 +13,20 @@ const events: ExportExhibitEvent[] = [
     occurred_on: "2026-08-21",
     status: "verified",
     origin: "claude",
-    exhibit_caption: null,
     claims: [{ text: "这一天在项目 DigitalMuseum 进行了 2 个 Claude Code 会话、共 5 条用户消息" }],
   },
   {
-    title: "完成开源发布准备",
+    title: "在 hipaw 与 Codex 协作",
     occurred_on: "2026-07-02",
     status: "confirmed",
-    origin: "note",
-    exhibit_caption: "亲手写下的展签。",
-    claims: [{ text: "本人确认的关键经历。" }],
+    origin: "codex",
+    claims: [{ text: "这一天在项目 hipaw 进行了 3 个 Codex 会话、共 7 条用户消息" }],
   },
   {
     title: "一次未定日期的讨论",
     occurred_on: null,
     status: "candidate",
-    origin: "note",
-    exhibit_caption: null,
+    origin: "codex",
     claims: [{ text: "等待核对的草稿。" }],
   },
 ];
@@ -49,8 +46,7 @@ test("导出为自包含 HTML：无外部资源、无脚本", () => {
   assert.doesNotMatch(html, /src=/i);
   assert.doesNotMatch(html, /href=/i);
   assert.match(html, /<style>/);
-  assert.match(html, /亲手写下的展签。/);
-  assert.match(html, /你来我往/); // 机器底稿（exhibit_caption 为空时）
+  assert.match(html, /你来我往/); // 确定性叙事底稿
 });
 
 test("按月分组、组内按日期排序，未定日期在最后", () => {
@@ -91,9 +87,8 @@ test("用户文本全部转义，无 HTML 注入", () => {
       title: '<script>alert("x")</script>',
       occurred_on: "2026-05-01",
       status: "confirmed",
-      origin: "note",
-      exhibit_caption: '"><img src=x onerror="steal()"> 说明文字',
-      claims: [{ text: "原始证据不随导出公开。" }],
+      origin: "codex",
+      claims: [{ text: '原始证据不随导出公开。"><img src=x onerror="steal()">' }],
     },
   ];
   const html = buildExhibitionHtml({
@@ -131,8 +126,7 @@ test("风险扫描：标题带本机路径时命中并给出样例", () => {
         title: "调试 /Users/sunshine/secret-project 的部署",
         occurred_on: "2026-05-01",
         status: "confirmed",
-        origin: "note",
-        exhibit_caption: null,
+        origin: "codex",
         claims: [{ text: "记录。" }],
       },
     ],
@@ -145,7 +139,7 @@ test("风险扫描：标题带本机路径时命中并给出样例", () => {
   assert.ok(risks[0].sample.startsWith("/Users/"));
 });
 
-test("风险扫描：展签里的密钥与阶段名里的邮箱分别命中", () => {
+test("风险扫描：叙事里的密钥与阶段名里的邮箱分别命中", () => {
   const html = buildExhibitionHtml({
     stageName: "me@example.com 的半年",
     startsOn: "2026-03-01",
@@ -155,9 +149,8 @@ test("风险扫描：展签里的密钥与阶段名里的邮箱分别命中", ()
         title: "一次部署",
         occurred_on: "2026-05-01",
         status: "confirmed",
-        origin: "note",
-        exhibit_caption: "用的 key 是 sk-ant-abcdefghijklmnopqrst 处理的",
-        claims: [{ text: "记录。" }],
+        origin: "codex",
+        claims: [{ text: "用的 key 是 sk-ant-abcdefghijklmnopqrst 处理的。" }],
       },
     ],
     exportedAt: "2026-08-23T00:00:00.000Z",

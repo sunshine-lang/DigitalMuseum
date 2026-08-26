@@ -3,11 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import {
-  CandidateEvent,
-  listArchiveEvents,
-  updateExhibitCaption,
-} from "../phase0-api";
+import { CandidateEvent, listArchiveEvents } from "../phase0-api";
 import { isVisibleExperience, sortEvents, statusLabel } from "../events-shared";
 import {
   EXPORT_RISK_LABELS,
@@ -204,28 +200,8 @@ export default function ExhibitionWorkspace() {
   }
 
   // 展签改写：机器给底稿，人是策展人。只改展示层，不触碰证据与状态机。
-  const [captionEdit, setCaptionEdit] = useState<{ id: string; value: string } | null>(null);
-  const [captionBusy, setCaptionBusy] = useState(false);
-  const [captionError, setCaptionError] = useState<string | null>(null);
   // 导出风险拦截：扫描命中后暂存待确认的 HTML，人工确认才允许落盘。
   const [exportConfirm, setExportConfirm] = useState<{ html: string; risks: ExportRisk[] } | null>(null);
-
-  async function saveCaption(eventId: string) {
-    if (!captionEdit || captionBusy) return;
-    setCaptionBusy(true);
-    setCaptionError(null);
-    try {
-      const updated = await updateExhibitCaption(eventId, captionEdit.value.trim() || null);
-      setEvents((current) =>
-        current.map((event) => (event.id === updated.id ? updated : event)),
-      );
-      setCaptionEdit(null);
-    } catch (error) {
-      setCaptionError(error instanceof Error ? error.message : "展签保存失败，请重试");
-    } finally {
-      setCaptionBusy(false);
-    }
-  }
 
   function exportStaticExhibition() {
     if (!archive || selectedEvents.length === 0) return;
@@ -238,7 +214,6 @@ export default function ExhibitionWorkspace() {
         occurred_on: event.occurred_on,
         status: event.status,
         origin: event.origin,
-        exhibit_caption: event.exhibit_caption,
         claims: event.claims.map((claim) => ({ text: claim.text })),
       })),
       exportedAt: new Date().toISOString(),
@@ -376,12 +351,6 @@ export default function ExhibitionWorkspace() {
 
   return (
     <main className="expo-show" data-expo-theme={EXPO_THEME}>
-      {captionError && (
-        <div className="expo-caption-toast" role="alert">
-          <span>{captionError}</span>
-          <button type="button" onClick={() => setCaptionError(null)}>知道了</button>
-        </div>
-      )}
       <div className="expo-progress" ref={progressRef} aria-hidden="true" />
       <header className="expo-show-topbar">
         <span className="expo-show-brand">DIGITAL MUSEUM</span>
@@ -471,37 +440,7 @@ export default function ExhibitionWorkspace() {
                     <div className="expo-card-caption">
                       <time>{event.occurred_on ?? "时间待定"}</time>
                       <h3>{event.title}</h3>
-                      {captionEdit?.id === event.id ? (
-                        <div className="expo-caption-editor">
-                          <textarea
-                            value={captionEdit.value}
-                            maxLength={200}
-                            rows={3}
-                            autoFocus
-                            onChange={(changeEvent) =>
-                              setCaptionEdit({ id: event.id, value: changeEvent.target.value })
-                            }
-                          />
-                          <div>
-                            <button type="button" disabled={captionBusy} onClick={() => void saveCaption(event.id)}>{captionBusy ? "正在保存…" : "保存展签"}</button>
-                            <button type="button" disabled={captionBusy} onClick={() => setCaptionEdit(null)}>取消</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <p
-                          className={`expo-card-narrative${event.exhibit_caption ? " curated" : ""}`}
-                          title="点按可改写这段展签"
-                          onClick={() =>
-                            setCaptionEdit({
-                              id: event.id,
-                              value: event.exhibit_caption ?? exhibitNarrative(event),
-                            })
-                          }
-                        >
-                          {event.exhibit_caption ?? exhibitNarrative(event)}
-                          <span className="expo-caption-edit-hint" aria-hidden="true">改写</span>
-                        </p>
-                      )}
+                      <p className="expo-card-narrative">{exhibitNarrative(event)}</p>
                     </div>
                     <div className="expo-labels">
                       {event.claims.map((claim, claimIndex) => (

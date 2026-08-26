@@ -6,10 +6,8 @@ from pathlib import Path
 from app.core.errors import ApiError
 from app.services.agent_session_evidence import (
     AgentEvidence,
-    AgentSessionsPreview,
     RecordClassification,
     SessionSummary,
-    build_sessions_preview,
     real_user_text,
     render_evidence_document,
     scan_session_file,
@@ -45,25 +43,6 @@ def list_claude_projects(projects_root: str) -> list[dict]:
         )
     projects.sort(key=lambda item: (-item["session_count"], item["project"]))
     return projects
-
-
-def preview_claude_sessions(
-    path_raw: str,
-    *,
-    allowed_roots: str,
-    projects_root: str,
-) -> AgentSessionsPreview:
-    """只读预览：该项目全部会话的最早/最晚开始日期与数量，不落库、不做阶段过滤。
-
-    与导入链路共用目录定位与解析规则，仅用于建馆前帮用户预填表单。
-    """
-    directory, label, _display = _resolve_session_directory(
-        path_raw, allowed_roots=allowed_roots, projects_root=projects_root
-    )
-    sessions = _scan_project_sessions(directory)
-    if not sessions:
-        raise ApiError(422, "no_claude_sessions", "这个项目还没有可读取的 Claude Code 会话")
-    return build_sessions_preview(sessions, project_label=label)
 
 
 def import_claude_sessions(

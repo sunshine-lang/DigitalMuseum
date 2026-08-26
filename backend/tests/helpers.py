@@ -3,86 +3,17 @@
 约定：pytest fixtures 统一放在 conftest.py；可复用的纯函数/常量放在本模块，
 测试文件通过 `from tests.helpers import ...` 显式导入（backend 根目录在
 sys.path 上，见 pyproject.toml 的 `pythonpath = ["."]`）。
-只收敛逐字节相同（或仅默认参数不同的超集签名）的助手，不改变任何断言。
 """
 
 from __future__ import annotations
 
-import os
-import subprocess
-from collections.abc import Sequence
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 STAGE_START = "2026-03-01"
 STAGE_END = "2026-08-31"
-
-
-def git(
-    repo: Path,
-    *args: str,
-    date_iso: str | None = None,
-    committer_date_iso: str | None = None,
-) -> None:
-    """跑一条针对测试仓库的 git 命令。
-
-    date_iso 同时钉住 author/committer 日期（可复现）；committer_date_iso
-    可单独改写 committer 日期，用于 cherry-pick/rebase 场景。
-    """
-    env = os.environ.copy()
-    env.update(
-        {
-            "GIT_AUTHOR_NAME": "Tester",
-            "GIT_AUTHOR_EMAIL": "tester@example.com",
-            "GIT_COMMITTER_NAME": "Tester",
-            "GIT_COMMITTER_EMAIL": "tester@example.com",
-        }
-    )
-    if date_iso is not None:
-        env["GIT_AUTHOR_DATE"] = f"{date_iso}T12:00:00"
-        env["GIT_COMMITTER_DATE"] = f"{committer_date_iso or date_iso}T12:00:00"
-    subprocess.run(
-        ["git", "-C", str(repo), *args],
-        check=True,
-        capture_output=True,
-        env=env,
-    )
-
-
-def make_git_repo(
-    repo: Path,
-    commits: Sequence[tuple[str, str]],
-    *,
-    tags: Sequence[tuple[str, str, str]] = (),
-) -> Path:
-    """初始化仓库并按 (message, day) 逐条提交，再按 (name, message, day) 打标签。"""
-    repo.mkdir()
-    git(repo, "init", "-b", "main")
-    for index, (message, day) in enumerate(commits):
-        (repo / f"file-{index}.txt").write_text(f"content {index}", encoding="utf-8")
-        git(repo, "add", ".")
-        git(repo, "commit", "-m", message, date_iso=day)
-    for name, message, day in tags:
-        git(repo, "tag", "-a", name, "-m", message, date_iso=day)
-    return repo
-
-
-def upload_note(client: TestClient, stage_id: str, filename: str) -> bytes:
-    note = (
-        "---\n"
-        f"title: {filename} 的记录\n"
-        "date: 2026-05-20\n"
-        "---\n"
-        "\n"
-        "今天完成了一段可回溯的整理工作。\n"
-    ).encode()
-    response = client.post(
-        f"/api/v1/stages/{stage_id}/notes",
-        files={"file": (filename, note, "text/markdown")},
-    )
-    assert response.status_code == 201, response.text
-    return note
 
 
 def create_stage(
@@ -101,7 +32,7 @@ def create_stage(
 
 
 def create_half_year_stage(client: TestClient, name: str = "我的 AI 产品半年") -> str:
-    """phase0_api / aggregation / stages_management 家族用的上半年阶段。"""
+    """阶段视图测试用的上半年窗口。"""
     return create_stage(client, name, starts_on="2026-01-01", ends_on="2026-06-30")
 
 
@@ -112,11 +43,49 @@ def fetch_document(client: TestClient, sha256: str) -> str:
     return response.text
 
 
-def import_agent_sessions(client: TestClient, stage_id: str, path, endpoint: str) -> dict:
-    """导入 Agent 会话证据；endpoint 传 "claude-sessions" 或 "codex-sessions"。"""
-    response = client.post(
-        f"/api/v1/stages/{stage_id}/{endpoint}",
-        json={"path": str(path)},
+def seed_codex_project(
+    tmp_path: Path,
+    *,
+    project: str = "proj",
+    day: str = "2026-05-10",
+    first_user: str = "帮我看下这个报错",
+) -> Path:
+    """在约定的一次性 codex 根目录下播种一个单会话项目，返回项目路径。"""
+    workspace = tmp_path / "projects" / project
+    workspace.mkdir(parents=True, exist_ok=True)
+    year, month, date_part = day.split("-")
+    day_dir = tmp_path / "codex-home" / "sessions" / year / month / date_part
+    day_dir.mkdir(parents=True, exist_ok=True)
+    lines = [
+        json.dumps(
+            {
+                "type": "session_meta",
+                "payload": {"cwd": str(workspace), "thread_source": "user"},
+            }
+        ),
+        json.dumps(
+            {
+                "timestamp": f"{day}T12:00:00.000Z",
+                "type": "event_msg",
+                "payload": {"type": "user_message", "message": first_user},
+            }
+        ),
+        json.dumps(
+            {
+                "timestamp": f"{day}T12:01:00.000Z",
+                "type": "event_msg",
+                "payload": {"type": "agent_message", "message": "好的，我来看看。"},
+            }
+        ),
+    ]
+    (day_dir / f"rollout-{day}.jsonl").write_text(
+        "\n".join(lines) + "\n", encoding="utf-8"
     )
-    assert response.status_code == 201, response.text
+    return workspace
+
+
+def sync_archive(client: TestClient) -> dict:
+    """触发档案库一键同步，返回汇总。"""
+    response = client.post("/api/v1/archive/sync")
+    assert response.status_code == 200, response.text
     return response.json()["data"]

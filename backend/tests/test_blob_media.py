@@ -1,76 +1,48 @@
-"""本地 Blob 媒体端点与阶段删除时的 Blob 引用回收（对抗性审查遗留项）。"""
-
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, func, select
 
-from app.domain.models import EvidenceBlob
-from tests.helpers import create_stage, upload_note
+from tests.helpers import create_stage, seed_codex_project, sync_archive
 
 
-def _blob_row_count(database_url: str, sha256: str) -> int:
-    engine = create_engine(database_url)
-    try:
-        with engine.connect() as connection:
-            return (
-                connection.scalar(
-                    select(func.count(EvidenceBlob.sha256)).where(
-                        EvidenceBlob.sha256 == sha256
-                    )
-                )
-                or 0
-            )
-    finally:
-        engine.dispose()
+def _archive_event(client: TestClient) -> dict:
+    events = client.get("/api/v1/archive/events").json()["data"]
+    assert events, "档案里还没有事件"
+    return events[0]
 
 
-def _blob_file(upload_dir: Path, sha256: str) -> Path | None:
-    candidates = list(upload_dir.glob(f"{sha256[:2]}/{sha256}.*"))
-    return candidates[0] if candidates else None
+def test_blob_endpoint_serves_evidence_document_bytes(
+    sync_client: TestClient, tmp_path: Path
+):
+    seed_codex_project(tmp_path)
+    sync_archive(sync_client)
+    event = _archive_event(sync_client)
+    sha256 = event["claims"][0]["anchors"][0]["blob_sha256"]
 
-
-# ---------------------------------------------------------------------------
-# GET /api/v1/blobs/{sha256}
-# ---------------------------------------------------------------------------
-
-
-def test_blob_endpoint_serves_original_note_bytes(client: TestClient):
-    stage_id = create_stage(client, "Blob 阶段")
-    note = upload_note(client, stage_id, "2026-05-20-note.md")
-    sha256 = hashlib.sha256(note).hexdigest()
-
-    response = client.get(f"/api/v1/blobs/{sha256}")
+    response = sync_client.get(f"/api/v1/blobs/{sha256}")
 
     assert response.status_code == 200
-    assert response.content == note
-    assert response.headers["content-type"].startswith("text/markdown")
-    # 内容寻址：内容永不变，可以永久缓存。
+    assert response.headers["content-type"].startswith("text/plain")
+    assert "## day 2026-05-10 (1 sessions)" in response.text
+    # 内容寻址：可永久缓存。
     assert response.headers["cache-control"] == "public, max-age=31536000, immutable"
 
 
 def test_blob_endpoint_rejects_unknown_hash_with_404(client: TestClient):
-    create_stage(client, "Blob 阶段")
+    unknown = "0" * 64
 
-    unknown = client.get("/api/v1/blobs/" + "0" * 64)
+    response = client.get(f"/api/v1/blobs/{unknown}")
 
-    assert unknown.status_code == 404
-    assert unknown.json()["error"]["code"] == "blob_not_found"
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "blob_not_found"
 
 
 @pytest.mark.parametrize(
     "invalid_sha",
-    [
-        "A" * 64,  # 大写十六进制
-        "0" * 63,  # 长度不足
-        "0" * 65,  # 长度超限
-        "zz" + "0" * 62,  # 非十六进制字符
-        "%2e%2e",  # 解码后是 ".."（进入路由参数）
-    ],
+    ["zz" + "0" * 62, "0" * 63, "0" * 65, "%2e%2e"],
 )
 def test_blob_endpoint_fail_closes_invalid_hashes(
     client: TestClient, invalid_sha: str
@@ -91,17 +63,17 @@ def test_blob_endpoint_fails_closed_on_path_traversal(client: TestClient):
 
 
 def test_blob_endpoint_returns_404_when_file_is_missing(
-    client: TestClient, app_paths: tuple[str, Path]
+    sync_client: TestClient, app_paths: tuple[str, Path], tmp_path: Path
 ):
-    _, upload_dir = app_paths
-    stage_id = create_stage(client, "Blob 阶段")
-    note = upload_note(client, stage_id, "2026-05-20-note.md")
-    sha256 = hashlib.sha256(note).hexdigest()
-    blob_file = _blob_file(upload_dir, sha256)
-    assert blob_file is not None
+    seed_codex_project(tmp_path)
+    sync_archive(sync_client)
+    event = _archive_event(sync_client)
+    sha256 = event["claims"][0]["anchors"][0]["blob_sha256"]
+    _database_url, upload_dir = app_paths
+    blob_file = next((upload_dir / sha256[:2]).glob(f"{sha256}.*"))
     blob_file.unlink()  # 模拟文件被手动删除：DB 有行、磁盘无文件
 
-    response = client.get(f"/api/v1/blobs/{sha256}")
+    response = sync_client.get(f"/api/v1/blobs/{sha256}")
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "blob_not_found"
@@ -112,24 +84,25 @@ def test_blob_endpoint_returns_404_when_file_is_missing(
 # ---------------------------------------------------------------------------
 
 
-def test_delete_stage_keeps_archive_blobs(client: TestClient, app_paths: tuple[str, Path]):
-    database_url, upload_dir = app_paths
-    stage_a = create_stage(client, "视图阶段甲")
-    stage_b = create_stage(client, "视图阶段乙")
+def test_delete_stage_keeps_archive_blobs(
+    sync_client: TestClient, app_paths: tuple[str, Path], tmp_path: Path
+):
+    _database_url, upload_dir = app_paths
+    seed_codex_project(tmp_path)
+    sync_archive(sync_client)
+    stage_a = create_stage(sync_client, "视图阶段甲")
+    stage_b = create_stage(sync_client, "视图阶段乙")
+    event = _archive_event(sync_client)
+    sha256 = event["claims"][0]["anchors"][0]["blob_sha256"]
 
-    # 两个视图共享同一份笔记证据（内容寻址同一个 blob）。
-    note = upload_note(client, stage_a, "2026-05-20-shared.md")
-    upload_note(client, stage_b, "2026-05-20-shared.md")
-    sha256 = hashlib.sha256(note).hexdigest()
-
-    deleted_first = client.delete(f"/api/v1/stages/{stage_a}")
+    deleted_first = sync_client.delete(f"/api/v1/stages/{stage_a}")
     assert deleted_first.status_code == 200
     # 阶段是视图：删除不触碰档案库的任何证据。
-    assert _blob_row_count(database_url, sha256) == 1
-    assert _blob_file(upload_dir, sha256) is not None
+    assert sync_client.get(f"/api/v1/blobs/{sha256}").status_code == 200
+    assert (upload_dir / sha256[:2]).is_dir()
 
-    deleted_last = client.delete(f"/api/v1/stages/{stage_b}")
+    deleted_last = sync_client.delete(f"/api/v1/stages/{stage_b}")
     assert deleted_last.status_code == 200
-    # 删光全部视图，档案依旧完整——清空档案是唯一破坏性操作。
-    assert _blob_row_count(database_url, sha256) == 1
-    assert _blob_file(upload_dir, sha256) is not None
+    # 删光全部视图，档案依旧完整——清空档案库是唯一破坏性操作。
+    assert sync_client.get(f"/api/v1/blobs/{sha256}").status_code == 200
+    assert next((upload_dir / sha256[:2]).glob(f"{sha256}.*")).is_file()

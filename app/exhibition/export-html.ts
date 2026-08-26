@@ -17,7 +17,6 @@ export type ExportExhibitEvent = {
   occurred_on: string | null;
   status: string;
   origin: string;
-  exhibit_caption: string | null;
   claims: { text: string }[];
 };
 
@@ -118,7 +117,7 @@ export function buildExhibitionHtml(input: ExportExhibitionInput): string {
             <span class="chip ${esc(event.status)}">${esc(statusLabel(event.status))}</span>
           </div>
           <h3>${esc(event.title)}</h3>
-          <p class="caption">${esc(event.exhibit_caption || exhibitNarrative(event))}</p>
+          <p class="caption">${esc(exhibitNarrative(event))}</p>
         </article>`,
         )
         .join("")}

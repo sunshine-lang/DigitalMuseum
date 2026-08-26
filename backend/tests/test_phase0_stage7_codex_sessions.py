@@ -1,14 +1,20 @@
+"""codex-evidence-v1 适配器行为（S3 起经档案库同步链路验证）。
+
+确定性口径：只读 ~/.codex/sessions 日期目录下的 rollout JSONL；项目归属
+由首行 session_meta.cwd 决定；只统计 thread_source=="user"（subagent 内部
+线程的 user_message 是系统注入审计材料，一律排除）；cwd 已消失的项目
+不进发现与同步；无 meta 的文件跳过。
+"""
+
 from __future__ import annotations
 
 import json
-from functools import partial
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from tests.helpers import create_stage, import_agent_sessions
 from tests.helpers import fetch_document as _fetch_document
 
 
@@ -85,6 +91,7 @@ SUBAGENT_LINES = [
 ]
 
 OTHER_PROJECT_LINES = [
+    # cwd 已消失的项目：发现端不列（断言其不进档案）。
     _rollout_line(
         "2026-05-10T04:00:00.000Z",
         "session_meta",
@@ -146,26 +153,31 @@ def codex_workspace(tmp_path: Path) -> tuple[Path, Path]:
     return workspace, sessions_root
 
 
-# codex_client fixture 统一在 conftest.py（stage6/stage7 共用）。
+def _sync(client: TestClient) -> dict:
+    response = client.post("/api/v1/archive/sync")
+    assert response.status_code == 200, response.text
+    return response.json()["data"]
 
-_import = partial(import_agent_sessions, endpoint="codex-sessions")
+
+def _archive_events(client: TestClient) -> list[dict]:
+    return client.get("/api/v1/archive/events").json()["data"]
 
 
-def test_import_creates_verified_daily_event_excluding_subagent(
+def test_sync_creates_verified_daily_events_excluding_subagent(
     codex_client: TestClient, codex_workspace: tuple[Path, Path]
 ) -> None:
-    workspace, _sessions_root = codex_workspace
-    stage_id = create_stage(codex_client, "Codex 阶段")
+    _workspace, _sessions_root = codex_workspace
 
-    data = _import(codex_client, stage_id, workspace)
+    summary = _sync(codex_client)
+    # cwd 已消失的 OtherProject 不在发现列表；本项目一个项目导入。
+    assert summary["projects_imported"] == 1
+    assert [item["project"] for item in summary["products"]] == ["MyProject"]
 
-    assert data["occurrence"]["status"] == "completed"
-    assert data["occurrence"]["original_filename"] == "MyProject-codex-sessions.txt"
-    events = data["events"]
-    assert len(events) == 1
-    event = events[0]
+    events = _archive_events(codex_client)
+    # 全量读取：一年前的会话与当日会话各成一段（同步无窗口边界）。
+    assert [event["occurred_on"] for event in events] == ["2025-01-01", "2026-05-10"]
+    event = events[1]
     assert event["title"] == "在 MyProject 与 Codex 协作"
-    assert event["occurred_on"] == "2026-05-10"
     assert event["status"] == "verified"
     assert event["origin"] == "codex"
     claim = event["claims"][0]
@@ -177,7 +189,7 @@ def test_import_creates_verified_daily_event_excluding_subagent(
     assert "3 条用户消息" in claim["text"]
     assert "帮我给这个仓库加上 CI" in claim["text"]
 
-    document = _fetch_document(codex_client, data["occurrence"]["blob_sha256"])
+    document = _fetch_document(codex_client, claim["anchors"][0]["blob_sha256"])
     lines = document.split("\n")
     for anchor in claim["anchors"]:
         assert lines[anchor["line_start"] - 1] == anchor["quote"]
@@ -187,32 +199,45 @@ def test_import_creates_verified_daily_event_excluding_subagent(
     assert any(line.startswith("> 帮我给这个仓库加上 CI") for line in lines)
 
 
-def test_reimport_aggregates_without_duplicate(
-    codex_client: TestClient, codex_workspace: tuple[Path, Path]
+def test_same_label_projects_same_day_aggregate_into_one_event(
+    codex_client: TestClient, tmp_path: Path
 ) -> None:
-    workspace, _sessions_root = codex_workspace
-    stage_id = create_stage(codex_client, "Codex 阶段")
-    _import(codex_client, stage_id, workspace)
-    second = _import(codex_client, stage_id, workspace)
+    """两个不同路径、同名末段的项目同日会话 → 同题同日聚合为一段。"""
+    sessions_root = tmp_path / "codex-home" / "sessions"
+    day_dir = sessions_root / "2026" / "05" / "10"
+    day_dir.mkdir(parents=True)
+    for parent in ("alpha", "beta"):
+        project = tmp_path / parent / "MyProject"
+        project.mkdir(parents=True)
+        (day_dir / f"rollout-{parent}.jsonl").write_text(
+            _rollout_line(
+                "2026-05-10T02:00:00.000Z", "session_meta", _session_meta(str(project))
+            )
+            + "\n"
+            + _rollout_line(
+                "2026-05-10T02:01:00.000Z",
+                "event_msg",
+                {"type": "user_message", "message": "同一个名字的项目"},
+            )
+            + "\n",
+            encoding="utf-8",
+        )
 
-    assert second["events"] == []
-    response = codex_client.get(f"/api/v1/stages/{stage_id}/events")
-    events = response.json()["data"]
-    visible = [
-        event for event in events if event["status"] not in ("rejected", "merged", "split")
-    ]
-    assert len(visible) == 1
-    assert visible[0]["origin"] == "aggregated"
-    assert visible[0]["source_count"] == 2
+    _sync(codex_client)
+    events = _archive_events(codex_client)
+
+    assert len(events) == 1
+    assert events[0]["origin"] == "aggregated"
+    assert events[0]["source_count"] == 2
+    assert events[0]["status"] == "verified"
 
 
-def test_disputed_then_reimport_absorbs_into_user_judgement(
+def test_disputed_then_new_session_absorbs_into_user_judgement(
     codex_client: TestClient, codex_workspace: tuple[Path, Path]
 ) -> None:
     workspace, sessions_root = codex_workspace
-    stage_id = create_stage(codex_client, "Codex 阶段")
-    data = _import(codex_client, stage_id, workspace)
-    event_id = data["events"][0]["id"]
+    _sync(codex_client)
+    event_id = _archive_events(codex_client)[1]["id"]
     review = codex_client.post(
         f"/api/v1/events/{event_id}/reviews",
         json={"decision": "disputed", "note": "那天在休假", "expected_revision": 0},
@@ -237,48 +262,20 @@ def test_disputed_then_reimport_absorbs_into_user_judgement(
         + "\n",
         encoding="utf-8",
     )
-    third = _import(codex_client, stage_id, workspace)
-    assert third["events"] == []
+    summary = _sync(codex_client)
+    assert summary["projects_imported"] == 1  # 快照替换，不是跳过
 
-    response = codex_client.get(f"/api/v1/stages/{stage_id}/events")
-    visible = [
-        event
-        for event in response.json()["data"]
-        if event["status"] not in ("rejected", "merged", "split")
-    ]
-    assert len(visible) == 1
-    assert visible[0]["status"] == "disputed"
-    assert len(visible[0]["claims"]) == 2
-
-
-# 路径错误契约（缺目录/越界/空路径）已参数化合一到
-# test_phase0_stage6_claude_sessions.py::test_agent_session_path_errors。
-
-
-def test_no_sessions_in_range_leaves_no_residue(
-    codex_client: TestClient, tmp_path: Path
-) -> None:
-    stage_id = create_stage(codex_client, "Codex 阶段")
-    workspace = tmp_path / "empty-project"
-    workspace.mkdir()
-    sessions_root = tmp_path / "codex-home" / "sessions"
-    sessions_root.mkdir(parents=True)
-
-    response = codex_client.post(
-        f"/api/v1/stages/{stage_id}/codex-sessions",
-        json={"path": str(workspace)},
-    )
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "no_codex_sessions_in_range"
-
-    coverage = codex_client.get(f"/api/v1/stages/{stage_id}/coverage")
-    assert coverage.json()["data"] == []
+    events = _archive_events(codex_client)
+    assert len(events) == 2
+    target = next(event for event in events if event["occurred_on"] == "2026-05-10")
+    assert target["status"] == "disputed"
+    assert target["id"] == event_id
 
 
 def test_restart_persists_events_and_review(
     app_paths, tmp_path: Path, codex_workspace: tuple[Path, Path]
 ) -> None:
-    workspace, _sessions_root = codex_workspace
+    _workspace, _sessions_root = codex_workspace
     database_url, upload_dir = app_paths
     with TestClient(
         create_app(
@@ -288,9 +285,8 @@ def test_restart_persists_events_and_review(
             codex_sessions_root=str(tmp_path / "codex-home" / "sessions"),
         )
     ) as client:
-        stage_id = create_stage(client, "Codex 阶段")
-        data = _import(client, stage_id, workspace)
-        event_id = data["events"][0]["id"]
+        _sync(client)
+        event_id = _archive_events(client)[1]["id"]
         confirmed = client.post(
             f"/api/v1/events/{event_id}/reviews",
             json={"decision": "confirmed", "expected_revision": 0},
@@ -305,27 +301,5 @@ def test_restart_persists_events_and_review(
             codex_sessions_root=str(tmp_path / "codex-home" / "sessions"),
         )
     ) as client:
-        events = client.get(f"/api/v1/stages/{stage_id}/events").json()["data"]
-        assert len(events) == 1
-        assert events[0]["status"] == "confirmed"
-        assert events[0]["origin"] == "codex"
-
-
-def test_preview_reports_range_without_side_effects(
-    codex_client: TestClient, codex_workspace: tuple[Path, Path]
-) -> None:
-    workspace, _sessions_root = codex_workspace
-    response = codex_client.get(
-        "/api/v1/codex-sessions/preview",
-        params={"path": str(workspace)},
-    )
-    assert response.status_code == 200
-    preview = response.json()["data"]
-    assert preview["project_label"] == "MyProject"
-    assert preview["first_session_on"] == "2025-01-01"
-    assert preview["last_session_on"] == "2026-05-10"
-    # subagent / 其他项目 / 无 meta 的文件都不算：范围内会话只有 2 个，旧会话 1 个。
-    assert preview["session_count"] == 3
-
-    stages = codex_client.get("/api/v1/stages").json()["data"]
-    assert all(stage["evidence_count"] == 0 for stage in stages)
+        events = _archive_events(client)
+        assert [event["status"] for event in events] == ["verified", "confirmed"]

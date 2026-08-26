@@ -22,26 +22,19 @@ from app.domain.models import (
     Stage,
     utc_now,
 )
-from app.domain.schemas import MergeCreate, ReviewCreate, StageCreate, StageUpdate
+from app.domain.schemas import ReviewCreate, StageCreate, StageUpdate
 from app.services import claude_session_evidence_service as claude_evidence
 from app.services import codex_session_evidence_service as codex_evidence
-from app.services import git_evidence_service as git_evidence
 from app.services.agent_session_evidence import AgentActivityItem
-from app.services.git_evidence_service import GitActivityItem
-from app.services.note_parser import PROCESSOR_VERSION, ParsedNote
 
-AGGREGATION_RULE_VERSION = "note-aggregation-v1"
-STRUCTURAL_STATUSES = {"merged", "split"}
-# 聚合可并入的状态：candidate 是待核对草稿；verified 是确定性证据的系统核实态
-# （Git 提交）。被用户审阅过的事件 revision > 0，天然不会匹配。
+AGGREGATION_RULE_VERSION = "agent-session-aggregation-v1"
+# 聚合可并入的状态：candidate 是待核对草稿；verified 是确定性读数的系统核实态。
+# 被用户审阅过的事件 revision > 0，天然不会匹配。
 AGGREGATABLE_STATUSES = ("candidate", "verified")
 
-# 机器证据同题同日聚合时的候选 origin 白名单。各家族只并入自身与笔记；
-# Claude/Codex 会话事件不与 Git 聚合。
-NOTE_AGGREGATION_ORIGINS = ("note", "aggregated")
-GIT_AGGREGATION_ORIGINS = ("note", "aggregated", "git")
-CLAUDE_AGGREGATION_ORIGINS = ("note", "aggregated", "claude")
-CODEX_AGGREGATION_ORIGINS = ("note", "aggregated", "codex")
+# 同题同日聚合的 origin 白名单：各 Agent 家族只并入自身与聚合产物。
+CLAUDE_AGGREGATION_ORIGINS = ("aggregated", "claude")
+CODEX_AGGREGATION_ORIGINS = ("aggregated", "codex")
 
 COVERAGE_ORDER = {
     "stored_locally": 0,
@@ -195,7 +188,7 @@ def record_failed_import(
     session.commit()
 
 
-def start_note_import(
+def start_evidence_import(
     session: Session,
     *,
     original_filename: str,
@@ -236,7 +229,7 @@ def mark_import_failed(
     occurrence_id: str,
     step: str,
     error_code: str,
-    processor_version: str = PROCESSOR_VERSION,
+    processor_version: str,
 ) -> None:
     occurrence = session.get(EvidenceOccurrence, occurrence_id)
     occurrence.status = "failed"
@@ -261,194 +254,12 @@ def mark_import_failed(
     session.commit()
 
 
-def persist_note_candidate(
-    session: Session,
-    *,
-    occurrence_id: str,
-    parsed: ParsedNote,
-) -> dict:
-    occurrence = session.get(EvidenceOccurrence, occurrence_id)
-    if occurrence is None:
-        raise ApiError(404, "occurrence_not_found", "没有找到这次笔记导入")
-    if occurrence.blob is None:
-        raise ApiError(500, "missing_evidence_blob", "原始证据没有完成本地保存")
-
-    target = _find_aggregation_target(session, parsed.title, parsed.occurred_on)
-    if target is not None:
-        event = target
-        claim = Claim(
-            event=event,
-            occurrence_id=occurrence.id,
-            text=parsed.claim_text,
-            epistemic_status="unknown",
-            evidence_role="user_statement",
-            processor_version=PROCESSOR_VERSION,
-            source_title=parsed.title,
-            source_occurred_on=parsed.occurred_on,
-        )
-        claim.anchors.append(
-            EvidenceAnchor(
-                blob=occurrence.blob,
-                quote=parsed.claim_text,
-                line_start=parsed.line_start,
-                line_end=parsed.line_end,
-                char_start=parsed.char_start,
-                char_end=parsed.char_end,
-            )
-        )
-        event.origin = "aggregated"
-        event.aggregation_rule = AGGREGATION_RULE_VERSION
-        event.updated_at = utc_now()
-        session.add(claim)
-    else:
-        event = CandidateEvent(
-            occurrence=occurrence,
-            title=parsed.title,
-            occurred_on=parsed.occurred_on,
-            time_precision="exact" if parsed.occurred_on else "unknown",
-            status="candidate",
-            revision=0,
-            origin="note",
-        )
-        claim = Claim(
-            event=event,
-            occurrence_id=occurrence.id,
-            text=parsed.claim_text,
-            epistemic_status="unknown",
-            evidence_role="user_statement",
-            processor_version=PROCESSOR_VERSION,
-            source_title=parsed.title,
-            source_occurred_on=parsed.occurred_on,
-        )
-        claim.anchors.append(
-            EvidenceAnchor(
-                blob=occurrence.blob,
-                quote=parsed.claim_text,
-                line_start=parsed.line_start,
-                line_end=parsed.line_end,
-                char_start=parsed.char_start,
-                char_end=parsed.char_end,
-            )
-        )
-    occurrence.status = "completed"
-    occurrence.coverage_items.extend(
-        [
-            CoverageItem(
-                step="parsed_locally",
-                status="completed",
-                processor_version=PROCESSOR_VERSION,
-            ),
-            CoverageItem(
-                step="candidate_generated",
-                status="completed",
-                processor_version=PROCESSOR_VERSION,
-            ),
-        ]
-    )
-    session.add(event)
-    session.commit()
-    reloaded_event = _load_event(session, event.id)
-    return {
-        "occurrence": serialize_occurrence(occurrence),
-        "event": serialize_event(reloaded_event, session),
-        "coverage": _occurrence_coverage(session, occurrence.id),
-    }
-
-
-def import_git_evidence(
-    session: Session,
-    *,
-    stage_id: str,
-    repo_path: str,
-    upload_dir: Path,
-    allowed_repo_roots: str,
-) -> dict:
-    stage = require_stage(session, stage_id)
-    evidence = git_evidence.import_git_repository(
-        repo_path,
-        starts_on=stage.starts_on,
-        ends_on=stage.ends_on,
-        allowed_roots=allowed_repo_roots,
-    )
-    return _import_activity_evidence(
-        session,
-        upload_dir=upload_dir,
-        document=evidence.document,
-        items=evidence.items,
-        label=evidence.repo_name,
-        filename_suffix="-git-evidence.txt",
-        origin="git",
-        origins=GIT_AGGREGATION_ORIGINS,
-        processor_version=git_evidence.GIT_PROCESSOR_VERSION,
-    )
-
-
-def import_claude_sessions(
-    session: Session,
-    *,
-    stage_id: str,
-    path: str,
-    upload_dir: Path,
-    allowed_repo_roots: str,
-    claude_projects_root: str,
-) -> dict:
-    stage = require_stage(session, stage_id)
-    evidence = claude_evidence.import_claude_sessions(
-        path,
-        starts_on=stage.starts_on,
-        ends_on=stage.ends_on,
-        allowed_roots=allowed_repo_roots,
-        projects_root=claude_projects_root,
-    )
-    return _import_activity_evidence(
-        session,
-        upload_dir=upload_dir,
-        document=evidence.document,
-        items=evidence.items,
-        label=evidence.project_label,
-        filename_suffix="-claude-sessions.txt",
-        origin="claude",
-        origins=CLAUDE_AGGREGATION_ORIGINS,
-        processor_version=claude_evidence.CLAUDE_PROCESSOR_VERSION,
-    )
-
-
-def import_codex_sessions(
-    session: Session,
-    *,
-    stage_id: str,
-    path: str,
-    upload_dir: Path,
-    allowed_repo_roots: str,
-    codex_sessions_root: str,
-) -> dict:
-    stage = require_stage(session, stage_id)
-    evidence = codex_evidence.import_codex_sessions(
-        path,
-        starts_on=stage.starts_on,
-        ends_on=stage.ends_on,
-        allowed_roots=allowed_repo_roots,
-        sessions_root=codex_sessions_root,
-    )
-    return _import_activity_evidence(
-        session,
-        upload_dir=upload_dir,
-        document=evidence.document,
-        items=evidence.items,
-        label=evidence.project_label,
-        filename_suffix="-codex-sessions.txt",
-        origin="codex",
-        origins=CODEX_AGGREGATION_ORIGINS,
-        processor_version=codex_evidence.CODEX_PROCESSOR_VERSION,
-    )
-
-
 def _import_activity_evidence(
     session: Session,
     *,
     upload_dir: Path,
     document: str,
-    items: tuple[GitActivityItem | AgentActivityItem, ...],
+    items: tuple[AgentActivityItem, ...],
     label: str,
     filename_suffix: str,
     origin: str,
@@ -456,12 +267,12 @@ def _import_activity_evidence(
     processor_version: str,
     source_key: str | None = None,
 ) -> dict:
-    """Git / Claude / Codex 三条导入链路的公共尾部：
+    """Agent 会话同步链路的公共尾部：
 
     证据文档落 blob → 起始 occurrence → 持久化机器候选（失败则标记失败
     coverage 后原样抛出）→ 只保留本次 occurrence 的 coverage 并组装返回。
     """
-    occurrence = start_note_import(
+    occurrence = start_evidence_import(
         session,
         original_filename=f"{label}{filename_suffix}",
         media_type="text/plain",
@@ -499,7 +310,7 @@ def _persist_machine_candidates(
     session: Session,
     *,
     occurrence_id: str,
-    items: tuple[GitActivityItem | AgentActivityItem, ...],
+    items: tuple[AgentActivityItem, ...],
     origin: str,
     origins: tuple[str, ...],
     processor_version: str,
@@ -567,149 +378,6 @@ def _persist_machine_candidates(
         for event in created_events
     ]
     return all_events
-
-
-def set_exhibit_caption(session: Session, event_id: str, caption: str | None) -> dict:
-    """展签是展览态的人工策展文案：只改 display 层，不触碰状态机、
-    审计与聚合语义（结构性事件也可改——拆分产物同样要展出）。"""
-    event = _load_event(session, event_id)
-    normalized = caption.strip() if caption else ""
-    if normalized and len(normalized) > 200:
-        raise ApiError(422, "invalid_caption", "展签不能超过 200 字")
-    event.exhibit_caption = normalized or None
-    event.updated_at = utc_now()
-    session.commit()
-    return serialize_event(event, session)
-
-
-def merge_events(session: Session, payload: MergeCreate) -> dict:
-    unique_ids = list(dict.fromkeys(payload.event_ids))
-    if len(unique_ids) < 2:
-        raise ApiError(422, "merge_needs_multiple_events", "合并至少需要选择两个不同事件")
-
-    events: list[CandidateEvent] = []
-    for event_id in unique_ids:
-        event = session.get(CandidateEvent, event_id)
-        if event is None:
-            raise ApiError(404, "event_not_found", "没有找到这个候选事件")
-        events.append(event)
-    for event in events:
-        if event.status in STRUCTURAL_STATUSES:
-            raise ApiError(409, "event_not_mergeable", "已合并或已拆分的事件不能再次合并")
-
-    requested_title = payload.title.strip() if payload.title else None
-    if payload.title is not None and not requested_title:
-        raise ApiError(422, "invalid_merge_title", "合并事件的新标题不能为空白")
-
-    ordered = sorted(events, key=lambda event: event.created_at)
-    known_dates = [event.occurred_on for event in ordered if event.occurred_on is not None]
-    dates_agree = len(known_dates) == len(ordered) and len(set(known_dates)) == 1
-
-    merged = CandidateEvent(
-        occurrence_id=None,
-        title=(requested_title or ordered[0].title)[:200],
-        occurred_on=known_dates[0] if dates_agree else None,
-        time_precision="exact" if dates_agree else "unknown",
-        status="candidate",
-        revision=0,
-        origin="merged",
-    )
-    session.add(merged)
-    session.flush()
-
-    source_ids = [event.id for event in ordered]
-    session.execute(
-        update(Claim)
-        .where(Claim.event_id.in_(source_ids))
-        .values(event_id=merged.id, epistemic_status="unknown")
-    )
-    now = utc_now()
-    for event in ordered:
-        previous_status = event.status
-        event.status = "merged"
-        event.revision += 1
-        event.parent_event_id = merged.id
-        event.occurrence_id = None
-        event.updated_at = now
-        session.add(
-            EventReview(
-                event_id=event.id,
-                decision="merged",
-                note=None,
-                previous_status=previous_status,
-                revision=event.revision,
-            )
-        )
-    session.commit()
-    session.expire_all()
-    return {
-        "event": serialize_event(_load_event(session, merged.id), session),
-        "sources": [
-            serialize_event(_load_event(session, event_id), session)
-            for event_id in source_ids
-        ],
-    }
-
-
-def split_event(session: Session, event_id: str) -> dict:
-    event = _load_event(session, event_id)
-    if event.status in STRUCTURAL_STATUSES:
-        raise ApiError(409, "event_not_splittable", "已合并或已拆分的事件不能再次拆分")
-
-    claim_groups: dict[str, list[Claim]] = {}
-    for claim in event.claims:
-        claim_groups.setdefault(claim.occurrence_id, []).append(claim)
-    if len(claim_groups) < 2:
-        raise ApiError(409, "nothing_to_split", "这个事件只有一个来源 Note，无法拆分")
-
-    children: list[CandidateEvent] = []
-    for occurrence_id, claims in claim_groups.items():
-        first_claim = claims[0]
-        children.append(
-            CandidateEvent(
-                occurrence_id=occurrence_id,
-                title=first_claim.source_title[:200],
-                occurred_on=first_claim.source_occurred_on,
-                time_precision="exact" if first_claim.source_occurred_on else "unknown",
-                status="candidate",
-                revision=0,
-                origin="split",
-                parent_event_id=event.id,
-            )
-        )
-    session.add_all(children)
-    session.flush()
-
-    for child, (_occurrence_id, claims) in zip(children, claim_groups.items(), strict=True):
-        session.execute(
-            update(Claim)
-            .where(Claim.id.in_([claim.id for claim in claims]))
-            .values(event_id=child.id, epistemic_status="unknown")
-        )
-
-    previous_status = event.status
-    event.status = "split"
-    event.revision += 1
-    event.occurrence_id = None
-    event.updated_at = utc_now()
-    session.add(
-        EventReview(
-            event_id=event.id,
-            decision="split",
-            note=None,
-            previous_status=previous_status,
-            revision=event.revision,
-        )
-    )
-    session.commit()
-    session.expire_all()
-    return {
-        "event": serialize_event(_load_event(session, event_id), session),
-        "events": [
-            serialize_event(_load_event(session, child.id), session)
-            for child in children
-        ],
-    }
 
 
 def _resolve_machine_event(
@@ -802,7 +470,7 @@ def _find_aggregation_target(
     session: Session,
     title: str,
     occurred_on: date | None,
-    origins: tuple[str, ...] = NOTE_AGGREGATION_ORIGINS,
+    origins: tuple[str, ...],
 ) -> CandidateEvent | None:
     if occurred_on is None:
         return None
@@ -862,8 +530,6 @@ def get_event(session: Session, event_id: str) -> dict:
 
 def review_event(session: Session, event_id: str, payload: ReviewCreate) -> dict:
     event = _load_event(session, event_id)
-    if event.status in STRUCTURAL_STATUSES:
-        raise ApiError(409, "event_not_reviewable", "已合并或已拆分的事件不能再审阅")
     if event.revision != payload.expected_revision:
         raise ApiError(409, "stale_event_revision", "事件已被其他审阅更新，请刷新后再试")
 
@@ -966,7 +632,6 @@ def serialize_event(event: CandidateEvent, session: Session) -> dict:
         "revision": event.revision,
         "is_formal": event.status == "confirmed",
         "origin": event.origin,
-        "exhibit_caption": event.exhibit_caption,
         "source_count": len({claim.occurrence_id for claim in event.claims}),
         "claims": [
             {

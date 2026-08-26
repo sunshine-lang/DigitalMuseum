@@ -43,20 +43,14 @@ const friendlyStatus: Record<CandidateEvent["status"], string> = {
   unknown: "暂时不确定",
 };
 
-function isStructuralEvent(event: CandidateEvent): boolean {
-  return event.status === "merged" || event.status === "split";
-}
-
 function isVisibleExperience(event: CandidateEvent): boolean {
-  return !isStructuralEvent(event) && isVisibleExperienceBase(event);
+  return isVisibleExperienceBase(event);
 }
 
 function originChipLabel(event: CandidateEvent): string {
   if (event.origin === "claude") return "来自 Claude Code 会话";
   if (event.origin === "codex") return "来自 Codex 会话";
-  if (event.origin === "git") return "来自 Git 仓库";
-  if (event.origin === "aggregated") return `聚合自 ${event.source_count} 份`;
-  return "来自笔记";
+  return `聚合自 ${event.source_count} 份`;
 }
 
 function evidenceSummary(event: CandidateEvent): string {

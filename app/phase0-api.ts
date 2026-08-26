@@ -1,23 +1,25 @@
-export type GitRepoPreview = {
-  repo_name: string;
-  first_commit_on: string;
-  last_commit_on: string;
-  commit_count: number;
-};
+/**
+ * 档案库 API 客户端（ADR-0001/0002）：Agent 会话同步、档案时间线、
+ * 事件审阅（异议通道）与清空档案库是全部能力面。
+ */
 
-export type Stage = {
-  id: string;
-  name: string;
-  starts_on: string;
-  ends_on: string;
+export type ReviewDecision = "confirmed" | "disputed" | "unknown" | "rejected";
+
+export type EventStatus =
+  | "candidate"
+  | "verified"
+  | ReviewDecision;
+
+export type EventOrigin = "aggregated" | "claude" | "codex";
+
+type EventReview = {
+  decision: ReviewDecision;
+  note: string | null;
+  revision: number;
   created_at: string;
-  evidence_count: number;
-  event_count: number;
-  confirmed_count: number;
-  verified_count: number;
 };
 
-type Anchor = {
+export type ClaimAnchor = {
   blob_sha256: string;
   quote: string;
   line_start: number;
@@ -26,37 +28,13 @@ type Anchor = {
   char_end: number;
 };
 
-type Claim = {
+export type Claim = {
   id: string;
   text: string;
   epistemic_status: "unknown" | "user_confirmed" | "disputed";
   evidence_role: "user_statement" | "artifact";
   processor_version: string;
-  anchors: Anchor[];
-};
-
-export type ReviewDecision = "confirmed" | "disputed" | "unknown" | "rejected";
-
-type EventOrigin =
-  | "note"
-  | "aggregated"
-  | "merged"
-  | "split"
-  | "git"
-  // "photo" 仅为兼容历史数据中的旧照片事件保留；照片适配器已于 2026-08-25 删除。
-  | "photo"
-  | "claude"
-  | "codex";
-
-type AuditDecision = ReviewDecision | "merged" | "split";
-
-type EventStatus = "candidate" | "verified" | ReviewDecision | "merged" | "split";
-
-type EventReview = {
-  decision: AuditDecision;
-  note: string | null;
-  revision: number;
-  created_at: string;
+  anchors: ClaimAnchor[];
 };
 
 export type CandidateEvent = {
@@ -69,19 +47,8 @@ export type CandidateEvent = {
   is_formal: boolean;
   origin: EventOrigin;
   source_count: number;
-  exhibit_caption: string | null;
   claims: Claim[];
   latest_review: EventReview | null;
-};
-
-export type CoverageItem = {
-  id: string;
-  occurrence_id: string;
-  original_filename: string;
-  step: "stored_locally" | "parsed_locally" | "candidate_generated";
-  status: "completed" | "failed";
-  processor_version: string | null;
-  error_code: string | null;
 };
 
 type ApiEnvelope<T> = { data: T };
@@ -112,7 +79,7 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
     });
   } catch {
     throw new Phase0ApiError(
-      "无法连接本地后端。请先按 README 启动 8010 端口的 Phase 0 API。",
+      "无法连接本地后端。请先按 README 启动 8010 端口的本地 API。",
       "backend_unavailable",
       0,
     );
@@ -129,67 +96,6 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return body.data;
 }
 
-export function createStage(payload: {
-  name: string;
-  starts_on: string;
-  ends_on: string;
-}): Promise<Stage> {
-  return apiRequest("/api/v1/stages", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-export function getStage(stageId: string): Promise<Stage> {
-  return apiRequest(`/api/v1/stages/${stageId}`);
-}
-
-export function listStages(): Promise<Stage[]> {
-  return apiRequest("/api/v1/stages");
-}
-
-export function renameStage(stageId: string, name: string): Promise<Stage> {
-  return apiRequest(`/api/v1/stages/${stageId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ name }),
-  });
-}
-
-export function deleteStage(stageId: string): Promise<{ id: string }> {
-  return apiRequest(`/api/v1/stages/${stageId}`, {
-    method: "DELETE",
-  });
-}
-
-export function getEvents(stageId: string): Promise<CandidateEvent[]> {
-  return apiRequest(`/api/v1/stages/${stageId}/events`);
-}
-
-export function getCoverage(stageId: string): Promise<CoverageItem[]> {
-  return apiRequest(`/api/v1/stages/${stageId}/coverage`);
-}
-
-export function importNote(stageId: string, file: File): Promise<CandidateEvent> {
-  const formData = new FormData();
-  formData.append("file", file);
-  return apiRequest<{
-    event: CandidateEvent;
-  }>(`/api/v1/stages/${stageId}/notes`, {
-    method: "POST",
-    body: formData,
-  }).then((result) => result.event);
-}
-
-export function updateExhibitCaption(
-  eventId: string,
-  caption: string | null,
-): Promise<CandidateEvent> {
-  return apiRequest(`/api/v1/events/${eventId}/exhibit-caption`, {
-    method: "PATCH",
-    body: JSON.stringify({ caption }),
-  });
-}
-
 export function reviewEvent(
   eventId: string,
   payload: { decision: ReviewDecision; note: string | null; expected_revision: number },
@@ -200,73 +106,7 @@ export function reviewEvent(
   });
 }
 
-export function mergeEvents(
-  stageId: string,
-  payload: { event_ids: string[]; title?: string },
-): Promise<{ event: CandidateEvent; sources: CandidateEvent[] }> {
-  return apiRequest(`/api/v1/stages/${stageId}/events/merge`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-export function splitEvent(
-  eventId: string,
-): Promise<{ event: CandidateEvent; events: CandidateEvent[] }> {
-  return apiRequest(`/api/v1/events/${eventId}/split`, {
-    method: "POST",
-    body: JSON.stringify({}),
-  });
-}
-
-/** 十秒开馆冷启动：只读预览仓库的最早/最晚提交与提交数，帮填建馆表单，不落库。 */
-export function previewGitRepo(repoPath: string): Promise<GitRepoPreview> {
-  return apiRequest(
-    `/api/v1/git-repos/preview?path=${encodeURIComponent(repoPath)}`,
-  );
-}
-
-export function importGitRepo(
-  stageId: string,
-  repoPath: string,
-): Promise<{ events: CandidateEvent[] }> {
-  return apiRequest(`/api/v1/stages/${stageId}/git-repos`, {
-    method: "POST",
-    body: JSON.stringify({ path: repoPath }),
-  });
-}
-
-/** occurrence.original_filename 形如 "MyProject-claude-sessions.txt"，项目标签是确定性前缀。 */
-export function claudeProjectLabel(originalFilename: string): string {
-  return originalFilename.replace(/-claude-sessions\.txt$/, "");
-}
-
-export function importClaudeSessions(
-  stageId: string,
-  projectPath: string,
-): Promise<{ occurrence: { original_filename: string }; events: CandidateEvent[] }> {
-  return apiRequest(`/api/v1/stages/${stageId}/claude-sessions`, {
-    method: "POST",
-    body: JSON.stringify({ path: projectPath }),
-  });
-}
-
-/** occurrence.original_filename 形如 "MyProject-codex-sessions.txt"。 */
-export function codexProjectLabel(originalFilename: string): string {
-  return originalFilename.replace(/-codex-sessions\.txt$/, "");
-}
-
-export function importCodexSessions(
-  stageId: string,
-  projectPath: string,
-): Promise<{ occurrence: { original_filename: string }; events: CandidateEvent[] }> {
-  return apiRequest(`/api/v1/stages/${stageId}/codex-sessions`, {
-    method: "POST",
-    body: JSON.stringify({ path: projectPath }),
-  });
-}
-
-/** 会话发现面板：本机有会话的项目，import_path 可原样传给导入端点。 */
+/** 会话发现面板：本机有会话的项目，供同步范围展示。 */
 export type AgentSessionProject = {
   project: string;
   session_count: number;

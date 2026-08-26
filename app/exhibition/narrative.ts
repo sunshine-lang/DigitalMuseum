@@ -1,7 +1,6 @@
 /**
- * 展品叙事底稿：把确定性 claim 压成一句适合展览的人话。
- * 确定性天花板明确——真正满意的展签交给用户改写（exhibit_caption），
- * 这里只负责"不丢人"的默认值。原文与锚点仍在"展品标签"里供查证。
+ * 展品叙事底稿：把确定性 claim 压成一句适合展览的人话（纯确定性推导，
+ * S5 将升级为项目级里程碑叙事）。原文与锚点仍在"展品标签"里供查证。
  */
 
 export type NarrativeEvent = {
@@ -40,19 +39,7 @@ export function exhibitNarrative(event: NarrativeEvent): string {
     return stats ? `这一天你与 ${agent} 有${stats}` : cleanFragment(claim).slice(0, 72);
   }
 
-  if (event.origin === "git") {
-    const commitCount = Number(claim.match(/提交了 (\d+) 个变更/)?.[1] ?? 0);
-    const repo = claim.match(/仓库 ([^（]+?)（/)?.[1] ?? "";
-    const first = claim.match(/变更：([^；。]{4,40})/)?.[1] ?? "";
-    const parts = [
-      repo ? `在 ${repo.trim()}` : "",
-      commitCount > 0 ? `提交了 ${commitCount} 次` : "",
-    ].filter(Boolean).join(" ");
-    const tail = first ? `：${first.trim()}…` : "";
-    return `${parts}${tail}` || cleanFragment(claim).slice(0, 72);
-  }
-
-  // 笔记：取第一个完整句
+  // 兜底：取第一个完整句（未知来源时的确定性读数）。
   const cleaned = cleanFragment(claim).replace(/^[-*>\s]+/, "");
   const sentence = cleaned.split(/[。！？]/)[0];
   return (sentence.length >= 6 ? sentence : cleaned).slice(0, 72);

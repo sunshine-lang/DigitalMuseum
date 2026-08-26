@@ -12,7 +12,6 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from tests.helpers import create_stage
 
 
 def _write_claude_session(projects_root: Path, munged: str, filename: str) -> None:
@@ -117,18 +116,15 @@ def test_discovery_returns_empty_lists_for_missing_roots(tmp_path: Path):
     assert codex.json()["data"] == []
 
 
-def test_discovered_import_path_round_trips_into_import(tmp_path: Path):
-    """发现面板返回的 import_path 必须能原样喂给导入端点（发现→导入闭环）。"""
+def test_discovered_projects_all_sync_into_archive(tmp_path: Path):
+    """发现→同步闭环：发现面板列出的项目在一键同步后全部进入档案。"""
     projects_root = tmp_path / "claude-home" / "projects"
     _write_claude_session(projects_root, "-Users-you-Projects-alpha", "a.jsonl")
 
     with _discovery_client(tmp_path) as client:
-        stage_id = create_stage(client, "发现导入闭环")
         discovered = client.get("/api/v1/claude-sessions/projects").json()["data"]
-        imported = client.post(
-            f"/api/v1/stages/{stage_id}/claude-sessions",
-            json={"path": discovered[0]["import_path"]},
-        )
+        synced = client.post("/api/v1/archive/sync").json()["data"]
 
-    assert imported.status_code == 201, imported.text
-    assert len(imported.json()["data"]["events"]) == 1
+        assert synced["projects_imported"] == len(discovered)
+        events = client.get("/api/v1/archive/events").json()["data"]
+        assert len(events) == 1
