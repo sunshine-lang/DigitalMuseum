@@ -12,6 +12,7 @@ import {
   type ExportRisk,
 } from "./export-html";
 import {
+  buildCollaborationStyle,
   buildProjectMilestones,
   exhibitNarrative,
   mediumLineOf,
@@ -377,6 +378,7 @@ export default function ExhibitionWorkspace() {
   }
 
   const spanMonths = archive ? monthsBetween(archive.starts_on, archive.ends_on) : groups.length;
+  const style = buildCollaborationStyle(selectedEvents);
   const draftCount = selectedEvents.length - confirmedCount - verifiedCount;
   let closingLine: string;
   if (confirmedCount === 0 && verifiedCount === 0) {
@@ -538,15 +540,41 @@ export default function ExhibitionWorkspace() {
 
       <section className="expo-epilogue">
         <div className="expo-reveal">
-          <span className="expo-kicker">EPILOGUE · 尾声</span>
-          <h2>{closingLine}</h2>
+          <span className="expo-kicker">EPILOGUE · 尾声 · 协作风格速写</span>
+          <div className="expo-style-card">
+            <p className="expo-style-code" aria-label={`协作风格 ${style.code}`}>
+              {style.code.split("").join(" · ")}
+            </p>
+            <h2 className="expo-style-name">{style.archetype}</h2>
+            <p className="expo-style-tagline">「{style.tagline}」</p>
+            <div className="expo-style-axes">
+              {style.axes.map((axis) => (
+                <div className="expo-style-row" key={axis.key}>
+                  <span className={axis.readings[0].win ? "win" : ""}>
+                    <b>{axis.readings[0].pole}</b>
+                    <small>{axis.readings[0].text}</small>
+                  </span>
+                  <i aria-hidden="true">vs</i>
+                  <span className={axis.readings[1].win ? "win" : ""}>
+                    <b>{axis.readings[1].pole}</b>
+                    <small>{axis.readings[1].text}</small>
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className="expo-style-note">
+              基于本次展出 {selectedEvents.length} 段经历的确定性读数归纳，供对照一乐，不是性格测评。
+            </p>
+          </div>
           <div className="expo-epilogue-stats" aria-label="阶段统计">
             <div><strong>{selectedEvents.length}</strong><span>段经历</span></div>
             <div><strong>{confirmedCount}</strong><span>你亲自确认</span></div>
             <div><strong>{verifiedCount}</strong><span>系统核实</span></div>
             <div><strong>{archive?.evidence_count ?? 0}</strong><span>份原始记录</span></div>
           </div>
-          <p>所有展品由本地真实档案确定性生成，未经模型补写。</p>
+          <p className="expo-epilogue-trust">
+            {closingLine} 所有展品由本地真实档案确定性生成，未经模型补写。
+          </p>
           <div className="expo-show-actions">
             <button className="expo-button ghost" type="button" onClick={() => setPhase("select")}>
               回到选展 · 调整展出内容

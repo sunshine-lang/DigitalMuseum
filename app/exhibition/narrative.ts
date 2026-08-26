@@ -265,3 +265,125 @@ export function exhibitNarrative(
   }
   return `第 ${milestone.dayIndex} 个活跃日${topic ? `，围绕「${topic}」` : ""}${stats ? `，${stats}` : ""}；距这个项目与 ${agentPhrase} 的第一次合作已过去 ${span} 天中的大部分时间。`;
 }
+
+/**
+ * 协作风格速写（尾声）：MBTI 式三轴机制 + SBTI 式代号呈现。
+ * 三条轴全部来自展出事件的确定性读数（项目数 / 搭档数 / 峰日消息占比），
+ * 八个类型一一对应、无随机无模型；供对照一乐，不是性格测评。
+ */
+export type StyleReading = {
+  pole: string;
+  text: string;
+  win: boolean;
+};
+
+export type StyleAxis = {
+  key: string;
+  readings: [StyleReading, StyleReading];
+};
+
+export type CollaborationStyle = {
+  code: string;
+  archetype: string;
+  tagline: string;
+  axes: StyleAxis[];
+};
+
+const STYLE_ARCHETYPES: Record<string, { name: string; tagline: string }> = {
+  深独爆: { name: "闭关冲刺手", tagline: "别催，我在闭关；出关即交付。" },
+  深独缓: { name: "长期陪跑员", tagline: "不换项目、不换搭档，把事情慢慢磨成。" },
+  深合爆: { name: "深潜舰队长", tagline: "一个主战场，多员大将，集中火力凿穿。" },
+  深合缓: { name: "工作室主理人", tagline: "把一个项目开成工作室，各位 Agent 排班上工。" },
+  广独爆: { name: "多线突击手", tagline: "项目多线开，搭档只一个，冲刺一波接一波。" },
+  广独缓: { name: "巡回检修员", tagline: "多摊事一个搭档，巡回推进不掉链子。" },
+  广合爆: { name: "全线总指挥", tagline: "多线作战、多 Agent 齐上，峰值日全面开花。" },
+  广合缓: { name: "调度台主控", tagline: "一切尽在调度：多项目、多搭档、稳定输出。" },
+};
+
+export function buildCollaborationStyle(events: NarrativeEvent[]): CollaborationStyle {
+  // 轴一：单项目最长活跃天数 vs 项目数（同分归深度）。
+  const daysByProject = new Map<string, Set<string>>();
+  for (const event of events) {
+    if (!event.occurred_on) continue;
+    const project = projectOfTitle(event.title);
+    const days = daysByProject.get(project) ?? new Set<string>();
+    days.add(event.occurred_on);
+    daysByProject.set(project, days);
+  }
+  const projects = Math.max(1, daysByProject.size);
+  const maxActiveDays = Math.max(1, ...[...daysByProject.values()].map((days) => days.size));
+  const deep = maxActiveDays >= projects;
+
+  // 轴二：搭档的 Agent 产品数（读不出的 origin 不计入）。
+  const agents = [
+    ...new Set(
+      events
+        .map((event) => AGENT_LABELS[event.origin] ?? "")
+        .filter((label) => label.length > 0),
+    ),
+  ];
+  const ensemble = agents.length >= 2;
+
+  // 轴三：全局峰值日消息占比（≥30% 记爆发；无日期读数记匀速）。
+  const messagesByDay = new Map<string, number>();
+  for (const event of events) {
+    if (!event.occurred_on) continue;
+    messagesByDay.set(
+      event.occurred_on,
+      (messagesByDay.get(event.occurred_on) ?? 0) +
+        messageCountOf(event.claims[0]?.text ?? ""),
+    );
+  }
+  const totalMessages = [...messagesByDay.values()].reduce((sum, n) => sum + n, 0);
+  const peakShare = totalMessages > 0
+    ? Math.max(...messagesByDay.values()) / totalMessages
+    : 0;
+  const burst = peakShare >= 0.3;
+
+  const code = `${deep ? "深" : "广"}${ensemble ? "合" : "独"}${burst ? "爆" : "缓"}`;
+  const archetype = STYLE_ARCHETYPES[code] ?? { name: "无名合作者", tagline: "读数还在积累中。" };
+  const agentText = agents.length >= 2
+    ? `${agents.length} 位搭档（${agents.join("、")}）`
+    : `只与 ${agents[0] ?? "Agent"} 协作`;
+
+  return {
+    code,
+    archetype: archetype.name,
+    tagline: archetype.tagline,
+    axes: [
+      {
+        key: "scope",
+        readings: [
+          { pole: "深度", text: `单项目最长 ${maxActiveDays} 个活跃日`, win: deep },
+          { pole: "广度", text: `${projects} 个项目并行`, win: !deep },
+        ],
+      },
+      {
+        key: "partner",
+        readings: [
+          { pole: "专一", text: "1 位搭档", win: !ensemble },
+          { pole: "合奏", text: agentText, win: ensemble },
+        ],
+      },
+      {
+        key: "rhythm",
+        readings: [
+          {
+            pole: "爆发",
+            text: totalMessages > 0
+              ? `最密集的一天占全部消息的 ${Math.round(peakShare * 100)}%`
+              : "暂无消息读数",
+            win: burst,
+          },
+          {
+            pole: "匀速",
+            text: messagesByDay.size > 0
+              ? `${messagesByDay.size} 个活跃日铺开推进`
+              : "暂无日期读数",
+            win: !burst,
+          },
+        ],
+      },
+    ],
+  };
+}

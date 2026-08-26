@@ -199,3 +199,50 @@ test("叙事底稿：同一项目的多天展卡句式各异且里程碑诚实�
   assert.equal(unique.size, captionMatches.length);
   assert.ok(captionMatches.length >= 5);
 });
+
+test("协作风格速写：三轴读数确定性归纳（MBTI 式码 + SBTI 式称号）", async () => {
+  const { buildCollaborationStyle } = await import("../app/exhibition/narrative.ts");
+  const agentDay = (
+    title: string,
+    day: string,
+    origin: string,
+    messages: number,
+  ) => ({
+    title,
+    occurred_on: day,
+    status: "verified" as const,
+    origin,
+    claims: [
+      { text: `这一天在项目 ${title} 进行了 1 个会话、共 ${messages} 条用户消息` },
+    ],
+  });
+
+  // 深独爆：单项目三天，Claude 专一，峰值日占 80%。
+  const deepSoloBurst = buildCollaborationStyle([
+    agentDay("在 Alpha 与 Claude Code 协作", "2026-07-01", "claude", 2),
+    agentDay("在 Alpha 与 Claude Code 协作", "2026-07-02", "claude", 20),
+    agentDay("在 Alpha 与 Claude Code 协作", "2026-07-03", "claude", 3),
+  ]);
+  assert.equal(deepSoloBurst.code, "深独爆");
+  assert.equal(deepSoloBurst.archetype, "闭关冲刺手");
+  assert.equal(deepSoloBurst.axes.length, 3);
+  assert.ok(deepSoloBurst.tagline.length > 0);
+
+  // 广合缓：三个项目四天，Codex 与 pi 合奏，峰值日仅占 25%。
+  const wideEnsembleSteady = buildCollaborationStyle([
+    agentDay("在 Beta 与 Codex 协作", "2026-08-01", "codex", 3),
+    agentDay("在 Gamma 与 pi 协作", "2026-08-02", "pi", 3),
+    agentDay("在 Beta 与 Codex 协作", "2026-08-03", "codex", 3),
+    agentDay("在 Delta 与 Codex 协作", "2026-08-04", "codex", 3),
+  ]);
+  assert.equal(wideEnsembleSteady.code, "广合缓");
+  assert.equal(wideEnsembleSteady.archetype, "调度台主控");
+  const flat = wideEnsembleSteady.axes.flatMap((axis) => axis.readings.map((r) => r.text));
+  assert.ok(flat.some((text) => text.includes("3 个项目并行")));
+  assert.ok(flat.some((text) => text.includes("25%")));
+  assert.ok(flat.some((text) => text.includes("2 位搭档")));
+  // 每轴恰有一侧胜出。
+  for (const axis of wideEnsembleSteady.axes) {
+    assert.equal(axis.readings.filter((r) => r.win).length, 1);
+  }
+});
