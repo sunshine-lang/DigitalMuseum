@@ -11,6 +11,7 @@
 
 import { statusLabel } from "../events-shared.ts";
 import {
+  buildCollaborationStyle,
   buildProjectMilestones,
   exhibitNarrative,
   milestoneKeyFor,
@@ -90,15 +91,17 @@ function displayDay(isoDate: string): string {
 }
 
 export function buildExhibitionHtml(input: ExportExhibitionInput): string {
+  // 展出事件的叙事视图（里程碑 + 协作风格共用同一份确定性聚合）。
+  const narrativeEvents = input.events.map((event) => ({
+    title: event.title,
+    occurred_on: event.occurred_on,
+    origin: event.origin,
+    claims: event.claims,
+  }));
   // 项目级里程碑：全部展出事件聚合一次，卡片按其在项目中的位置取叙事。
-  const milestones = buildProjectMilestones(
-    input.events.map((event) => ({
-      title: event.title,
-      occurred_on: event.occurred_on,
-      origin: event.origin,
-      claims: event.claims,
-    })),
-  );
+  const milestones = buildProjectMilestones(narrativeEvents);
+  // 协作风格速写（尾声）：与站内同一套三轴确定性归纳。
+  const style = buildCollaborationStyle(narrativeEvents);
   const dated = input.events.filter((event) => event.occurred_on);
   const undated = input.events.filter((event) => !event.occurred_on);
   dated.sort((a, b) =>
@@ -143,6 +146,23 @@ export function buildExhibitionHtml(input: ExportExhibitionInput): string {
 
   const exportDate = input.exportedAt.slice(0, 10);
 
+  const styleAxisHtml = style.axes
+    .map(
+      (axis) => `
+      <div class="style-row">
+        <span class="${axis.readings[0].win ? "win" : ""}">
+          <b>${esc(axis.readings[0].pole)}</b>
+          <small>${esc(axis.readings[0].text)}</small>
+        </span>
+        <i>vs</i>
+        <span class="${axis.readings[1].win ? "win" : ""}">
+          <b>${esc(axis.readings[1].pole)}</b>
+          <small>${esc(axis.readings[1].text)}</small>
+        </span>
+      </div>`,
+    )
+    .join("");
+
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -183,6 +203,25 @@ export function buildExhibitionHtml(input: ExportExhibitionInput): string {
   .event p { color: #c7c5be; font-size: 14.5px; margin-bottom: 8px; }
   footer { border-top: 1px solid rgba(245,245,247,0.12); margin-top: 56px; padding-top: 20px; }
   footer p { color: #8a8a90; font-size: 12.5px; }
+  /* 尾声 · 协作风格速写（与站内同款三轴读数；纯 CSS 无脚本） */
+  section.style { border-top: 1px solid rgba(245,245,247,0.12); margin-top: 56px; padding-top: 4px; text-align: center; }
+  section.style h2 { margin: 14px 0 0; }
+  .style-code { margin: 6px 0 0; font-family: Georgia, "Times New Roman", "Noto Serif SC", "Songti SC", serif; font-size: clamp(40px, 9vw, 64px); line-height: 1.1; letter-spacing: 0.04em; }
+  .style-name { margin: 8px 0 0; font-family: Georgia, "Times New Roman", "Noto Serif SC", "Songti SC", serif; font-size: 21px; }
+  .style-tagline { margin: 4px 0 0; color: #9f9fa0; font-size: 13.5px; }
+  .style-rows { margin: 18px auto 0; display: grid; gap: 8px; text-align: left; }
+  .style-row { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: center; border: 1px solid rgba(245,245,247,0.1); border-radius: 10px; padding: 10px 14px; }
+  .style-row b { display: block; margin-bottom: 3px; font: 500 11px/1 ui-monospace, Menlo, monospace; letter-spacing: 0.2em; color: #7b7b80; }
+  .style-row small { font-size: 11.5px; line-height: 1.6; color: #9f9fa0; overflow-wrap: anywhere; }
+  .style-row i { font: 400 9px/1 ui-monospace, Menlo, monospace; font-style: normal; letter-spacing: 0.12em; color: #7b7b80; }
+  .style-row .win b { color: #a89dff; }
+  .style-row .win small { color: #e8e8ec; }
+  .style-note { margin: 14px 0 0; color: #8a8a90; font-size: 10.5px; line-height: 1.7; }
+  @media (max-width: 560px) {
+    .style-row { grid-template-columns: 1fr; gap: 6px; }
+    .style-row i { display: none; }
+    .style-row .win { border-left: 2px solid #a89dff; padding-left: 8px; }
+  }
 </style>
 </head>
 <body>
@@ -199,6 +238,14 @@ export function buildExhibitionHtml(input: ExportExhibitionInput): string {
   </header>
   ${monthsHtml}
   ${undatedHtml}
+  <section class="style">
+    <h2>Collaboration Style · 协作风格速写</h2>
+    <p class="style-code">${esc(style.code.split("").join(" · "))}</p>
+    <p class="style-name">${esc(style.archetype)}</p>
+    <p class="style-tagline">「${esc(style.tagline)}」</p>
+    <div class="style-rows">${styleAxisHtml}</div>
+    <p class="style-note">基于本次展出 ${input.events.length} 段经历的确定性读数归纳，供对照一乐，不是性格测评。</p>
+  </section>
   <footer>
     <p>本页由 Digital Museum 在本机生成，是 ${esc(exportDate)} 的静态快照；可离线浏览与分享。</p>
     <p>证据链细节（原文锚点与文件指纹）保留在本机档案中，未随本页导出。「系统核实」指时间戳/计数等机器确定性读数，不代表对内容的解读。</p>

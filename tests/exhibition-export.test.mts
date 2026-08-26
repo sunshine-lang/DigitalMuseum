@@ -100,7 +100,9 @@ test("用户文本全部转义，无 HTML 注入", () => {
   });
   assert.ok(!html.includes("<script>alert"));
   assert.ok(!html.includes("<img src=x"));
-  assert.ok(!html.includes("<b>"));
+  // 恶意 stageName 是 `…&<b>`：未转义的泄漏会原样带出这个序列
+  //（模板自身的 <b> 标签是合法标记，不参与哨兵）。
+  assert.ok(!html.includes("&<b>"));
   assert.match(html, /&lt;script&gt;/);
   assert.match(html, /&lt;b&gt;/);
 });
@@ -245,4 +247,38 @@ test("协作风格速写：三轴读数确定性归纳（MBTI 式码 + SBTI 式�
   for (const axis of wideEnsembleSteady.axes) {
     assert.equal(axis.readings.filter((r) => r.win).length, 1);
   }
+});
+
+test("导出携带协作风格速写：同一套三轴归纳随文件分享", async () => {
+  const { buildExhibitionHtml } = await import("../app/exhibition/export-html.ts");
+  const { buildCollaborationStyle } = await import("../app/exhibition/narrative.ts");
+  const day = (title: string, date: string, origin: string, messages: number) => ({
+    title,
+    occurred_on: date,
+    status: "verified" as const,
+    origin,
+    claims: [{ text: `这一天在项目 ${title} 进行了 1 个会话、共 ${messages} 条用户消息` }],
+  });
+  const events = [
+    day("在 Beta 与 Codex 协作", "2026-08-01", "codex", 3),
+    day("在 Gamma 与 pi 协作", "2026-08-02", "pi", 3),
+    day("在 Beta 与 Codex 协作", "2026-08-03", "codex", 3),
+    day("在 Delta 与 Codex 协作", "2026-08-04", "codex", 3),
+  ];
+  // 站内与导出共用同一聚合：结果必须一致。
+  const style = buildCollaborationStyle(events);
+  const html = buildExhibitionHtml({
+    stageName: "风格导出",
+    startsOn: "2026-08-01",
+    endsOn: "2026-08-31",
+    events,
+    exportedAt: "2026-08-27T00:00:00.000Z",
+  });
+  assert.equal(style.code, "广合缓");
+  assert.match(html, /协作风格速写/);
+  assert.match(html, /广 · 合 · 缓/);
+  assert.match(html, /调度台主控/);
+  assert.match(html, /25%/);
+  assert.match(html, /不是性格测评/);
+  assert.doesNotMatch(html, /<script/i);
 });
