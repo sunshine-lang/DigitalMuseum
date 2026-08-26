@@ -103,6 +103,24 @@ export default function MuseumMvpWorkspace() {
     () => events.filter(isVisibleExperience),
     [events],
   );
+  // 馆藏概览：全部由档案数据确定性推导（项目数按标题、跨度按首末日期）。
+  const archiveDigest = useMemo(() => {
+    const dated = visibleEvents
+      .map((event) => event.occurred_on)
+      .filter((value): value is string => Boolean(value))
+      .sort();
+    if (!dated.length) return null;
+    const products = new Set(
+      visibleEvents.map((event) => event.origin).filter((origin) => origin !== "aggregated"),
+    );
+    return {
+      count: visibleEvents.length,
+      projects: new Set(visibleEvents.map((event) => event.title)).size,
+      span: `${dated[0]} — ${dated[dated.length - 1]}`,
+      products: products.size,
+      volume: `VOL.${dated[0].slice(0, 7).replace("-", ".")} · No.${String(visibleEvents.length).padStart(3, "0")}`,
+    };
+  }, [visibleEvents]);
   const candidateEvents = useMemo(
     () => visibleEvents.filter((event) => event.status === "candidate"),
     [visibleEvents],
@@ -265,8 +283,18 @@ export default function MuseumMvpWorkspace() {
 
   return (
     <main className="mvp-shell">
-      <MvpHeader />
+      <MvpHeader archiveNo={archiveDigest?.volume ?? null} />
       <MvpHero />
+      {archiveDigest && (
+        <section className="mvp-archive-digest" aria-label="馆藏概览">
+          <dl>
+            <div><dt>馆藏经历</dt><dd>{archiveDigest.count}<small> 段</small></dd></div>
+            <div><dt>协作项目</dt><dd>{archiveDigest.projects}<small> 个</small></dd></div>
+            <div><dt>时间跨度</dt><dd>{archiveDigest.span}</dd></div>
+            <div><dt>来源产品</dt><dd>{archiveDigest.products}<small> 种</small></dd></div>
+          </dl>
+        </section>
+      )}
       <FlowNavigation
         current={view}
         hasEvents={visibleEvents.length > 0}
@@ -337,14 +365,15 @@ export default function MuseumMvpWorkspace() {
   );
 }
 
-function MvpHeader() {
+function MvpHeader({ archiveNo }: { archiveNo: string | null }) {
   return (
     <header className="mvp-header">
       <Link className="mvp-brand" href="/" aria-label="Digital Museum 首页">
-        <span>DM</span>
-        <div><strong>Digital Museum</strong><small>AI 协作记录体验版</small></div>
+        <span className="mvp-brand-seal" aria-hidden="true"><i>DM</i><small>EST.<br />2026</small></span>
+        <div><strong>Digital Museum</strong><small>Personal AI Archive · 数字档案馆</small></div>
       </Link>
       <div className="mvp-header-actions">
+        {archiveNo && <span className="mvp-archive-no">{archiveNo}</span>}
         <span className="mvp-local-badge"><i /> 原始记录保存在本地</span>
       </div>
     </header>
@@ -557,13 +586,18 @@ function BrowseView({ events, selectedEvent, activeAnchor, onSelect, onAnchorAct
   onDispute: (eventId: string) => void;
   onReview: (eventId: string) => void;
 }) {
-  const groups = useMemo(() => {
+  const volumes = useMemo(() => {
     const byDate = new Map<string, CandidateEvent[]>();
     for (const event of events) {
       const key = event.occurred_on ?? "时间待定";
       byDate.set(key, [...(byDate.get(key) ?? []), event]);
     }
-    return Array.from(byDate.entries());
+    const byMonth = new Map<string, Array<[string, CandidateEvent[]]>>();
+    for (const [day, dayEvents] of byDate) {
+      const month = day === "时间待定" ? "时间待定" : `${day.slice(0, 4)} 年 ${Number(day.slice(5, 7))} 月`;
+      byMonth.set(month, [...(byMonth.get(month) ?? []), [day, dayEvents]]);
+    }
+    return Array.from(byMonth.entries());
   }, [events]);
 
   return (
@@ -580,9 +614,23 @@ function BrowseView({ events, selectedEvent, activeAnchor, onSelect, onAnchorAct
           <div className="mvp-empty-state"><strong>档案还是空的</strong><p>回到「同步会话」点一下同步，系统会自动整理出经历。</p></div>
         ) : (
           <div className="mvp-timeline-groups">
-            {groups.map(([day, dayEvents]) => (
+            {volumes.map(([month, dayGroups], volumeIndex) => (
+            <section className="mvp-volume" key={month}>
+              <div className="mvp-volume-divider" aria-label={month}>
+                <span className="mvp-volume-no">VOL.{String(volumeIndex + 1).padStart(2, "0")}</span>
+                <strong className="mvp-volume-title">{month}</strong>
+                <i aria-hidden="true" />
+              </div>
+            {dayGroups.map(([day, dayEvents]) => (
               <div className="mvp-timeline-group" key={day}>
-                <time className="mvp-timeline-date">{day}</time>
+                <time className="mvp-timeline-date">
+                  {/^\d{4}-\d{2}-\d{2}$/.test(day) ? (
+                    <>
+                      <b>{Number(day.slice(8))}</b>
+                      <span>{day.slice(0, 7)} · 周{["日", "一", "二", "三", "四", "五", "六"][new Date(`${day}T00:00:00`).getDay()]}</span>
+                    </>
+                  ) : day}
+                </time>
                 <div className="mvp-timeline">
                   {dayEvents.map((event, index) => (
                     <article
@@ -609,6 +657,8 @@ function BrowseView({ events, selectedEvent, activeAnchor, onSelect, onAnchorAct
                   ))}
                 </div>
               </div>
+            ))}
+            </section>
             ))}
           </div>
         )}

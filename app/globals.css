@@ -2387,3 +2387,206 @@ a.mvp-primary {
   .mvp-browse-view { grid-template-columns: 1fr; }
   .mvp-sync-summary dl { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ============================================================
+   档案馆设计层（2026-08-25 设计升级）：阅览室 → 展厅 一体两翼。
+   馆徽印章 / 馆藏铭牌 / 卷宗分组 / 日期戳 / 目录卡 / 摘录单。
+   ============================================================ */
+
+/* ---- 馆徽：方形双栏印章 ---- */
+.mvp-brand-seal {
+  width: 46px;
+  height: 46px;
+  border: 1.5px solid var(--mvp-ink);
+  border-radius: 6px;
+  display: grid;
+  grid-template-columns: 1fr;
+  place-items: center;
+  gap: 1px;
+  background:
+    radial-gradient(circle at 20% 15%, rgba(140, 109, 63, .16), transparent 55%),
+    var(--mvp-card);
+  box-shadow: inset 0 0 0 2.5px var(--mvp-card), inset 0 0 0 3.5px rgba(26, 23, 18, .28);
+  position: relative;
+}
+.mvp-brand-seal i {
+  font: 800 15px/1 var(--mvp-serif);
+  font-style: italic;
+  letter-spacing: .02em;
+}
+.mvp-brand-seal small {
+  font: 600 5.5px/1.25 var(--mvp-mono);
+  letter-spacing: .22em;
+  color: var(--mvp-muted);
+  text-align: center;
+}
+
+/* ---- 馆藏铭牌：右上角档案编号 ---- */
+.mvp-archive-no {
+  border: 1px solid var(--mvp-line-strong);
+  border-left: 3px solid var(--mvp-gold);
+  border-radius: 3px;
+  padding: 7px 11px;
+  background: var(--mvp-card);
+  color: var(--mvp-ink-soft);
+  font: 600 10.5px var(--mvp-mono);
+  letter-spacing: .08em;
+}
+
+/* ---- 馆藏概览：目录卡片行 ---- */
+.mvp-archive-digest {
+  width: min(1180px, calc(100% - 64px));
+  margin: -18px auto 26px;
+  border: 1px solid var(--mvp-line);
+  border-top: 3px solid var(--mvp-ink);
+  background:
+    linear-gradient(var(--mvp-card), var(--mvp-card)) padding-box,
+    var(--mvp-paper);
+  box-shadow: 0 1px 0 rgba(26, 23, 18, .05), 0 14px 30px -22px rgba(26, 23, 18, .35);
+}
+.mvp-archive-digest dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+}
+.mvp-archive-digest dl > div {
+  padding: 16px 18px 15px;
+  border-right: 1px solid var(--mvp-line);
+}
+.mvp-archive-digest dl > div:last-child { border-right: 0; }
+.mvp-archive-digest dt {
+  color: var(--mvp-muted);
+  font: 600 9px var(--mvp-mono);
+  letter-spacing: .2em;
+}
+.mvp-archive-digest dd {
+  margin: 8px 0 0;
+  font: 600 clamp(19px, 2vw, 26px)/1.1 var(--mvp-serif);
+  letter-spacing: .01em;
+  color: var(--mvp-ink);
+}
+.mvp-archive-digest dd small { margin-left: 3px; font: 500 11px var(--mvp-sans); color: var(--mvp-muted); }
+
+/* ---- 导览牌：步骤序号换衬线、步间箭头 ---- */
+.mvp-flow button > span,
+.mvp-flow-link > span {
+  font-family: var(--mvp-serif) !important;
+  font-style: italic;
+  font-size: 14px !important;
+}
+.mvp-flow button:not(:last-child)::after,
+.mvp-flow-link:not(:last-child)::after {
+  content: "→";
+  position: absolute;
+  right: -9px;
+  top: 50%;
+  translate: 0 -50%;
+  z-index: 1;
+  color: var(--mvp-muted);
+  font: 400 13px var(--mvp-serif);
+  pointer-events: none;
+}
+.mvp-flow button,
+.mvp-flow-link { position: relative; }
+.mvp-flow { box-shadow: 0 10px 26px -22px rgba(26, 23, 18, .45); }
+
+/* ---- 浏览视图：卷宗（月）分隔条 ---- */
+.mvp-volume { display: grid; gap: 22px; }
+.mvp-volume-divider {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  border-bottom: 1.5px solid var(--mvp-line-strong);
+  padding-bottom: 9px;
+}
+.mvp-volume-no {
+  border: 1px solid var(--mvp-gold);
+  color: var(--mvp-gold-deep);
+  border-radius: 2px;
+  padding: 3px 7px;
+  font: 700 9.5px var(--mvp-mono);
+  letter-spacing: .14em;
+  background: var(--mvp-gold-soft);
+}
+.mvp-volume-title { font: 700 20px var(--mvp-serif); letter-spacing: .04em; }
+.mvp-volume-divider i { flex: 1; border-bottom: 1px dotted var(--mvp-line); translate: 0 -4px; }
+
+/* ---- 日期戳：档案章 ---- */
+.mvp-timeline-date {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  border: 1.5px solid var(--mvp-ink);
+  border-radius: 4px;
+  padding: 7px 12px 6px;
+  background: var(--mvp-card);
+  box-shadow: 2.5px 2.5px 0 var(--mvp-paper-deep);
+}
+.mvp-timeline-date b { font: 800 24px/1 var(--mvp-serif); letter-spacing: .02em; }
+.mvp-timeline-date span { font: 600 9.5px var(--mvp-mono); letter-spacing: .14em; color: var(--mvp-muted); }
+
+/* ---- 时间线卡片：纸面质感与入场 ---- */
+.mvp-browse-view .mvp-timeline article {
+  background:
+    linear-gradient(rgba(248, 245, 240, 0), rgba(231, 224, 212, .35)) padding-box,
+    var(--mvp-card);
+  animation: mvp-card-in .38s ease-out both;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
+@keyframes mvp-card-in {
+  from { opacity: 0; translate: 0 10px; }
+  to { opacity: 1; translate: 0 0; }
+}
+.mvp-browse-view .mvp-timeline article > button:hover { translate: 0 -2px; box-shadow: 0 14px 24px -18px rgba(26, 23, 18, .5); }
+
+/* ---- 证据面板：摘录单 ---- */
+.mvp-evidence-panel {
+  background:
+    repeating-linear-gradient(0deg, transparent 0 26px, rgba(140, 109, 63, .07) 26px 27px),
+    var(--mvp-card);
+  border-top: 3px solid var(--mvp-ink);
+}
+.mvp-evidence-panel > span { letter-spacing: .22em; }
+
+/* ---- 发现面板：卡片目录柜 ---- */
+.mvp-session-discovery ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.mvp-session-discovery li .mvp-session-project {
+  border-left: 4px solid var(--mvp-gold);
+  background: linear-gradient(90deg, var(--mvp-gold-soft), transparent 26%), var(--mvp-card);
+}
+
+/* ---- 同步台账与主按钮 ---- */
+.mvp-sync-hero {
+  border: 1.5px solid var(--mvp-ink);
+  box-shadow: 3px 3px 0 var(--mvp-paper-deep), 0 16px 30px -22px rgba(26, 23, 18, .5);
+  letter-spacing: .06em;
+}
+.mvp-sync-summary { border-top: 3px solid var(--mvp-ink); }
+
+@media (max-width: 720px) {
+  .mvp-archive-digest dl { grid-template-columns: repeat(2, 1fr); }
+  .mvp-archive-digest dl > div:nth-child(2) { border-right: 0; }
+  .mvp-archive-digest dl > div:nth-child(-n+2) { border-bottom: 1px solid var(--mvp-line); }
+  .mvp-archive-no { display: none; }
+  .mvp-session-discovery ul { grid-template-columns: 1fr; }
+  .mvp-volume-title { font-size: 17px; }
+}
+
+/* ---- 窄屏可读性修复：超长确定性读数（会话文件名/日期行）允许任意断词，
+   证据与时间线子项最小宽归零，避免撑破 390px 视口 ---- */
+.mvp-evidence-list, .mvp-evidence-list * { min-width: 0; }
+.mvp-anchor p,
+.mvp-anchor dd,
+.mvp-anchor dt,
+.mvp-evidence-list blockquote,
+.mvp-evidence-list p,
+.mvp-evidence-list summary small,
+.mvp-browse-main small,
+.mvp-sync-failures li { overflow-wrap: anywhere; }
+.mvp-timeline article, .mvp-timeline article > button { min-width: 0; }
+.mvp-timeline h3, .mvp-timeline p { overflow-wrap: anywhere; }
+
+@media (max-width: 900px) {
+  .mvp-flow button:not(:last-child)::after,
+  .mvp-flow-link:not(:last-child)::after { content: none; }
+}
