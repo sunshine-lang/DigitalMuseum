@@ -127,6 +127,16 @@ def create_api_router(session_provider) -> APIRouter:
     def archive_coverage(session: SessionDependency) -> dict:
         return {"data": museum_service.list_coverage(session)}
 
+    @router.delete("/archive", response_model=DataEnvelope[dict])
+    def wipe_archive(request: Request, session: SessionDependency) -> dict:
+        # 清空档案库是唯一的破坏性数据操作（ADR-0001）：删全部数据行并
+        # 回收 blob 文件；阶段视图一并清除。
+        return {
+            "data": museum_service.wipe_archive(
+                session, upload_dir=request.app.state.settings.upload_dir
+            )
+        }
+
     @router.post("/stages", status_code=201, response_model=DataEnvelope[StageOut])
     def create_stage(
         payload: StageCreate,

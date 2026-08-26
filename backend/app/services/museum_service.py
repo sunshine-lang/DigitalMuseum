@@ -1131,6 +1131,28 @@ def sync_archive(
     }
 
 
+def wipe_archive(session: Session, *, upload_dir: Path) -> dict:
+    """清空档案库：唯一的破坏性数据操作（ADR-0001）。
+
+    顺序：先删事件（级联清 claims/anchors/reviews）→ 再删 occurrence
+    （级联清 coverage）→ 删阶段视图 → 回收全部零引用 blob（删行并清文件）。
+    """
+    events_removed = session.scalar(select(func.count(CandidateEvent.id))) or 0
+    occurrences_removed = session.scalar(
+        select(func.count(EvidenceOccurrence.id))
+    )
+    session.execute(delete(CandidateEvent))
+    session.execute(delete(EvidenceOccurrence))
+    session.execute(delete(Stage))
+    session.commit()
+    _reclaim_orphan_blobs(session, upload_dir)
+    return {
+        "cleared": True,
+        "events_removed": events_removed,
+        "occurrences_removed": occurrences_removed or 0,
+    }
+
+
 def _sync_agent_project(
     session: Session,
     *,

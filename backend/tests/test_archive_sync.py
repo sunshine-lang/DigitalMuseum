@@ -234,6 +234,33 @@ def test_sync_self_heals_after_interrupted_import(tmp_path: Path):
         assert settled["projects_imported"] == 0
 
 
+def test_wipe_archive_is_the_only_destructive_operation(tmp_path: Path):
+    """清空档案库：全部数据行与 blob 文件回收，阶段视图一并清除。"""
+    claude_root = tmp_path / "claude-home" / "projects"
+    _write_claude_session(claude_root, "-Users-you-Projects-alpha", "a.jsonl")
+
+    with _sync_client(tmp_path) as client:
+        synced = client.post("/api/v1/archive/sync").json()["data"]
+        assert synced["projects_imported"] == 1
+        blob_sha = client.get("/api/v1/archive/events").json()["data"][0][
+            "claims"
+        ][0]["anchors"][0]["blob_sha256"]
+        blob_file = tmp_path / "uploads" / blob_sha[:2] / f"{blob_sha}.txt"
+        assert blob_file.is_file()
+
+        wiped = client.delete("/api/v1/archive")
+
+        assert wiped.status_code == 200
+        body = wiped.json()["data"]
+        assert body["cleared"] is True
+        assert body["events_removed"] == 1
+        assert client.get("/api/v1/archive/events").json()["data"] == []
+        assert not blob_file.exists()
+        # 再次清空：幂等，不报错。
+        again = client.delete("/api/v1/archive")
+        assert again.status_code == 200
+
+
 def test_sync_isolates_per_project_persistence_failure(tmp_path: Path, monkeypatch):
     """对抗性审查 P0 回归：单项目落库失败只降级该项目，不中断整轮同步。"""
     codex_root = tmp_path / "codex-home" / "sessions"

@@ -4,7 +4,7 @@
 
 ## 项目是什么
 
-Digital Museum · AI 人生档案馆。开源本地工具（方向见 PRD v0.2，2026-08-23 起）：目标用户是 AI 编码 Agent 开发者，第一燃料是本机的 Agent 会话记录与 Git、笔记等文本痕迹；交付终点是静态展览导出（Stage 8 最小版已落地：`/exhibition` 一键导出无脚本自包含单文件 HTML），明确不做云部署与多用户。当前首页 `/` 为“导入记录 → 发现经历（含合并/拆分整理）→ 核对关键内容 → 私人回顾草稿”的价值先行 MVP，支持整理过的 `.md/.txt` 笔记、本地 Git 仓库（只读提交记录）、Claude Code 会话（`~/.claude/projects` 只读）与 Codex 会话（`~/.codex/sessions` 只读）。照片适配器 `photo-evidence-v1` 已于 2026-08-25 整体删除，存量照片谱系数据经迁移 e5a2c7f91b4d 清理（spec 见 stage-4 文档）；7 套展览换肤与本地分享海报同日删除，站内展览视觉收敛为午夜档案馆一种（与导出文件同色系）。ChatGPT/WorkBuddy 适配器尚未实现。2026-08-25 起首页界面默认只显示 Agent 会话同步入口（开馆门与导入表单均如此）；URL 加 `?all-sources` 临时恢复笔记上传与 Git 仓库表单——后端能力与 E2E 全部保留，只是默认藏起。`/demo` 静态演示已于 2026-08 移除；站内 `/` 与 `/exhibition` 均读取真实档案数据。
+Digital Museum · AI 人生档案馆。开源本地工具（方向见 PRD v0.2，2026-08-23 起）：目标用户是 AI 编码 Agent 开发者，第一燃料是本机的 Agent 会话记录与 Git、笔记等文本痕迹；交付终点是静态展览导出（Stage 8 最小版已落地：`/exhibition` 一键导出无脚本自包含单文件 HTML），明确不做云部署与多用户。当前首页 `/` 为极简三步流「同步会话（打开自动增量）→ 浏览经历（档案时间线+异议通道）→ 查回顾（/exhibition 展览）」，支持整理过的 `.md/.txt` 笔记、本地 Git 仓库（只读提交记录）、Claude Code 会话（`~/.claude/projects` 只读）与 Codex 会话（`~/.codex/sessions` 只读）。照片适配器 `photo-evidence-v1` 已于 2026-08-25 整体删除，存量照片谱系数据经迁移 e5a2c7f91b4d 清理（spec 见 stage-4 文档）；7 套展览换肤与本地分享海报同日删除，站内展览视觉收敛为午夜档案馆一种（与导出文件同色系）。ChatGPT/WorkBuddy 适配器尚未实现。2026-08-25 起首页界面默认只显示 Agent 会话同步入口（开馆门与导入表单均如此）；URL 加 `?all-sources` 临时恢复笔记上传与 Git 仓库表单——后端能力与 E2E 全部保留，只是默认藏起。`/demo` 静态演示已于 2026-08 移除；站内 `/` 与 `/exhibition` 均读取真实档案数据。
 
 文档阅读顺序：`docs/prd/digital-museum-prd-v0.2.md`（当前有效）→ `docs/technical-adaptation.md` → `docs/mvp-value-first-ai-records-flow.md` → `docs/phase-0-stage-1-note-event-review.md` 及后续 `docs/phase-0-stage-*.md`。PRD v0.1 的真实性契约、对象模型与 Event Review 信息层级继续有效；`docs/references/` 下的三份手册是通用外部方法论参考资料，不是本项目规范。
 
@@ -25,9 +25,9 @@ docs/       全部项目文档（PRD 在 docs/prd/，参考手册在 docs/refere
 npm run backend:sync      # 安装后端依赖（uv）
 npm run backend:dev       # 启动本地 API（127.0.0.1:8010）
 npm run dev:phase0        # 启动前端工作台（127.0.0.1:3001）
-npm run test:backend      # 后端 pytest（103 个用例，必须全绿；含评测基线护栏与照片清理迁移回归）
+npm run test:backend      # 后端 pytest（106 个用例，必须全绿；含评测基线护栏、档案同步幂等与照片清理迁移回归）
 npm run test:local        # 前端构建 + 渲染冒烟 + 静态展览导出单测（macOS 用这个，npm test 需要 GNU timeout）
-npm run test:e2e          # Playwright 端到端（需先停止 backend:dev；后端占用 8010、前端 3002，数据隔离在 .e2e/）
+npm run test:e2e          # Playwright 端到端（需先停止 backend:dev；每用例拉起一次性隔离后端占 8010 + 会话根目录注入，前端 3002）
 npm run typecheck         # tsc --noEmit
 npm run lint              # eslint
 ```
@@ -61,7 +61,7 @@ npm run lint              # eslint
 - 适配器 `codex-evidence-v1`（Stage 7）同样是确定性的：只读 `~/.codex/sessions`（配置 `codex_sessions_root`）下按日期存放的 rollout JSONL，按每文件首行 `session_meta.payload.cwd` 归属项目；**只统计 `thread_source == "user"` 的会话——subagent 内部线程的 user_message 是系统注入的审计材料，一律排除**；只提取时间戳、`user_message`/`agent_message` 计数与首条真实用户消息原文；**绝不修改 `~/.codex` 任何内容**；其余口径与 claude 适配器一致。两个 Agent 适配器共用 `agent_session_evidence.py` 的证据文档渲染，Stage 10 新适配器照此复用。导入页发现面板经 `GET /api/v1/{claude,codex}-sessions/projects` 只读列举本机有会话的项目：Claude 只数会话文件不读内容，Codex 只读每个 rollout 首行且只计 `thread_source=="user"`、cwd 已消失的项目不列；返回的 `import_path` 必须能原样传给导入端点（发现→导入闭环）。
 - 分级信任：确定性读数（Git 提交日按 committer date、Claude/Codex 会话时间戳与计数）导入即 `status="verified"`（系统核实），不进人工核对队列，但 UI 必须保留「对这段记录提出异议」入口；推断性标题（如"创建标签"）与用户已 rejected 的同题同日事件一律保持/降级为 `candidate`；用户已审阅过的事件（disputed/unknown/confirmed）重复导入时并入不复制、状态以用户判定为准。不要把确定性"读取"表述成"核实了事实"，也不要把会话时间戳/计数的核实表述成"解读了对话内容"。
 - 聚合规则 `note-aggregation-v1` 同样是确定性的：仅按规范化标题加日期聚合，不做语义聚类；Merge/Split 产物一律重置为 Candidate 并保留逐字锚点与审计行。
-- 档案库为根（ADR-0001，2026-08-25 起）：occurrence/event 全局归属档案库，不再挂阶段；阶段退化为命名时间窗视图——`GET /stages/{id}/events` 是窗口过滤（无日期事件不隐藏），`DELETE /api/v1/stages/{id}` 只删视图行、绝不动档案数据；清空档案库是未来唯一的破坏性数据操作（端点待 S2）。同步幂等由 `EvidenceOccurrence.source_key`（唯一键，如 `codex:/Users/x/proj`）承担：`POST /api/v1/archive/sync` 一键同步本机全部会话项目——跳过仅在 occurrence 完整（completed 且文档字节相同）时成立，中断/失败的快照在下一轮同步自动重建；内容变化走快照替换（先摘开事件引用再删旧 occurrence）；全局同题同日聚合沿用各 origin 白名单。`claims[].source_media` 与前端照片上墙已随照片管线一并删除（2026-08-25）。
+- 档案库为根（ADR-0001，2026-08-25 起）：occurrence/event 全局归属档案库，不再挂阶段；阶段退化为命名时间窗视图——`GET /stages/{id}/events` 是窗口过滤（无日期事件不隐藏），`DELETE /api/v1/stages/{id}` 只删视图行、绝不动档案数据；`DELETE /api/v1/archive` 清空档案库是唯一的破坏性数据操作（两步确认）。阶段视图 UI（/stages 页）已随 S2 三步流移除，阶段仍是 API 级能力，UI 待将来需要时再做。同步幂等由 `EvidenceOccurrence.source_key`（唯一键，如 `codex:/Users/x/proj`）承担：`POST /api/v1/archive/sync` 一键同步本机全部会话项目——跳过仅在 occurrence 完整（completed 且文档字节相同）时成立，中断/失败的快照在下一轮同步自动重建；内容变化走快照替换（先摘开事件引用再删旧 occurrence）；全局同题同日聚合沿用各 origin 白名单。`claims[].source_media` 与前端照片上墙已随照片管线一并删除（2026-08-25）。
 - Archive 备份（API 级，暂无 UI）：`GET /api/v1/archive/export` 把整库打包为 ZIP（archive.json + blobs/ 原文，格式 `archive-v2`；v1 备份已随档案库重构作废）；`POST /api/v1/archive/import` 恢复为**全新数据**（所有行换新 id、绝不覆盖既有内容；blob 内容寻址——本地已有同 sha 直接复用不信任 ZIP 字节，需写回时先校验 sha 一致，fail closed 无半成品；恢复行的 source_key 置空以允许重复导入）。
 - 样式延续集中式 CSS（`app/globals.css`）。Tailwind 已于 2026-08 全量移除（依赖与 preflight 均已删除，globals.css 顶部内置等价重置），不要再引入。
 - `npm run build`（build-verified.sh）需要 GNU timeout，macOS 上用 `npm run build:local`。

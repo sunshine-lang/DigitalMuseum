@@ -5,10 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import {
   CandidateEvent,
-  Phase0ApiError,
-  Stage,
-  getEvents,
-  getStage,
+  listArchiveEvents,
   updateExhibitCaption,
 } from "../phase0-api";
 import { isVisibleExperience, sortEvents, statusLabel } from "../events-shared";
@@ -20,7 +17,8 @@ import {
 } from "./export-html";
 import { exhibitNarrative } from "./narrative";
 
-const STAGE_STORAGE_KEY = "digital-museum-phase0-stage-id";
+// 档案库为根（ADR-0001）：展览不再挂阶段，封面信息由档案数据推导。
+const ARCHIVE_TITLE = "我的 Agent 协作档案";
 
 type ExpoPhase = "select" | "show";
 type LoadStatus = "loading" | "ready" | "empty" | "error";
@@ -29,6 +27,35 @@ type LoadStatus = "loading" | "ready" | "empty" | "error";
 const EXPO_THEME = "museum-night";
 
 const HALL_ACCENTS = ["#847dff", "#dd90d8", "#90b8f0", "#d1c9ff"];
+
+type ArchiveMeta = {
+  name: string;
+  starts_on: string;
+  ends_on: string;
+  evidence_count: number;
+};
+
+// 封面元数据全部由档案数据推导：跨度取可见经历的首尾日期，
+// 原始记录数取事件锚点引用的不同证据文档（blob 指纹）数。
+function deriveArchiveMeta(visibleEvents: CandidateEvent[]): ArchiveMeta | null {
+  const dated = visibleEvents
+    .map((event) => event.occurred_on)
+    .filter((value): value is string => Boolean(value))
+    .sort();
+  if (!dated.length) return null;
+  const blobs = new Set<string>();
+  for (const event of visibleEvents) {
+    for (const claim of event.claims) {
+      for (const anchor of claim.anchors) blobs.add(anchor.blob_sha256);
+    }
+  }
+  return {
+    name: ARCHIVE_TITLE,
+    starts_on: dated[0],
+    ends_on: dated[dated.length - 1],
+    evidence_count: blobs.size,
+  };
+}
 
 function monthKey(event: CandidateEvent): string {
   return event.occurred_on?.slice(0, 7) ?? "undated";
@@ -49,13 +76,13 @@ function monthsBetween(startsOn: string, endsOn: string): number {
 export default function ExhibitionWorkspace() {
   const [status, setStatus] = useState<LoadStatus>("loading");
   const [errorMessage, setErrorMessage] = useState("");
-  const [stage, setStage] = useState<Stage | null>(null);
   const [events, setEvents] = useState<CandidateEvent[]>([]);
   const [phase, setPhase] = useState<ExpoPhase>("select");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const progressRef = useRef<HTMLDivElement | null>(null);
 
   const visibleEvents = useMemo(() => sortEvents(events.filter(isVisibleExperience)), [events]);
+  const archive = useMemo(() => deriveArchiveMeta(visibleEvents), [visibleEvents]);
 
   const groups = useMemo(() => {
     const byMonth = new Map<string, CandidateEvent[]>();
@@ -84,14 +111,8 @@ export default function ExhibitionWorkspace() {
   );
 
   useEffect(() => {
-    const savedStageId = window.localStorage.getItem(STAGE_STORAGE_KEY);
-    if (!savedStageId) {
-      void Promise.resolve().then(() => setStatus("empty"));
-      return;
-    }
-    Promise.all([getStage(savedStageId), getEvents(savedStageId)])
-      .then(([nextStage, nextEvents]) => {
-        setStage(nextStage);
+    listArchiveEvents()
+      .then((nextEvents) => {
         setEvents(nextEvents);
         const visible = nextEvents.filter(isVisibleExperience);
         if (!visible.length) {
@@ -109,11 +130,6 @@ export default function ExhibitionWorkspace() {
         setStatus("ready");
       })
       .catch((error: unknown) => {
-        if (error instanceof Phase0ApiError && error.status === 404) {
-          window.localStorage.removeItem(STAGE_STORAGE_KEY);
-          setStatus("empty");
-          return;
-        }
         setErrorMessage(error instanceof Error ? error.message : "读取回顾档案失败");
         setStatus("error");
       });
@@ -212,11 +228,11 @@ export default function ExhibitionWorkspace() {
   }
 
   function exportStaticExhibition() {
-    if (!stage || selectedEvents.length === 0) return;
+    if (!archive || selectedEvents.length === 0) return;
     const html = buildExhibitionHtml({
-      stageName: stage.name,
-      startsOn: stage.starts_on,
-      endsOn: stage.ends_on,
+      stageName: archive.name,
+      startsOn: archive.starts_on,
+      endsOn: archive.ends_on,
       events: selectedEvents.map((event) => ({
         title: event.title,
         occurred_on: event.occurred_on,
@@ -233,12 +249,12 @@ export default function ExhibitionWorkspace() {
       setExportConfirm({ html, risks });
       return;
     }
-    downloadExhibitionHtml(html, stage.name);
+    downloadExhibitionHtml(html, archive.name);
   }
 
   function confirmExport() {
-    if (!exportConfirm || !stage) return;
-    downloadExhibitionHtml(exportConfirm.html, stage.name);
+    if (!exportConfirm || !archive) return;
+    downloadExhibitionHtml(exportConfirm.html, archive.name);
     setExportConfirm(null);
   }
 
@@ -264,7 +280,7 @@ export default function ExhibitionWorkspace() {
         <section className="expo-empty">
           <span>DIGITAL MUSEUM</span>
           <h1>展览馆还没有内容</h1>
-          <p>先回到工作台创建回顾范围、导入记录并核对关键内容，展览馆会用真实的经历为你开馆。</p>
+          <p>先回到工作台同步本机 Agent 会话，档案里有经历之后，展览馆会为你开馆。</p>
           <Link className="expo-button" href="/">回到工作台</Link>
         </section>
       </main>
@@ -287,7 +303,7 @@ export default function ExhibitionWorkspace() {
   if (phase === "select") {
     return (
       <main className="expo-shell expo-neutral">
-        <ExpoTopbar stageName={stage?.name ?? ""} />
+        <ExpoTopbar stageName={archive?.name ?? ""} />
         <section className="expo-prep">
           <header className="expo-prep-head">
             <span className="expo-kicker">EXHIBITION SETUP · 布展</span>
@@ -338,7 +354,7 @@ export default function ExhibitionWorkspace() {
     );
   }
 
-  const spanMonths = stage ? monthsBetween(stage.starts_on, stage.ends_on) : groups.length;
+  const spanMonths = archive ? monthsBetween(archive.starts_on, archive.ends_on) : groups.length;
   const draftCount = selectedEvents.length - confirmedCount - verifiedCount;
   let closingLine: string;
   if (confirmedCount === 0 && verifiedCount === 0) {
@@ -383,16 +399,16 @@ export default function ExhibitionWorkspace() {
 
       <section className="expo-cover">
         <span className="expo-cover-ghost" aria-hidden="true">
-          {(stage?.ends_on ?? "").slice(0, 4) || "EXPO"}
+          {(archive?.ends_on ?? "").slice(0, 4) || "EXPO"}
         </span>
         <div className="expo-cover-inner">
           <p className="expo-cover-kicker">PRIVATE EXHIBITION · 未公开</p>
-          <h1>{stage?.name ?? "我的回顾"}</h1>
-          <p className="expo-cover-dates">{stage?.starts_on} — {stage?.ends_on}</p>
+          <h1>{archive?.name ?? "我的回顾"}</h1>
+          <p className="expo-cover-dates">{archive?.starts_on} — {archive?.ends_on}</p>
           <dl className="expo-cover-stats">
             <div><dt>展出经历</dt><dd>{selectedEvents.length}</dd></div>
             <div><dt>本人确认</dt><dd>{confirmedCount}</dd></div>
-            <div><dt>原始记录</dt><dd>{stage?.evidence_count ?? 0}</dd></div>
+            <div><dt>原始记录</dt><dd>{archive?.evidence_count ?? 0}</dd></div>
             <div><dt>时间跨度</dt><dd>{spanMonths}<small> 个月</small></dd></div>
           </dl>
           <button className="expo-cover-cta" type="button" onClick={() => document.getElementById("expo-prologue")?.scrollIntoView({ behavior: "smooth" })}>
@@ -521,7 +537,7 @@ export default function ExhibitionWorkspace() {
             <div><strong>{selectedEvents.length}</strong><span>段经历</span></div>
             <div><strong>{confirmedCount}</strong><span>你亲自确认</span></div>
             <div><strong>{verifiedCount}</strong><span>系统核实</span></div>
-            <div><strong>{stage?.evidence_count ?? 0}</strong><span>份原始记录</span></div>
+            <div><strong>{archive?.evidence_count ?? 0}</strong><span>份原始记录</span></div>
           </div>
           <h2>{closingLine}</h2>
           <p>所有展品由本地真实档案确定性生成，未经模型补写。</p>
@@ -532,7 +548,7 @@ export default function ExhibitionWorkspace() {
             <Link className="expo-button" href="/">回到工作台</Link>
           </div>
           <p className="expo-archive-stamp">
-            ARCHIVE-{(stage?.id ?? "00000000").slice(0, 8).toUpperCase()} · {new Date().toISOString().slice(0, 10)}
+            ARCHIVE-{(archive?.ends_on ?? "").replaceAll("-", "") || "00000000"} · {new Date().toISOString().slice(0, 10)}
           </p>
         </div>
       </section>

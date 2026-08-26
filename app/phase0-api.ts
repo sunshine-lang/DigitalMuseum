@@ -280,3 +280,41 @@ export function listClaudeSessionProjects(): Promise<AgentSessionProject[]> {
 export function listCodexSessionProjects(): Promise<AgentSessionProject[]> {
   return apiRequest("/api/v1/codex-sessions/projects");
 }
+
+// ---- 档案库（ADR-0001）：同步、时间线、清空 ----
+
+export type ArchiveSyncProduct = {
+  product: "claude" | "codex";
+  project: string;
+  session_count: number;
+  status: "imported" | "skipped" | "failed";
+  error_code: string | null;
+  events_created: number;
+};
+
+export type ArchiveSyncSummary = {
+  products: ArchiveSyncProduct[];
+  projects_imported: number;
+  projects_skipped: number;
+  projects_failed: number;
+  events_created: number;
+};
+
+/** 一键同步本机全部 Agent 会话项目（幂等：内容不变跳过、变化换快照）。 */
+export function syncArchive(): Promise<ArchiveSyncSummary> {
+  return apiRequest("/api/v1/archive/sync", { method: "POST" });
+}
+
+/** 档案时间线：全部事件按发生日升序（无日期排最后）。 */
+export function listArchiveEvents(): Promise<CandidateEvent[]> {
+  return apiRequest("/api/v1/archive/events");
+}
+
+/** 清空档案库：唯一的破坏性数据操作（删全部数据行并回收原始文件）。 */
+export function wipeArchive(): Promise<{
+  cleared: boolean;
+  events_removed: number;
+  occurrences_removed: number;
+}> {
+  return apiRequest("/api/v1/archive", { method: "DELETE" });
+}

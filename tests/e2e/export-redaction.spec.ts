@@ -1,32 +1,47 @@
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { expect, test, type Page } from "./backend";
+import { expect, test } from "./backend";
 
-const fixtureDir = fileURLToPath(
-  new URL("../../test-data/recent-sessions-2026-08-22", import.meta.url),
-);
-// 标题含本机绝对路径：导出扫描必须命中并弹确认框，取消后不落盘。
-const riskyNote = join(fixtureDir, "10-export-risk-note.md");
+// 会话首条用户消息含本机绝对路径：导出扫描必须命中并弹确认框，取消后不落盘。
+test("导出脱敏：会话摘录里的路径命中弹确认框，取消后不导出", async ({
+  page,
+  e2eEnv,
+}) => {
+  const cwd = join(e2eEnv.projectsRoot, "risk");
+  mkdirSync(cwd, { recursive: true });
+  const directory = join(e2eEnv.codexSessionsRoot, "2026", "05", "10");
+  mkdirSync(directory, { recursive: true });
+  const lines = [
+    JSON.stringify({
+      type: "session_meta",
+      payload: { cwd, thread_source: "user" },
+    }),
+    JSON.stringify({
+      type: "event_msg",
+      timestamp: "2026-05-10T12:00:00.000Z",
+      payload: {
+        type: "user_message",
+        message: "读一下 /Users/e2e-export/secret.md 这个文件",
+      },
+    }),
+  ];
+  writeFileSync(
+    join(directory, "rollout-risk.jsonl"),
+    `${lines.join("\n")}\n`,
+    "utf-8",
+  );
 
-async function createStage(page: Page, name: string): Promise<void> {
-  await page.getByRole("textbox", { name: "给这段时间取个名字" }).fill(name);
-  await page.getByRole("textbox", { name: "从哪一天开始" }).fill("2026-05-22");
-  await page.getByRole("textbox", { name: "到哪一天结束" }).fill("2026-08-22");
-  await page.getByRole("button", { name: "保存范围，开始导入" }).click();
-  await expect(page.getByText("正在回顾")).toBeVisible();
-}
-
-test("导出脱敏：路径命中弹确认框，取消后不导出", async ({ page }) => {
-  await page.goto("/?all-sources");
-  await createStage(page, "临时·导出脱敏");
-  await page.locator('input[name="notes"]').setInputFiles([riskyNote]);
-  await page.getByRole("button", { name: "开始整理这些记录" }).click();
-  await expect(page.getByRole("status")).toContainText("已导入 1 份记录");
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "档案时间线 · 1 段经历" }),
+  ).toBeVisible({ timeout: 20_000 });
 
   await page.goto("/exhibition");
   await page.getByRole("button", { name: /开馆 · 展出已选的/ }).click();
 
-  const downloadPromise = page.waitForEvent("download", { timeout: 3000 }).catch(() => null);
+  const downloadPromise = page
+    .waitForEvent("download", { timeout: 3000 })
+    .catch(() => null);
   await page.getByRole("button", { name: "导出展览（HTML）" }).click();
 
   const dialog = page.getByRole("dialog", { name: "导出内容风险确认" });

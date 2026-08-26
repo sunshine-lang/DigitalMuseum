@@ -46,10 +46,9 @@ test("renders the value-first AI records MVP workspace", async () => {
 
   assert.equal(response.status, 200);
   assert.match(html, /AI 协作记录体验版/);
-  assert.match(html, /把散落的 AI 协作记录/);
-  assert.match(html, /导入记录/);
-  assert.match(html, /发现经历/);
-  assert.match(html, /核对关键内容/);
+  assert.match(html, /把散落的 Agent 会话/);
+  assert.match(html, /同步会话/);
+  assert.match(html, /浏览经历/);
   assert.match(html, /查看回顾/);
   assert.match(html, /原始记录保存在本地/);
   assert.match(html, /先看草稿/);
