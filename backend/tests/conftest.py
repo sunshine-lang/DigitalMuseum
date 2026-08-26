@@ -37,6 +37,8 @@ def sync_client(app_paths: tuple[str, Path], tmp_path: Path) -> TestClient:
             allowed_repo_roots=str(tmp_path),
             claude_projects_root=str(tmp_path / "claude-home" / "projects"),
             codex_sessions_root=str(tmp_path / "codex-home" / "sessions"),
+            pi_sessions_root=str(tmp_path / "pi-home" / "sessions"),
+            dsh_sessions_root=str(tmp_path / "dsh-home" / "sessions"),
         )
     ) as test_client:
         yield test_client
@@ -52,6 +54,8 @@ def claude_client(app_paths: tuple[str, Path], tmp_path: Path) -> TestClient:
             allowed_repo_roots=str(tmp_path),
             claude_projects_root=str(tmp_path / "claude-home" / "projects"),
             codex_sessions_root=str(tmp_path / "codex-home" / "sessions"),
+            pi_sessions_root=str(tmp_path / "pi-home" / "sessions"),
+            dsh_sessions_root=str(tmp_path / "dsh-home" / "sessions"),
         )
     ) as test_client:
         yield test_client
@@ -67,6 +71,8 @@ def codex_client(app_paths: tuple[str, Path], tmp_path: Path) -> TestClient:
             allowed_repo_roots=str(tmp_path),
             claude_projects_root=str(tmp_path / "claude-home" / "projects"),
             codex_sessions_root=str(tmp_path / "codex-home" / "sessions"),
+            pi_sessions_root=str(tmp_path / "pi-home" / "sessions"),
+            dsh_sessions_root=str(tmp_path / "dsh-home" / "sessions"),
         )
     ) as test_client:
         yield test_client

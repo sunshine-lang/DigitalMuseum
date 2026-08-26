@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     allowed_repo_roots: str = "~"
     claude_projects_root: str = "~/.claude/projects"
     codex_sessions_root: str = "~/.codex/sessions"
+    pi_sessions_root: str = "~/.pi/agent/sessions"
+    dsh_sessions_root: str = "~/.dsh/sessions"
     cors_origins: tuple[str, ...] = (
         "http://127.0.0.1:3000",
         "http://localhost:3000",

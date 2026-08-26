@@ -11,6 +11,8 @@ import {
   listArchiveEvents,
   listClaudeSessionProjects,
   listCodexSessionProjects,
+  listDshSessionProjects,
+  listPiSessionProjects,
   reviewEvent,
   syncArchive,
   wipeArchive,
@@ -478,17 +480,25 @@ function SyncSummaryPanel({ summary }: { summary: ArchiveSyncSummary }) {
 // 导入动作统一走「同步本机全部会话」，不再逐项目导入。
 function SessionDiscoveryPanel() {
   const [loading, setLoading] = useState(true);
-  const [claudeProjects, setClaudeProjects] = useState<AgentSessionProject[]>([]);
-  const [codexProjects, setCodexProjects] = useState<AgentSessionProject[]>([]);
+  const [products, setProducts] = useState<Array<{ title: string; projects: AgentSessionProject[] }>>([]);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    Promise.all([listClaudeSessionProjects(), listCodexSessionProjects()])
-      .then(([nextClaude, nextCodex]) => {
-        setClaudeProjects(nextClaude);
-        setCodexProjects(nextCodex);
+    Promise.all([
+      listClaudeSessionProjects(),
+      listCodexSessionProjects(),
+      listPiSessionProjects(),
+      listDshSessionProjects(),
+    ])
+      .then(([claude, codex, pi, dsh]) => {
+        setProducts([
+          { title: "Claude Code", projects: claude },
+          { title: "Codex", projects: codex },
+          { title: "pi", projects: pi },
+          { title: "dsh", projects: dsh },
+        ]);
       })
       .catch((loadError: unknown) =>
         setError(loadError instanceof Error ? loadError.message : "扫描本机会话失败"),
@@ -506,20 +516,17 @@ function SessionDiscoveryPanel() {
       <header>
         <div>
           <strong>本机 Agent 会话</strong>
-          <small>同步会读取下列项目目录的全部会话转录；只读，不会修改 ~/.claude 与 ~/.codex</small>
+          <small>同步会读取下列项目目录的全部会话转录；只读，不会修改 ~/.claude、~/.codex、~/.pi 与 ~/.dsh</small>
         </div>
         <button type="button" disabled={loading} onClick={load}>{loading ? "扫描中…" : "刷新"}</button>
       </header>
       {error && (
         <p className="mvp-session-discovery-hint">暂时扫不到会话：{error}。</p>
       )}
-      {!error && !loading && claudeProjects.length + codexProjects.length === 0 && (
-        <p className="mvp-session-discovery-hint">没有发现 Claude Code / Codex 会话；请确认本机已使用过它们，或点「刷新」重试。</p>
+      {!error && !loading && products.every((group) => group.projects.length === 0) && (
+        <p className="mvp-session-discovery-hint">没有发现任何 Agent 会话；请确认本机已使用过它们，或点「刷新」重试。</p>
       )}
-      {[
-        { title: "Claude Code", projects: claudeProjects },
-        { title: "Codex", projects: codexProjects },
-      ].map(({ title, projects }) =>
+      {products.map(({ title, projects }) =>
         projects.length > 0 ? (
           <div key={title}>
             <span>{title} · {projects.length} 个项目</span>

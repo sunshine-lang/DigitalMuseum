@@ -10,7 +10,7 @@ export type EventStatus =
   | "verified"
   | ReviewDecision;
 
-export type EventOrigin = "aggregated" | "claude" | "codex";
+export type EventOrigin = "aggregated" | "claude" | "codex" | "pi" | "dsh";
 
 type EventReview = {
   decision: ReviewDecision;
@@ -121,10 +121,18 @@ export function listCodexSessionProjects(): Promise<AgentSessionProject[]> {
   return apiRequest("/api/v1/codex-sessions/projects");
 }
 
+export function listPiSessionProjects(): Promise<AgentSessionProject[]> {
+  return apiRequest("/api/v1/pi-sessions/projects");
+}
+
+export function listDshSessionProjects(): Promise<AgentSessionProject[]> {
+  return apiRequest("/api/v1/dsh-sessions/projects");
+}
+
 // ---- 档案库（ADR-0001）：同步、时间线、清空 ----
 
 export type ArchiveSyncProduct = {
-  product: "claude" | "codex";
+  product: "claude" | "codex" | "pi" | "dsh";
   project: string;
   session_count: number;
   status: "imported" | "skipped" | "failed";

@@ -8,6 +8,7 @@ from app.services.agent_session_evidence import (
     AgentEvidence,
     RecordClassification,
     SessionSummary,
+    message_text,
     real_user_text,
     render_evidence_document,
     scan_session_file,
@@ -16,8 +17,14 @@ from app.services.path_policy import require_path_allowed
 
 CLAUDE_PROCESSOR_VERSION = "claude-code-evidence-v1"
 
+# 档案库同步的产品注册面：sync_archive 按此统一驱动各 Agent 适配器。
+KIND = "claude"
+PROCESSOR_VERSION = CLAUDE_PROCESSOR_VERSION
+EVIDENCE_SUFFIX = "-claude-sessions.txt"
+AGGREGATION_ORIGINS = ("aggregated", "claude")
 
-def list_claude_projects(projects_root: str) -> list[dict]:
+
+def list_projects(projects_root: str) -> list[dict]:
     """只读列举 projects 根下有会话文件的项目目录（名称 + 会话文件数）。
 
     发现面板专用：不读取任何会话内容（只数 *.jsonl 文件）；import_path 直接
@@ -45,18 +52,18 @@ def list_claude_projects(projects_root: str) -> list[dict]:
     return projects
 
 
-def import_claude_sessions(
+def import_project(
     path_raw: str,
     *,
     starts_on: date | None = None,
     ends_on: date | None = None,
     allowed_roots: str,
-    projects_root: str,
+    root: str,
 ) -> AgentEvidence:
     """读取项目会话并渲染证据文档。窗口为 None 时读全部（档案库同步），
     文档头的时间范围改用会话实际的首尾日期，保证内容是数据的纯函数。"""
     directory, label, display = _resolve_session_directory(
-        path_raw, allowed_roots=allowed_roots, projects_root=projects_root
+        path_raw, allowed_roots=allowed_roots, projects_root=root
     )
     sessions = _scan_project_sessions(directory)
     if starts_on is not None and ends_on is not None:
@@ -161,19 +168,7 @@ def _classify_record(record: dict) -> RecordClassification | None:
     message = record.get("message")
     if not isinstance(message, dict):
         return None
-    return ("user", _user_message_text(message.get("content")))
+    return ("user", real_user_text(message_text(message.get("content"))))
 
 
-def _user_message_text(content: object) -> str | None:
-    """提取用户消息中的真实文本；系统包装行（`<` 开头）与工具结果不算。"""
-    text: str | None = None
-    if isinstance(content, str):
-        text = content
-    elif isinstance(content, list):
-        parts = [
-            item.get("text")
-            for item in content
-            if isinstance(item, dict) and item.get("type") == "text"
-        ]
-        text = " ".join(part for part in parts if isinstance(part, str))
-    return real_user_text(text)
+

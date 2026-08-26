@@ -29,6 +29,8 @@ def create_app(
     allowed_repo_roots: str | None = None,
     claude_projects_root: str | None = None,
     codex_sessions_root: str | None = None,
+    pi_sessions_root: str | None = None,
+    dsh_sessions_root: str | None = None,
 ) -> FastAPI:
     overrides = {
         key: value
@@ -39,6 +41,8 @@ def create_app(
             "allowed_repo_roots": allowed_repo_roots,
             "claude_projects_root": claude_projects_root,
             "codex_sessions_root": codex_sessions_root,
+            "pi_sessions_root": pi_sessions_root,
+            "dsh_sessions_root": dsh_sessions_root,
         }.items()
         if value is not None
     }

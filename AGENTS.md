@@ -25,7 +25,7 @@ docs/       全部项目文档（PRD 在 docs/prd/，参考手册在 docs/refere
 npm run backend:sync      # 安装后端依赖（uv）
 npm run backend:dev       # 启动本地 API（127.0.0.1:8010）
 npm run dev:phase0        # 启动前端工作台（127.0.0.1:3001）
-npm run test:backend      # 后端 pytest（44 个用例，必须全绿；含档案同步幂等、适配器行为与历史迁移回归）
+npm run test:backend      # 后端 pytest（47 个用例，必须全绿；含四产品同步幂等、适配器行为与历史迁移回归）
 npm run test:local        # 前端构建 + 渲染冒烟 + 静态展览导出单测（macOS 用这个，npm test 需要 GNU timeout）
 npm run test:e2e          # Playwright 端到端（需先停止 backend:dev；每用例拉起一次性隔离后端占 8010 + 会话根目录注入，前端 3002）
 npm run typecheck         # tsc --noEmit
@@ -58,7 +58,8 @@ npm run lint              # eslint
 - 笔记解析器 `note-development-v1` 已于 2026-08-25 随通道清剿删除；评测基线包（evaluation/）同批移除，S6 将以会话数据重建基线。
 - 适配器 `git-evidence-v1` 与照片适配器 `photo-evidence-v1` 均已删除（2026-08-25 通道清剿）；恢复需求出现时按 stage-3/stage-4 文档另立阶段重启，不从 git 历史复活旧代码。
 - 适配器 `claude-code-evidence-v1`（Stage 6）是确定性的：只读 `~/.claude/projects`（配置 `claude_projects_root`）下按 Claude Code 转义规则命名的会话 JSONL；只提取会话时间戳（UTC 按本机时区归日，与 git 适配器口径一致）、用户/助手消息计数与首条真实用户消息原文（跳过 `<` 开头的系统包装行与 tool_result）；**绝不修改 `~/.claude` 下任何内容，证据文档不整份复制会话**；单行损坏确定性跳过；按天生成事件，标题「在 {项目} 与 Claude Code 协作」。
-- 适配器 `codex-evidence-v1`（Stage 7）同样是确定性的：只读 `~/.codex/sessions`（配置 `codex_sessions_root`）下按日期存放的 rollout JSONL，按每文件首行 `session_meta.payload.cwd` 归属项目；**只统计 `thread_source == "user"` 的会话——subagent 内部线程的 user_message 是系统注入的审计材料，一律排除**；只提取时间戳、`user_message`/`agent_message` 计数与首条真实用户消息原文；**绝不修改 `~/.codex` 任何内容**；其余口径与 claude 适配器一致。两个 Agent 适配器共用 `agent_session_evidence.py` 的证据文档渲染，Stage 10 新适配器照此复用。导入页发现面板经 `GET /api/v1/{claude,codex}-sessions/projects` 只读列举本机有会话的项目：Claude 只数会话文件不读内容，Codex 只读每个 rollout 首行且只计 `thread_source=="user"`、cwd 已消失的项目不列；返回的 `import_path` 必须能原样传给导入端点（发现→导入闭环）。
+- 四个 Agent 适配器共用 `agent_session_evidence.py` 的扫描骨架与证据文档渲染，并以统一模块界面（`KIND`/`PROCESSOR_VERSION`/`EVIDENCE_SUFFIX`/`AGGREGATION_ORIGINS`/`list_projects`/`import_project`）注册进 `museum_service.AGENT_PRODUCTS`，由 `POST /api/v1/archive/sync` 一键同步；新 Agent 产品照此注册。全部适配器**绝不修改对应产品的本机目录**，cwd 已消失的项目不列不导，单行损坏确定性跳过，只提取时间戳/消息计数/首条真实用户消息，按天生成事件，标题「在 {项目} 与 {产品} 协作」。
+- `claude-code-evidence-v1`：只读 `~/.claude/projects`（`claude_projects_root`）转义目录 JSONL；`codex-evidence-v1`：只读 `~/.codex/sessions`（`codex_sessions_root`）日期目录 rollout JSONL，**只统计 `thread_source == "user"`（subagent 审计材料一律排除）**；`pi-agent-evidence-v1`（S4）：只读 `~/.pi/agent/sessions`（`pi_sessions_root`）转义目录 JSONL，项目归属按首行 `cwd`，content 片段取 `{type:"text"}` 文本；`dsh-evidence-v1`（S4）：只读 `~/.dsh/sessions`（`dsh_sessions_root`）的 `session.jsonl.zstd`（zstandard 解压，发现端只惰性解压首行），epoch 毫秒时间戳，**`delegationDepth != 0` 的子代理线程与 `source.kind != "user"` 的注入消息一律排除**。发现面板经 `GET /api/v1/{claude,codex,pi,dsh}-sessions/projects` 只读列举；同步统一走 `POST /archive/sync`（无逐项目导入端点）。
 - 分级信任：确定性读数（Git 提交日按 committer date、Claude/Codex 会话时间戳与计数）导入即 `status="verified"`（系统核实），不进人工核对队列，但 UI 必须保留「对这段记录提出异议」入口；推断性标题（如"创建标签"）与用户已 rejected 的同题同日事件一律保持/降级为 `candidate`；用户已审阅过的事件（disputed/unknown/confirmed）重复导入时并入不复制、状态以用户判定为准。不要把确定性"读取"表述成"核实了事实"，也不要把会话时间戳/计数的核实表述成"解读了对话内容"。
 - 聚合规则 `agent-session-aggregation-v1` 是确定性的：仅按规范化标题加日期聚合（origin 白名单隔离各 Agent 家族），不做语义聚类；Merge/Split 整理工具已随通道清剿删除。人工展签（exhibit_caption）同批删除，展览文案完全由确定性叙事底稿承担（S5 升级中）。
 - 档案库为根（ADR-0001，2026-08-25 起）：occurrence/event 全局归属档案库，不再挂阶段；阶段退化为命名时间窗视图——`GET /stages/{id}/events` 是窗口过滤（无日期事件不隐藏），`DELETE /api/v1/stages/{id}` 只删视图行、绝不动档案数据；`DELETE /api/v1/archive` 清空档案库是唯一的破坏性数据操作（两步确认）。阶段视图 UI（/stages 页）已随 S2 三步流移除，阶段仍是 API 级能力，UI 待将来需要时再做。同步幂等由 `EvidenceOccurrence.source_key`（唯一键，如 `codex:/Users/x/proj`）承担：`POST /api/v1/archive/sync` 一键同步本机全部会话项目——跳过仅在 occurrence 完整（completed 且文档字节相同）时成立，中断/失败的快照在下一轮同步自动重建；内容变化走快照替换（先摘开事件引用再删旧 occurrence）；全局同题同日聚合沿用各 origin 白名单。`claims[].source_media` 与前端照片上墙已随照片管线一并删除（2026-08-25）。

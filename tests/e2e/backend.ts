@@ -47,6 +47,8 @@ const e2eEnvFixture: TestFixture<E2eEnv, object> = async ({}, run) => {
         DIGITAL_MUSEUM_UPLOAD_DIR: join(runDir, "uploads"),
         DIGITAL_MUSEUM_CLAUDE_PROJECTS_ROOT: env.claudeProjectsRoot,
         DIGITAL_MUSEUM_CODEX_SESSIONS_ROOT: env.codexSessionsRoot,
+        DIGITAL_MUSEUM_PI_SESSIONS_ROOT: join(runDir, "pi-home", "sessions"),
+        DIGITAL_MUSEUM_DSH_SESSIONS_ROOT: join(runDir, "dsh-home", "sessions"),
         DIGITAL_MUSEUM_CORS_ORIGINS:
           '["http://127.0.0.1:3002","http://localhost:3002"]',
       },

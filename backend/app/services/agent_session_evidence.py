@@ -9,9 +9,9 @@ Claude Code（claude-code-evidence-v1）与 Codex（codex-evidence-v1）适配�
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -64,11 +64,18 @@ RecordClassification = tuple[Literal["assistant", "user"], str | None]
 
 
 def parse_session_timestamp(value: object) -> datetime | None:
-    """解析 Agent 会话文件里的 ISO 8601 时间戳。
+    """解析 Agent 会话文件里的时间戳：ISO 8601 字符串或 epoch 毫秒数。
 
     会话文件里的时间戳是 UTC；按本机时区归日与显示——也是用户真实
     体验到的日期。
     """
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        # epoch 毫秒（dsh）：13 位数值；秒级（10 位）按 1e3 归一。
+        seconds = value / 1000 if value >= 1e12 else value
+        try:
+            return datetime.fromtimestamp(seconds, tz=UTC).astimezone()
+        except (OverflowError, OSError, ValueError):
+            return None
     if not isinstance(value, str) or not value:
         return None
     try:
@@ -98,11 +105,22 @@ def scan_session_file(
     path: Path,
     classify_record: Callable[[dict], RecordClassification | None],
 ) -> SessionSummary | None:
-    """逐行流式扫描一个 Agent 会话 JSONL 的共享骨架：UTF-8 容错打开 →
-    逐行 strip → json.loads/dict 双守卫 → 记录级时间戳取 min/max → 分类
-    回调累加计数 → 组装 SessionSummary。单行损坏、非 dict、缺时间戳的行
-    被确定性跳过；全文件无时间戳返回 None（跳过该文件）。分类规则由
-    适配器注入，骨架本身不持有任何适配器规则。
+    """打开一个会话 JSONL 文件并按共享骨架扫描（见 scan_session_records）。"""
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+        return scan_session_records(handle, session_id=path.stem, classify_record=classify_record)
+
+
+def scan_session_records(
+    records: Iterable[str],
+    *,
+    session_id: str,
+    classify_record: Callable[[dict], RecordClassification | None],
+) -> SessionSummary | None:
+    """逐行流式扫描 Agent 会话记录的共享骨架：逐行 strip → json.loads/dict
+    双守卫 → 记录级时间戳取 min/max → 分类回调累加计数 → 组装
+    SessionSummary。单行损坏、非 dict、缺时间戳的行被确定性跳过；全文件
+    无时间戳返回 None（跳过该文件）。分类规则由适配器注入，骨架本身不
+    持有任何适配器规则。
     """
     started: datetime | None = None
     ended: datetime | None = None
@@ -110,46 +128,61 @@ def scan_session_file(
     assistant_messages = 0
     first_user_message: str | None = None
 
-    with path.open("r", encoding="utf-8", errors="replace") as handle:
-        for raw_line in handle:
-            stripped = raw_line.strip()
-            if not stripped:
-                continue
-            try:
-                record = json.loads(stripped)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(record, dict):
-                continue
+    for raw_line in records:
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        try:
+            record = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, dict):
+            continue
 
-            timestamp = parse_session_timestamp(record.get("timestamp"))
-            if timestamp is not None:
-                if started is None or timestamp < started:
-                    started = timestamp
-                if ended is None or timestamp > ended:
-                    ended = timestamp
+        timestamp = parse_session_timestamp(
+            record.get("timestamp", record.get("time"))
+        )
+        if timestamp is not None:
+            if started is None or timestamp < started:
+                started = timestamp
+            if ended is None or timestamp > ended:
+                ended = timestamp
 
-            classification = classify_record(record)
-            if classification is None:
-                continue
-            kind, text = classification
-            if kind == "assistant":
-                assistant_messages += 1
-            elif text:
-                user_messages += 1
-                if first_user_message is None:
-                    first_user_message = text
+        classification = classify_record(record)
+        if classification is None:
+            continue
+        kind, text = classification
+        if kind == "assistant":
+            assistant_messages += 1
+        elif text:
+            user_messages += 1
+            if first_user_message is None:
+                first_user_message = text
 
     if started is None or ended is None:
         return None
     return SessionSummary(
-        session_id=path.stem,
+        session_id=session_id,
         started_at=started,
         ended_at=ended,
         user_messages=user_messages,
         assistant_messages=assistant_messages,
         first_user_message=first_user_message,
     )
+
+
+def message_text(content: object) -> str | None:
+    """从 message.content（字符串或 {type:"text"} 片段数组）提取纯文本。"""
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return None
+    parts = [
+        item.get("text")
+        for item in content
+        if isinstance(item, dict) and item.get("type") == "text"
+    ]
+    return " ".join(part for part in parts if isinstance(part, str))
 
 
 def render_evidence_document(

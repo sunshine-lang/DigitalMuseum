@@ -86,7 +86,7 @@ class EventOut(BaseModel):
     status: EventStatus
     revision: int
     is_formal: bool
-    origin: Literal["aggregated", "claude", "codex"]
+    origin: Literal["aggregated", "claude", "codex", "pi", "dsh"]
     source_count: int
     claims: list[ClaimOut]
     latest_review: ReviewOut | None
@@ -126,7 +126,7 @@ class AgentSessionProjectOut(BaseModel):
 
 # 档案库同步（ADR-0001）：source_key 内容寻址的幂等 upsert 结果。
 class ArchiveSyncProductOut(BaseModel):
-    product: Literal["claude", "codex"]
+    product: Literal["claude", "codex", "pi", "dsh"]
     project: str
     session_count: int
     status: Literal["imported", "skipped", "failed"]

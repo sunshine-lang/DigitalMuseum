@@ -23,7 +23,9 @@ from app.services import (
     archive_service,
     claude_session_evidence_service,
     codex_session_evidence_service,
+    dsh_session_evidence_service,
     museum_service,
+    pi_agent_evidence_service,
 )
 
 ALLOWED_SUFFIXES = {".md": "text/markdown", ".txt": "text/plain"}
@@ -104,6 +106,8 @@ def create_api_router(session_provider) -> APIRouter:
                 allowed_repo_roots=request.app.state.settings.allowed_repo_roots,
                 claude_projects_root=request.app.state.settings.claude_projects_root,
                 codex_sessions_root=request.app.state.settings.codex_sessions_root,
+                pi_sessions_root=request.app.state.settings.pi_sessions_root,
+                dsh_sessions_root=request.app.state.settings.dsh_sessions_root,
             )
         }
 
@@ -181,7 +185,7 @@ def create_api_router(session_provider) -> APIRouter:
     def discover_claude_projects(request: Request) -> dict:
         # 发现面板：只读列举 projects 根下有会话文件的项目，不读会话内容。
         return {
-            "data": claude_session_evidence_service.list_claude_projects(
+            "data": claude_session_evidence_service.list_projects(
                 request.app.state.settings.claude_projects_root,
             )
         }
@@ -193,8 +197,32 @@ def create_api_router(session_provider) -> APIRouter:
     def discover_codex_projects(request: Request) -> dict:
         # 发现面板：只读全部 rollout 首行的项目归属（真人会话计数），不读正文。
         return {
-            "data": codex_session_evidence_service.list_codex_projects(
+            "data": codex_session_evidence_service.list_projects(
                 request.app.state.settings.codex_sessions_root,
+            )
+        }
+
+    @router.get(
+        "/pi-sessions/projects",
+        response_model=DataEnvelope[list[AgentSessionProjectOut]],
+    )
+    def discover_pi_projects(request: Request) -> dict:
+        # 发现面板：只读 pi 会话文件首行的项目归属（cwd 计数），不读正文。
+        return {
+            "data": pi_agent_evidence_service.list_projects(
+                request.app.state.settings.pi_sessions_root,
+            )
+        }
+
+    @router.get(
+        "/dsh-sessions/projects",
+        response_model=DataEnvelope[list[AgentSessionProjectOut]],
+    )
+    def discover_dsh_projects(request: Request) -> dict:
+        # 发现面板：只读 dsh 压缩会话首行的项目归属（真人线程计数），不读正文。
+        return {
+            "data": dsh_session_evidence_service.list_projects(
+                request.app.state.settings.dsh_sessions_root,
             )
         }
 

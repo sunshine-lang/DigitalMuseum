@@ -25,16 +25,14 @@ from app.domain.models import (
 from app.domain.schemas import ReviewCreate, StageCreate, StageUpdate
 from app.services import claude_session_evidence_service as claude_evidence
 from app.services import codex_session_evidence_service as codex_evidence
+from app.services import dsh_session_evidence_service as dsh_evidence
+from app.services import pi_agent_evidence_service as pi_evidence
 from app.services.agent_session_evidence import AgentActivityItem
 
 AGGREGATION_RULE_VERSION = "agent-session-aggregation-v1"
 # 聚合可并入的状态：candidate 是待核对草稿；verified 是确定性读数的系统核实态。
 # 被用户审阅过的事件 revision > 0，天然不会匹配。
 AGGREGATABLE_STATUSES = ("candidate", "verified")
-
-# 同题同日聚合的 origin 白名单：各 Agent 家族只并入自身与聚合产物。
-CLAUDE_AGGREGATION_ORIGINS = ("aggregated", "claude")
-CODEX_AGGREGATION_ORIGINS = ("aggregated", "codex")
 
 COVERAGE_ORDER = {
     "stored_locally": 0,
@@ -747,6 +745,17 @@ def _add_months(value: date, months: int) -> date:
 # ---------------------------------------------------------------------------
 
 
+# 产品注册表：各 Agent 适配器以统一模块界面接入
+# （KIND / list_projects / import_project / EVIDENCE_SUFFIX /
+#   AGGREGATION_ORIGINS / *_PROCESSOR_VERSION），新增产品照此注册。
+AGENT_PRODUCTS = (
+    claude_evidence,
+    codex_evidence,
+    pi_evidence,
+    dsh_evidence,
+)
+
+
 def sync_archive(
     session: Session,
     *,
@@ -754,6 +763,8 @@ def sync_archive(
     allowed_repo_roots: str,
     claude_projects_root: str,
     codex_sessions_root: str,
+    pi_sessions_root: str,
+    dsh_sessions_root: str,
 ) -> dict:
     """一键同步本机全部 Agent 会话项目到档案库。
 
@@ -763,29 +774,26 @@ def sync_archive(
       旧快照级联清理），事件按全局同题同日并入、用户判定保持；
     - 换掉的旧快照 blob 由 _reclaim_orphan_blobs 回收。
     """
+    roots = {
+        "claude": claude_projects_root,
+        "codex": codex_sessions_root,
+        "pi": pi_sessions_root,
+        "dsh": dsh_sessions_root,
+    }
     products: list[dict] = []
-    for project in claude_evidence.list_claude_projects(claude_projects_root):
-        products.append(
-            _sync_agent_project(
-                session,
-                kind="claude",
-                project=project,
-                upload_dir=upload_dir,
-                allowed_repo_roots=allowed_repo_roots,
-                root=claude_projects_root,
+    for adapter in AGENT_PRODUCTS:
+        root = roots[adapter.KIND]
+        for project in adapter.list_projects(root):
+            products.append(
+                _sync_agent_project(
+                    session,
+                    adapter=adapter,
+                    project=project,
+                    upload_dir=upload_dir,
+                    allowed_repo_roots=allowed_repo_roots,
+                    root=root,
+                )
             )
-        )
-    for project in codex_evidence.list_codex_projects(codex_sessions_root):
-        products.append(
-            _sync_agent_project(
-                session,
-                kind="codex",
-                project=project,
-                upload_dir=upload_dir,
-                allowed_repo_roots=allowed_repo_roots,
-                root=codex_sessions_root,
-            )
-        )
     _reclaim_orphan_blobs(session, upload_dir)
     return {
         "products": products,
@@ -821,16 +829,16 @@ def wipe_archive(session: Session, *, upload_dir: Path) -> dict:
 def _sync_agent_project(
     session: Session,
     *,
-    kind: str,
+    adapter,
     project: dict,
     upload_dir: Path,
     allowed_repo_roots: str,
     root: str,
 ) -> dict:
     import_path = project["import_path"]
-    source_key = f"{kind}:{Path(import_path).expanduser().resolve()}"
+    source_key = f"{adapter.KIND}:{Path(import_path).expanduser().resolve()}"
     entry = {
-        "product": kind,
+        "product": adapter.KIND,
         "project": project["project"],
         "session_count": project["session_count"],
         "status": "failed",
@@ -838,34 +846,13 @@ def _sync_agent_project(
         "events_created": 0,
     }
     try:
-        if kind == "claude":
-            evidence = claude_evidence.import_claude_sessions(
-                import_path,
-                starts_on=None,
-                ends_on=None,
-                allowed_roots=allowed_repo_roots,
-                projects_root=root,
-            )
-            suffix, origin, origins, processor_version = (
-                "-claude-sessions.txt",
-                "claude",
-                CLAUDE_AGGREGATION_ORIGINS,
-                claude_evidence.CLAUDE_PROCESSOR_VERSION,
-            )
-        else:
-            evidence = codex_evidence.import_codex_sessions(
-                import_path,
-                starts_on=None,
-                ends_on=None,
-                allowed_roots=allowed_repo_roots,
-                sessions_root=root,
-            )
-            suffix, origin, origins, processor_version = (
-                "-codex-sessions.txt",
-                "codex",
-                CODEX_AGGREGATION_ORIGINS,
-                codex_evidence.CODEX_PROCESSOR_VERSION,
-            )
+        evidence = adapter.import_project(
+            import_path,
+            starts_on=None,
+            ends_on=None,
+            allowed_roots=allowed_repo_roots,
+            root=root,
+        )
     except ApiError as exc:
         entry["error_code"] = exc.code
         return entry
@@ -906,10 +893,10 @@ def _sync_agent_project(
             document=evidence.document,
             items=evidence.items,
             label=evidence.project_label,
-            filename_suffix=suffix,
-            origin=origin,
-            origins=origins,
-            processor_version=processor_version,
+            filename_suffix=adapter.EVIDENCE_SUFFIX,
+            origin=adapter.KIND,
+            origins=adapter.AGGREGATION_ORIGINS,
+            processor_version=adapter.PROCESSOR_VERSION,
             source_key=source_key,
         )
     except ApiError as exc:
