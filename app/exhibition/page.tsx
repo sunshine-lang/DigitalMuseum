@@ -11,7 +11,11 @@ import {
   scanExportRisks,
   type ExportRisk,
 } from "./export-html";
-import { exhibitNarrative } from "./narrative";
+import {
+  buildProjectMilestones,
+  exhibitNarrative,
+  milestoneKeyFor,
+} from "./narrative";
 
 // 档案库为根（ADR-0001）：展览不再挂阶段，封面信息由档案数据推导。
 const ARCHIVE_TITLE = "我的 Agent 协作档案";
@@ -99,6 +103,10 @@ export default function ExhibitionWorkspace() {
   );
   const confirmedCount = useMemo(
     () => selectedEvents.filter((event) => event.status === "confirmed").length,
+    [selectedEvents],
+  );
+  const selectedMilestones = useMemo(
+    () => buildProjectMilestones(selectedEvents),
     [selectedEvents],
   );
   const verifiedCount = useMemo(
@@ -440,7 +448,7 @@ export default function ExhibitionWorkspace() {
                     <div className="expo-card-caption">
                       <time>{event.occurred_on ?? "时间待定"}</time>
                       <h3>{event.title}</h3>
-                      <p className="expo-card-narrative">{exhibitNarrative(event)}</p>
+                      <p className="expo-card-narrative">{exhibitNarrative(event, selectedMilestones.get(milestoneKeyFor(event)))}</p>
                     </div>
                     <div className="expo-labels">
                       {event.claims.map((claim, claimIndex) => (

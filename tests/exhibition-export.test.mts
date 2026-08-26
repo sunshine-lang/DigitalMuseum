@@ -158,3 +158,44 @@ test("风险扫描：叙事里的密钥与阶段名里的邮箱分别命中", ()
   const kinds = scanExportRisks(html).map((risk) => risk.kind).sort();
   assert.deepEqual(kinds, ["email", "secret"]);
 });
+
+test("叙事底稿：同一项目的多天展卡句式各异且里程碑诚实（S5）", () => {
+  const days: Array<[string, number, string]> = [
+    ["2026-06-01", 2, "先把仓库跑起来"],
+    ["2026-06-03", 40, "重构核心模块"],
+    ["2026-06-05", 8, "补测试"],
+    ["2026-06-08", 15, "修性能问题"],
+    ["2026-06-12", 3, "写发布说明"],
+  ];
+  const marathon = days.map(([day, messages, topic]) => ({
+    title: "在 marathon-project 与 Codex 协作",
+    occurred_on: day,
+    status: "verified",
+    origin: "codex",
+    claims: [
+      {
+        text: `这一天在项目 marathon-project 进行了 1 个 Codex 会话、共 ${messages} 条用户消息；最早一个会话从「${topic}」开始`,
+      },
+    ],
+  }));
+  const html = buildExhibitionHtml({
+    stageName: "里程碑叙事",
+    startsOn: "2026-06-01",
+    endsOn: "2026-06-30",
+    events: marathon,
+    exportedAt: "2026-08-23T00:00:00.000Z",
+  });
+  // 四种里程碑角色都出现，且句式诚实。
+  assert.match(html, /第一次交手/);
+  assert.match(html, /最密集的一天/);
+  assert.match(html, /占了整个项目消息量的/);
+  assert.match(html, /天协作的收尾/);
+  // 五天的叙事两两不同：没有任何两张同构句式卡片；主题词均可回溯。
+  for (const [, , topic] of days) {
+    assert.ok(html.includes(topic), `主题「${topic}」应出现在展卡或标签里`);
+  }
+  const captionMatches = html.match(/<p class="caption">[^<]+<\/p>/g) ?? [];
+  const unique = new Set(captionMatches);
+  assert.equal(unique.size, captionMatches.length);
+  assert.ok(captionMatches.length >= 5);
+});

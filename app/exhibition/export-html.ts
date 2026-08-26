@@ -10,7 +10,11 @@
  */
 
 import { statusLabel } from "../events-shared.ts";
-import { exhibitNarrative } from "./narrative.ts";
+import {
+  buildProjectMilestones,
+  exhibitNarrative,
+  milestoneKeyFor,
+} from "./narrative.ts";
 
 export type ExportExhibitEvent = {
   title: string;
@@ -86,6 +90,15 @@ function displayDay(isoDate: string): string {
 }
 
 export function buildExhibitionHtml(input: ExportExhibitionInput): string {
+  // 项目级里程碑：全部展出事件聚合一次，卡片按其在项目中的位置取叙事。
+  const milestones = buildProjectMilestones(
+    input.events.map((event) => ({
+      title: event.title,
+      occurred_on: event.occurred_on,
+      origin: event.origin,
+      claims: event.claims,
+    })),
+  );
   const dated = input.events.filter((event) => event.occurred_on);
   const undated = input.events.filter((event) => !event.occurred_on);
   dated.sort((a, b) =>
@@ -117,7 +130,7 @@ export function buildExhibitionHtml(input: ExportExhibitionInput): string {
             <span class="chip ${esc(event.status)}">${esc(statusLabel(event.status))}</span>
           </div>
           <h3>${esc(event.title)}</h3>
-          <p class="caption">${esc(exhibitNarrative(event))}</p>
+          <p class="caption">${esc(exhibitNarrative(event, milestones.get(milestoneKeyFor(event))))}</p>
         </article>`,
         )
         .join("")}
