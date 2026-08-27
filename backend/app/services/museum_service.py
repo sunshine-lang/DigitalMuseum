@@ -417,7 +417,7 @@ def _find_reviewed_absorb_target(
             CandidateEvent.status.in_(("confirmed", "disputed", "unknown")),
             CandidateEvent.revision > 0,
             CandidateEvent.occurred_on == occurred_on,
-            CandidateEvent.origin.in_(origins + ("merged", "split")),
+            CandidateEvent.origin.in_(origins),
         )
     ).all()
     return next(
