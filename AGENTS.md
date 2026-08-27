@@ -53,7 +53,7 @@ npm run lint              # eslint
 - Phase 0 是本地优先单用户原型：不引入云数据库、不引入模型调用、不把数据默认送云端。D1/Drizzle 链路已在 2026-08 移除；Cloudflare Worker 部署目标已按 PRD v0.2 废弃（v0.3 延续），不要重新引入。将来若引入模型，输出只能产生 candidate 与逐字锚定的草稿，永不产生 verified（真实性契约，PRD v0.3 §8 沿用）。
 - 首页的批量选择当前通过前端顺序调用单文件 API 实现；不要把它表述为已完成可恢复的服务端 Import Batch。
 - 首页“查看回顾”只是真实 Event 状态的本地草稿预览，不是 Story/Exhibition 生成、导出或分享能力。`/exhibition` 的「导出静态展览（HTML）」是最小静态导出：只含用户勾选展出的事件，证据链细节（锚点、blob 指纹）默认不随导出，产物为无脚本自包含单文件；导出前有敏感信息扫描（常见密钥、本机路径、邮箱），命中必须人工逐项确认后才落盘——这是 PRD §9 的机械防线，不要移除或改为静默放行。展览视觉为单一的午夜档案馆主题。PRD v0.3 §11 的真实数据大考复考记录见 `docs/gate/real-data-exam-2026-08-25-v0.3.md`（人工判定字段待用户填写），在用户判定完成前不要把 v0.3 表述为「已通过大考」。
-- 原始 Note 是不可原地改写的 Evidence Blob：以 SHA-256 内容哈希落盘在 `data/uploads/`。对外只经 `GET /api/v1/blobs/{sha256}` 只读访问：哈希必须匹配 `^[0-9a-f]{64}$`（fail closed 防路径穿越）、文件路径只从 DB 的 `relative_path` 解析、无列举无删除、响应可永久缓存（内容寻址不变）。
+- 原始证据文档（2026-08-25 起为 Agent 会话转录，笔记管线已删）是不可原地改写的 Evidence Blob：以 SHA-256 内容哈希落盘在 `data/uploads/`。对外只经 `GET /api/v1/blobs/{sha256}` 只读访问：哈希必须匹配 `^[0-9a-f]{64}$`（fail closed 防路径穿越）、文件路径只从 DB 的 `relative_path` 解析、无列举无删除、响应可永久缓存（内容寻址不变）。
 - API 错误统一返回 `{"error":{"code","message"}}`，不向页面输出堆栈。
 - 笔记解析器 `note-development-v1` 已于 2026-08-25 随通道清剿删除；评测基线包（evaluation/）同批移除，S6 将以会话数据重建基线。
 - 适配器 `git-evidence-v1` 与照片适配器 `photo-evidence-v1` 均已删除（2026-08-25 通道清剿）；恢复需求出现时按 stage-3/stage-4 文档另立阶段重启，不从 git 历史复活旧代码。
