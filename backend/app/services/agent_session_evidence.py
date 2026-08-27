@@ -199,7 +199,10 @@ def render_evidence_document(
     claim_noun: str,
 ) -> AgentEvidence:
     """把按天分组的会话渲染为确定性证据文档与逐日事件条目；文档头的
-    时间范围取会话实际首尾日期（sessions 须非空，空校验由调用方承担）。"""
+    时间范围取会话实际首尾日期。sessions 为空是调用方契约错误，显式报错
+    而不是让 min() 抛出费解的内置异常。"""
+    if not sessions:
+        raise ValueError("render_evidence_document 需要至少一个会话")
     sessions_by_day: dict[date, list[SessionSummary]] = {}
     for session in sessions:
         sessions_by_day.setdefault(session.started_at.date(), []).append(session)

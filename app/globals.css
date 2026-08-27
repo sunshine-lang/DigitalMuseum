@@ -290,7 +290,6 @@ button:focus-visible {
 .mvp-review-complete,
 .mvp-loading { animation: mvp-view-in .2s ease-out both; }
 
-.mvp-section-heading > span
 .mvp-section-heading > span { color: var(--mvp-gold-deep); font: 700 10px var(--mvp-mono); letter-spacing: .22em; }
 .mvp-section-heading h2 { margin: -4px 0 8px; font: 700 29px/1.25 var(--mvp-serif); letter-spacing: -.01em; }
 .mvp-section-heading p { margin: 0; color: var(--mvp-ink-soft); font-family: var(--mvp-body-serif); font-size: 13.5px; line-height: 1.65; }
