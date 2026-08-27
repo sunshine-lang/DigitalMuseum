@@ -14,22 +14,22 @@ from __future__ import annotations
 
 import io
 import json
-from datetime import date
 from pathlib import Path
 
 import zstandard
 
-from app.core.errors import ApiError
 from app.services.agent_session_evidence import (
     AgentEvidence,
     RecordClassification,
     SessionSummary,
+    list_cwd_projects,
     message_text,
     real_user_text,
-    render_evidence_document,
+    render_project_evidence,
+    resolve_project_directory,
+    scan_project_sessions,
     scan_session_records,
 )
-from app.services.path_policy import require_path_allowed
 
 DSH_PROCESSOR_VERSION = "dsh-evidence-v1"
 
@@ -45,128 +45,69 @@ _DECOMPRESSOR = zstandard.ZstdDecompressor()
 def list_projects(sessions_root: str) -> list[dict]:
     """只读列举全部压缩会话首行的项目归属（名称 + 会话数），发现面板专用。
 
-    只解压每个文件的第一行（流式惰性读取），不读会话正文。
+    只解压每个文件的第一行（流式惰性读取），不读会话正文；delegationDepth
+    非 0 的子代理线程不计入（与导入口径一致）。
     """
-    root = Path(sessions_root).expanduser()
-    if not root.is_dir():
-        return []
-    counts: dict[str, int] = {}
-    for file_path in sorted(root.rglob("session.jsonl.zstd")):
-        meta = _read_session_meta(file_path)
-        if meta is None or meta.get("delegationDepth", 0) != 0:
-            continue
-        cwd = meta.get("cwd")
-        if not isinstance(cwd, str) or not cwd.strip():
-            continue
-        try:
-            resolved = Path(cwd).expanduser().resolve()
-        except OSError:
-            continue
-        if not resolved.is_dir():
-            continue
-        key = str(resolved)
-        counts[key] = counts.get(key, 0) + 1
-    projects = [
-        {
-            "project": Path(path).name or "dsh-project",
-            "session_count": count,
-            "import_path": path,
-        }
-        for path, count in counts.items()
-    ]
-    projects.sort(key=lambda item: (-item["session_count"], item["project"]))
-    return projects
+    return list_cwd_projects(
+        sessions_root,
+        glob_pattern="session.jsonl.zstd",
+        read_project_cwd=_read_project_cwd,
+        default_project="dsh-project",
+    )
 
 
 def import_project(
     path_raw: str,
     *,
-    starts_on: date | None = None,
-    ends_on: date | None = None,
     allowed_roots: str,
     root: str,
 ) -> AgentEvidence:
-    """读取项目会话并渲染证据文档。窗口为 None 时读全部（档案库同步），
-    文档头的时间范围改用会话实际的首尾日期，保证内容是数据的纯函数。"""
-    project_root, label = _resolve_project(path_raw, allowed_roots=allowed_roots)
-    sessions = _project_sessions(project_root, root)
-    if starts_on is not None and ends_on is not None:
-        sessions = [
-            session
-            for session in sessions
-            if starts_on <= session.started_at.date() <= ends_on
-        ]
-    if not sessions:
-        if starts_on is None or ends_on is None:
-            raise ApiError(422, "no_dsh_sessions", "这个项目还没有可读取的 dsh 会话")
-        raise ApiError(
-            422, "no_dsh_sessions_in_range", "这个项目的 dsh 会话都不在当前范围内"
-        )
-    days = [session.started_at.date() for session in sessions]
-    return render_evidence_document(
+    """读取项目全部会话并渲染证据文档（文档头时间范围取会话实际首尾日期，
+    内容是数据的纯函数）。"""
+    project_root, label = resolve_project_directory(
+        path_raw, allowed_roots=allowed_roots, kind="dsh", product_name="dsh"
+    )
+    sessions = scan_project_sessions(
+        root,
+        project_root=project_root,
+        glob_pattern="session.jsonl.zstd",
+        read_project_cwd=_read_project_cwd,
+        scan_file=_scan_zstd_session,
+    )
+    return render_project_evidence(
+        sessions,
         source_label="dsh sessions",
+        product_name="dsh",
         project_label=label,
         project_display=str(project_root),
-        starts_on=starts_on if starts_on is not None else min(days),
-        ends_on=ends_on if ends_on is not None else max(days),
-        sessions=sessions,
-        collaboration_title=f"在 {label} 与 dsh 协作",
-        claim_noun="dsh",
+        empty_error_code="no_dsh_sessions",
+        empty_error_message="这个项目还没有可读取的 dsh 会话",
     )
 
 
-def _resolve_project(path_raw: str, *, allowed_roots: str) -> tuple[Path, str]:
-    """dsh 会话按项目转义目录存放，项目归属由首行 cwd 决定，输入必须是
-    真实项目目录（与 codex 适配器同法）。"""
-    cleaned = (path_raw or "").strip()
-    if not cleaned:
-        raise ApiError(422, "dsh_path_required", "请填写要导入的 dsh 项目路径")
-
-    candidate = Path(cleaned).expanduser()
-    if not candidate.is_dir():
-        raise ApiError(422, "dsh_sessions_not_found", "这个路径下没有找到 dsh 会话记录")
-    resolved = candidate.resolve()
-    require_path_allowed(resolved, allowed_roots, error_code="dsh_path_not_allowed")
-    return resolved, resolved.name or "dsh-project"
+def _read_project_cwd(path: Path) -> str | None:
+    """首行 session 记录 → 项目归属 cwd；delegationDepth != 0 的子代理
+    线程不计入（list 与 import 同口径）。"""
+    meta = _read_session_meta(path)
+    if meta is None or meta.get("delegationDepth", 0) != 0:
+        return None
+    cwd = meta.get("cwd")
+    return cwd if isinstance(cwd, str) and cwd.strip() else None
 
 
-def _project_sessions(project_root: Path, sessions_root: str) -> list[SessionSummary]:
-    """扫描根目录下全部压缩会话，返回归属本项目的人机线程。
-
-    确定性过滤规则：首行不是可解析的 session 记录 → 跳过；
-    delegationDepth != 0（子代理线程）→ 跳过；首行 cwd 解析后不等于项目
-    路径 → 跳过；解压失败或损坏 → 跳过；无可读时间戳 → 跳过。
-    """
-    root = Path(sessions_root).expanduser()
-    summaries: list[SessionSummary] = []
-    if not root.is_dir():
-        return summaries
-    for file_path in sorted(root.rglob("session.jsonl.zstd")):
-        meta = _read_session_meta(file_path)
-        if meta is None or meta.get("delegationDepth", 0) != 0:
-            continue
-        cwd = meta.get("cwd")
-        if not isinstance(cwd, str) or not cwd:
-            continue
-        try:
-            if Path(cwd).expanduser().resolve() != project_root:
-                continue
-        except OSError:
-            continue
-        try:
-            text = _DECOMPRESSOR.decompress(file_path.read_bytes()).decode(
-                "utf-8", errors="replace"
-            )
-        except (OSError, zstandard.ZstdError):
-            continue
-        summary = scan_session_records(
-            io.StringIO(text).readlines(),
-            session_id=file_path.parent.name,
-            classify_record=_classify_record,
+def _scan_zstd_session(path: Path) -> SessionSummary | None:
+    """整文件解压后走共享扫描骨架；解压失败或损坏确定性跳过。"""
+    try:
+        text = _DECOMPRESSOR.decompress(path.read_bytes()).decode(
+            "utf-8", errors="replace"
         )
-        if summary is not None:
-            summaries.append(summary)
-    return summaries
+    except (OSError, zstandard.ZstdError):
+        return None
+    return scan_session_records(
+        io.StringIO(text),
+        session_id=path.parent.name,
+        classify_record=_classify_record,
+    )
 
 
 def _read_session_meta(path: Path) -> dict | None:

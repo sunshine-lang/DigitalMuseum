@@ -57,8 +57,9 @@ test("按月分组、组内按日期排序，未定日期在最后", () => {
     events,
     exportedAt: "2026-08-23T00:00:00.000Z",
   });
-  const july = html.indexOf("2026年7月");
-  const august = html.indexOf("2026年8月");
+  // 月份门楣用 events-shared.monthLabelOf（与站内同一格式：数字两侧带空格）。
+  const july = html.indexOf("2026 年 7 月");
+  const august = html.indexOf("2026 年 8 月");
   const undated = html.indexOf("未定日期");
   assert.ok(july > -1 && august > -1 && undated > -1);
   assert.ok(july < august, "7月应排在8月之前");

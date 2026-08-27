@@ -164,16 +164,16 @@ def _archive_events(client: TestClient) -> list[dict]:
 
 
 def test_sync_creates_verified_daily_events_excluding_subagent(
-    codex_client: TestClient, codex_workspace: tuple[Path, Path]
+    sync_client: TestClient, codex_workspace: tuple[Path, Path]
 ) -> None:
     _workspace, _sessions_root = codex_workspace
 
-    summary = _sync(codex_client)
+    summary = _sync(sync_client)
     # cwd 已消失的 OtherProject 不在发现列表；本项目一个项目导入。
     assert summary["projects_imported"] == 1
     assert [item["project"] for item in summary["products"]] == ["MyProject"]
 
-    events = _archive_events(codex_client)
+    events = _archive_events(sync_client)
     # 全量读取：一年前的会话与当日会话各成一段（同步无窗口边界）。
     assert [event["occurred_on"] for event in events] == ["2025-01-01", "2026-05-10"]
     event = events[1]
@@ -189,7 +189,7 @@ def test_sync_creates_verified_daily_events_excluding_subagent(
     assert "3 条用户消息" in claim["text"]
     assert "帮我给这个仓库加上 CI" in claim["text"]
 
-    document = _fetch_document(codex_client, claim["anchors"][0]["blob_sha256"])
+    document = _fetch_document(sync_client, claim["anchors"][0]["blob_sha256"])
     lines = document.split("\n")
     for anchor in claim["anchors"]:
         assert lines[anchor["line_start"] - 1] == anchor["quote"]
@@ -200,7 +200,7 @@ def test_sync_creates_verified_daily_events_excluding_subagent(
 
 
 def test_same_label_projects_same_day_aggregate_into_one_event(
-    codex_client: TestClient, tmp_path: Path
+    sync_client: TestClient, tmp_path: Path
 ) -> None:
     """两个不同路径、同名末段的项目同日会话 → 同题同日聚合为一段。"""
     sessions_root = tmp_path / "codex-home" / "sessions"
@@ -223,8 +223,8 @@ def test_same_label_projects_same_day_aggregate_into_one_event(
             encoding="utf-8",
         )
 
-    _sync(codex_client)
-    events = _archive_events(codex_client)
+    _sync(sync_client)
+    events = _archive_events(sync_client)
 
     assert len(events) == 1
     assert events[0]["origin"] == "aggregated"
@@ -233,12 +233,12 @@ def test_same_label_projects_same_day_aggregate_into_one_event(
 
 
 def test_disputed_then_new_session_absorbs_into_user_judgement(
-    codex_client: TestClient, codex_workspace: tuple[Path, Path]
+    sync_client: TestClient, codex_workspace: tuple[Path, Path]
 ) -> None:
     workspace, sessions_root = codex_workspace
-    _sync(codex_client)
-    event_id = _archive_events(codex_client)[1]["id"]
-    review = codex_client.post(
+    _sync(sync_client)
+    event_id = _archive_events(sync_client)[1]["id"]
+    review = sync_client.post(
         f"/api/v1/events/{event_id}/reviews",
         json={"decision": "disputed", "note": "那天在休假", "expected_revision": 0},
     )
@@ -262,10 +262,10 @@ def test_disputed_then_new_session_absorbs_into_user_judgement(
         + "\n",
         encoding="utf-8",
     )
-    summary = _sync(codex_client)
+    summary = _sync(sync_client)
     assert summary["projects_imported"] == 1  # 快照替换，不是跳过
 
-    events = _archive_events(codex_client)
+    events = _archive_events(sync_client)
     assert len(events) == 2
     target = next(event for event in events if event["occurred_on"] == "2026-05-10")
     assert target["status"] == "disputed"

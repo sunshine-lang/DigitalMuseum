@@ -9,7 +9,7 @@
  * - 导出前做敏感信息风险扫描（密钥/路径/邮箱），命中必须经人工确认。
  */
 
-import { statusLabel } from "../events-shared.ts";
+import { monthLabelOf, statusLabel } from "../events-shared.ts";
 import {
   buildCollaborationStyle,
   buildProjectMilestones,
@@ -80,12 +80,6 @@ function esc(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function monthKey(isoDate: string): string {
-  const year = Number(isoDate.slice(0, 4));
-  const month = Number(isoDate.slice(5, 7));
-  return `${year}年${month}月`;
-}
-
 function displayDay(isoDate: string): string {
   return `${Number(isoDate.slice(5, 7))}月${Number(isoDate.slice(8, 10))}日`;
 }
@@ -112,7 +106,7 @@ export function buildExhibitionHtml(input: ExportExhibitionInput): string {
 
   const groups = new Map<string, ExportExhibitEvent[]>();
   for (const event of dated) {
-    const key = monthKey(event.occurred_on as string);
+    const key = monthLabelOf(event.occurred_on as string);
     const bucket = groups.get(key) ?? [];
     bucket.push(event);
     groups.set(key, bucket);

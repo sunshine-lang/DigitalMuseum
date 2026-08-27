@@ -809,8 +809,6 @@ def _sync_agent_project(
     try:
         evidence = adapter.import_project(
             import_path,
-            starts_on=None,
-            ends_on=None,
             allowed_roots=allowed_repo_roots,
             root=root,
         )

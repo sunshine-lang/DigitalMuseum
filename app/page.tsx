@@ -17,7 +17,14 @@ import {
   syncArchive,
   wipeArchive,
 } from "./phase0-api";
-import { isVisibleExperience, statusLabels } from "./events-shared";
+import {
+  AGENT_PRODUCT_NAMES,
+  dateSpanOf,
+  errorTextOf,
+  isVisibleExperience,
+  monthLabelOf,
+  statusLabels,
+} from "./events-shared";
 
 type WorkspaceView = "sync" | "browse" | "review";
 
@@ -43,9 +50,8 @@ const friendlyStatus: Record<CandidateEvent["status"], string> = {
 };
 
 function originChipLabel(event: CandidateEvent): string {
-  if (event.origin === "claude") return "来自 Claude Code 会话";
-  if (event.origin === "codex") return "来自 Codex 会话";
-  return `聚合自 ${event.source_count} 份`;
+  const product = AGENT_PRODUCT_NAMES[event.origin];
+  return product ? `来自 ${product} 会话` : `聚合自 ${event.source_count} 份`;
 }
 
 function evidenceSummary(event: CandidateEvent): string {
@@ -59,10 +65,6 @@ function evidenceSummary(event: CandidateEvent): string {
     return `系统发现 ${event.source_count} 份标题和日期都相同的确定性记录，把它们整理在同一段经历里并自动核实。如果与事实不符，点下方「对这段记录提出异议」随时纠正。`;
   }
   return "系统只读取记录里的确定性信息（日期、计数与原文摘录），没有判断事情是否完成或对你意味着什么。";
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "操作失败，请稍后重试。";
 }
 
 function reviewSuccessMessage(decision: ReviewDecision): string {
@@ -98,20 +100,17 @@ export default function MuseumMvpWorkspace() {
   );
   // 馆藏概览：全部由档案数据确定性推导（项目数按标题、跨度按首末日期）。
   const archiveDigest = useMemo(() => {
-    const dated = visibleEvents
-      .map((event) => event.occurred_on)
-      .filter((value): value is string => Boolean(value))
-      .sort();
-    if (!dated.length) return null;
+    const span = dateSpanOf(visibleEvents);
+    if (!span) return null;
     const products = new Set(
       visibleEvents.map((event) => event.origin).filter((origin) => origin !== "aggregated"),
     );
     return {
       count: visibleEvents.length,
       projects: new Set(visibleEvents.map((event) => event.title)).size,
-      span: `${dated[0]} — ${dated[dated.length - 1]}`,
+      span: `${span.startsOn} — ${span.endsOn}`,
       products: products.size,
-      volume: `VOL.${dated[0].slice(0, 7).replace("-", ".")} · No.${String(visibleEvents.length).padStart(3, "0")}`,
+      volume: `VOL.${span.startsOn.slice(0, 7).replace("-", ".")} · No.${String(visibleEvents.length).padStart(3, "0")}`,
     };
   }, [visibleEvents]);
   const candidateEvents = useMemo(
@@ -174,7 +173,7 @@ export default function MuseumMvpWorkspace() {
         return summary;
       } catch (error) {
         if (!options?.silent) {
-          setNotice({ kind: "error", message: errorMessage(error) });
+          setNotice({ kind: "error", message: errorTextOf(error) });
         }
         return null;
       } finally {
@@ -216,7 +215,7 @@ export default function MuseumMvpWorkspace() {
       setActiveAnchor(null);
       setView("browse");
     } catch (error) {
-      setNotice({ kind: "error", message: errorMessage(error) });
+      setNotice({ kind: "error", message: errorTextOf(error) });
     } finally {
       setBusy(false);
     }
@@ -268,7 +267,7 @@ export default function MuseumMvpWorkspace() {
         message: "档案库已清空，原始文件已回收。点「同步本机全部会话」重新开始。",
       });
     } catch (error) {
-      setNotice({ kind: "error", message: errorMessage(error) });
+      setNotice({ kind: "error", message: errorTextOf(error) });
     } finally {
       setBusy(false);
     }
@@ -523,7 +522,7 @@ function SessionDiscoveryPanel() {
         ]);
       })
       .catch((loadError: unknown) =>
-        setError(loadError instanceof Error ? loadError.message : "扫描本机会话失败"),
+        setError(errorTextOf(loadError, "扫描本机会话失败")),
       )
       .finally(() => setLoading(false));
   }, []);
@@ -587,7 +586,7 @@ function BrowseView({ events, selectedEvent, activeAnchor, onSelect, onAnchorAct
     }
     const byMonth = new Map<string, Array<[string, CandidateEvent[]]>>();
     for (const [day, dayEvents] of byDate) {
-      const month = day === "时间待定" ? "时间待定" : `${day.slice(0, 4)} 年 ${Number(day.slice(5, 7))} 月`;
+      const month = day === "时间待定" ? "时间待定" : monthLabelOf(day);
       byMonth.set(month, [...(byMonth.get(month) ?? []), [day, dayEvents]]);
     }
     return Array.from(byMonth.entries());

@@ -33,3 +33,33 @@ export function sortEvents(events: CandidateEvent[]): CandidateEvent[] {
     return a.occurred_on.localeCompare(b.occurred_on);
   });
 }
+
+/** Agent 产品注册名（origin → 展示名），与后端 AGENT_PRODUCTS 一一对应。 */
+export const AGENT_PRODUCT_NAMES: Record<string, string> = {
+  claude: "Claude Code",
+  codex: "Codex",
+  pi: "pi",
+  dsh: "dsh",
+};
+
+/** ISO 日期（YYYY-MM-DD 或 YYYY-MM）→ 中文月份标签（站内与导出同一格式）。 */
+export function monthLabelOf(isoDate: string): string {
+  return `${isoDate.slice(0, 4)} 年 ${Number(isoDate.slice(5, 7))} 月`;
+}
+
+/** 未知异常 → 用户可读文案；默认兜底可按场景覆写。 */
+export function errorTextOf(error: unknown, fallback = "操作失败，请稍后重试。"): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
+/** 可见经历的首尾日期（无日期事件不参与；无任何日期时返回 null）。 */
+export function dateSpanOf(
+  events: CandidateEvent[],
+): { startsOn: string; endsOn: string } | null {
+  const dated = events
+    .map((event) => event.occurred_on)
+    .filter((value): value is string => Boolean(value))
+    .sort();
+  if (!dated.length) return null;
+  return { startsOn: dated[0], endsOn: dated[dated.length - 1] };
+}

@@ -7,6 +7,8 @@
  * 原文与锚点仍在"展品标签"里供查证。
  */
 
+import { AGENT_PRODUCT_NAMES } from "../events-shared.ts";
+
 export type NarrativeEvent = {
   title?: string;
   occurred_on?: string | null;
@@ -30,13 +32,6 @@ export type ProjectMilestone = {
   firstTopic: string;
 };
 
-const AGENT_LABELS: Record<string, string> = {
-  claude: "Claude Code",
-  codex: "Codex",
-  pi: "pi",
-  dsh: "dsh",
-};
-
 /** claim 中由后端逐字截断的首条用户消息摘录（「」内），主展引言用。 */
 export function openingQuoteOf(event: NarrativeEvent): string {
   return topicOf(event.claims[0]?.text ?? "");
@@ -44,7 +39,9 @@ export function openingQuoteOf(event: NarrativeEvent): string {
 
 /** 展签媒介行：来源产品 → 馆藏措辞（真实展签的 medium + credit line）。 */
 export function mediumLineOf(origin: string, sourceCount: number): string {
-  const medium = AGENT_LABELS[origin] ? `${AGENT_LABELS[origin]} 会话` : "合并整理档案";
+  const medium = AGENT_PRODUCT_NAMES[origin]
+    ? `${AGENT_PRODUCT_NAMES[origin]} 会话`
+    : "合并整理档案";
   return `${medium} · ${sourceCount} 份原始记录 · 本机馆藏`;
 }
 
@@ -156,7 +153,7 @@ export function buildProjectMilestones(
     const peakMessages = perDayMessages.get(peakDay) ?? 0;
     const totalMessages = [...perDayMessages.values()].reduce((sum, n) => sum + n, 0);
     const agents = [
-      ...new Set(dated.map((event) => AGENT_LABELS[event.origin] ?? event.origin)),
+      ...new Set(dated.map((event) => AGENT_PRODUCT_NAMES[event.origin] ?? event.origin)),
     ];
     const firstDay = dated[0].occurred_on;
     const lastDay = dated[dated.length - 1].occurred_on;
@@ -201,7 +198,7 @@ export function exhibitNarrative(
   const topic = topicOf(claim);
   const sessions = sessionCountOf(claim);
   const messages = messageCountOf(claim);
-  const agent = AGENT_LABELS[event.origin] ?? event.origin;
+  const agent = AGENT_PRODUCT_NAMES[event.origin] ?? event.origin;
   const stats = [
     sessions > 1 ? `${sessions} 个会话` : "",
     messages > 0 ? `${messages} 条你来我往的消息` : "",
@@ -315,7 +312,7 @@ export function buildCollaborationStyle(events: NarrativeEvent[]): Collaboration
   const agents = [
     ...new Set(
       events
-        .map((event) => AGENT_LABELS[event.origin] ?? "")
+        .map((event) => AGENT_PRODUCT_NAMES[event.origin] ?? "")
         .filter((label) => label.length > 0),
     ),
   ];

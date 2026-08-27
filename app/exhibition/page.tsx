@@ -4,7 +4,14 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { CandidateEvent, listArchiveEvents } from "../phase0-api";
-import { isVisibleExperience, sortEvents, statusLabel } from "../events-shared";
+import {
+  dateSpanOf,
+  errorTextOf,
+  isVisibleExperience,
+  monthLabelOf,
+  sortEvents,
+  statusLabel,
+} from "../events-shared";
 import {
   EXPORT_RISK_LABELS,
   buildExhibitionHtml,
@@ -42,11 +49,8 @@ type ArchiveMeta = {
 // 封面元数据全部由档案数据推导：跨度取可见经历的首尾日期，
 // 原始记录数取事件锚点引用的不同证据文档（blob 指纹）数。
 function deriveArchiveMeta(visibleEvents: CandidateEvent[]): ArchiveMeta | null {
-  const dated = visibleEvents
-    .map((event) => event.occurred_on)
-    .filter((value): value is string => Boolean(value))
-    .sort();
-  if (!dated.length) return null;
+  const span = dateSpanOf(visibleEvents);
+  if (!span) return null;
   const blobs = new Set<string>();
   for (const event of visibleEvents) {
     for (const claim of event.claims) {
@@ -55,8 +59,8 @@ function deriveArchiveMeta(visibleEvents: CandidateEvent[]): ArchiveMeta | null 
   }
   return {
     name: ARCHIVE_TITLE,
-    starts_on: dated[0],
-    ends_on: dated[dated.length - 1],
+    starts_on: span.startsOn,
+    ends_on: span.endsOn,
     evidence_count: blobs.size,
   };
 }
@@ -66,9 +70,7 @@ function monthKey(event: CandidateEvent): string {
 }
 
 function monthLabel(key: string): string {
-  if (key === "undated") return "时间待定";
-  const [year, month] = key.split("-");
-  return `${year} 年 ${Number(month)} 月`;
+  return key === "undated" ? "时间待定" : monthLabelOf(key);
 }
 
 function monthsBetween(startsOn: string, endsOn: string): number {
@@ -174,7 +176,7 @@ export default function ExhibitionWorkspace() {
         setStatus("ready");
       })
       .catch((error: unknown) => {
-        setErrorMessage(error instanceof Error ? error.message : "读取回顾档案失败");
+        setErrorMessage(errorTextOf(error, "读取回顾档案失败"));
         setStatus("error");
       });
   }, []);

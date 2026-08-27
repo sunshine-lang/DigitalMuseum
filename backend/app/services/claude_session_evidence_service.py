@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import date
 from pathlib import Path
 
 from app.core.errors import ApiError
@@ -10,7 +9,7 @@ from app.services.agent_session_evidence import (
     SessionSummary,
     message_text,
     real_user_text,
-    render_evidence_document,
+    render_project_evidence,
     scan_session_file,
 )
 from app.services.path_policy import require_path_allowed
@@ -55,43 +54,24 @@ def list_projects(projects_root: str) -> list[dict]:
 def import_project(
     path_raw: str,
     *,
-    starts_on: date | None = None,
-    ends_on: date | None = None,
     allowed_roots: str,
     root: str,
 ) -> AgentEvidence:
-    """读取项目会话并渲染证据文档。窗口为 None 时读全部（档案库同步），
-    文档头的时间范围改用会话实际的首尾日期，保证内容是数据的纯函数。"""
+    """读取项目全部会话并渲染证据文档（文档头时间范围取会话实际首尾日期，
+    内容是数据的纯函数）。root 仅保持注册表统一界面，claude 的项目定位
+    不需要它。"""
     directory, label, display = _resolve_session_directory(
-        path_raw, allowed_roots=allowed_roots, projects_root=root
+        path_raw, allowed_roots=allowed_roots
     )
     sessions = _scan_project_sessions(directory)
-    if starts_on is not None and ends_on is not None:
-        sessions = [
-            session
-            for session in sessions
-            if starts_on <= session.started_at.date() <= ends_on
-        ]
-    if not sessions:
-        if starts_on is None or ends_on is None:
-            raise ApiError(
-                422, "no_claude_sessions", "这个项目还没有可读取的 Claude Code 会话"
-            )
-        raise ApiError(
-            422,
-            "no_claude_sessions_in_range",
-            "这个项目的 Claude Code 会话都不在当前建馆阶段内",
-        )
-    days = [session.started_at.date() for session in sessions]
-    return render_evidence_document(
+    return render_project_evidence(
+        sessions,
         source_label="claude-code sessions",
+        product_name="Claude Code",
         project_label=label,
         project_display=display,
-        starts_on=starts_on if starts_on is not None else min(days),
-        ends_on=ends_on if ends_on is not None else max(days),
-        sessions=sessions,
-        collaboration_title=f"在 {label} 与 Claude Code 协作",
-        claim_noun="Claude Code",
+        empty_error_code="no_claude_sessions",
+        empty_error_message="这个项目还没有可读取的 Claude Code 会话",
     )
 
 
@@ -99,14 +79,10 @@ def _resolve_session_directory(
     path_raw: str,
     *,
     allowed_roots: str,
-    projects_root: str,
 ) -> tuple[Path, str, str]:
-    """把用户输入解析为会话项目目录，返回 (目录, 项目标签, 展示路径)。
+    """把输入解析为会话项目目录，返回 (目录, 项目标签, 展示路径)。
 
-    接受两种输入：
-    1. 真实项目路径（推荐）：按 Claude Code 的目录转义规则（"/" → "-"）
-       在默认 projects 根下查找对应会话目录，标签取路径末段；
-    2. 直接给出会话项目目录：标签取转义名的末段。
+    输入是 list_projects 给出的会话目录（import_path 直指目录本身）。
     """
     cleaned = (path_raw or "").strip()
     if not cleaned:
@@ -118,23 +94,9 @@ def _resolve_session_directory(
     resolved = candidate.resolve()
     require_path_allowed(resolved, allowed_roots, error_code="claude_path_not_allowed")
 
-    if _is_session_directory(resolved):
-        return resolved, _label_from_munged_name(resolved.name), resolved.name
-
-    munged = str(resolved).replace("/", "-")
-    projects = Path(projects_root).expanduser()
-    session_dir = projects / munged
-    if session_dir.is_dir() and _is_session_directory(session_dir):
-        require_path_allowed(
-            session_dir.resolve(), allowed_roots, error_code="claude_path_not_allowed"
-        )
-        return session_dir.resolve(), resolved.name, str(resolved)
-
-    raise ApiError(
-        422,
-        "claude_sessions_not_found",
-        "这个路径下没有找到 Claude Code 会话记录（已查找 ~/.claude/projects 下的对应目录）",
-    )
+    if not _is_session_directory(resolved):
+        raise ApiError(422, "claude_sessions_not_found", "这个路径下没有找到 Claude Code 会话记录")
+    return resolved, _label_from_munged_name(resolved.name), resolved.name
 
 
 def _is_session_directory(directory: Path) -> bool:

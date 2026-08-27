@@ -12,20 +12,19 @@
 from __future__ import annotations
 
 import json
-from datetime import date
 from pathlib import Path
 
-from app.core.errors import ApiError
 from app.services.agent_session_evidence import (
     AgentEvidence,
     RecordClassification,
-    SessionSummary,
+    list_cwd_projects,
     message_text,
     real_user_text,
-    render_evidence_document,
+    render_project_evidence,
+    resolve_project_directory,
+    scan_project_sessions,
     scan_session_file,
 )
-from app.services.path_policy import require_path_allowed
 
 PI_PROCESSOR_VERSION = "pi-agent-evidence-v1"
 
@@ -38,109 +37,41 @@ AGGREGATION_ORIGINS = ("aggregated", "pi")
 
 def list_projects(sessions_root: str) -> list[dict]:
     """只读列举全部会话文件首行的项目归属（名称 + 会话数），发现面板专用。"""
-    root = Path(sessions_root).expanduser()
-    if not root.is_dir():
-        return []
-    counts: dict[str, int] = {}
-    for file_path in sorted(root.rglob("*.jsonl")):
-        cwd = _read_session_cwd(file_path)
-        if cwd is None:
-            continue
-        try:
-            resolved = Path(cwd).expanduser().resolve()
-        except OSError:
-            continue
-        if not resolved.is_dir():
-            continue
-        key = str(resolved)
-        counts[key] = counts.get(key, 0) + 1
-    projects = [
-        {
-            "project": Path(path).name or "pi-project",
-            "session_count": count,
-            "import_path": path,
-        }
-        for path, count in counts.items()
-    ]
-    projects.sort(key=lambda item: (-item["session_count"], item["project"]))
-    return projects
+    return list_cwd_projects(
+        sessions_root,
+        glob_pattern="*.jsonl",
+        read_project_cwd=_read_session_cwd,
+        default_project="pi-project",
+    )
 
 
 def import_project(
     path_raw: str,
     *,
-    starts_on: date | None = None,
-    ends_on: date | None = None,
     allowed_roots: str,
     root: str,
 ) -> AgentEvidence:
-    """读取项目会话并渲染证据文档。窗口为 None 时读全部（档案库同步），
-    文档头的时间范围改用会话实际的首尾日期，保证内容是数据的纯函数。"""
-    project_root, label = _resolve_project(path_raw, allowed_roots=allowed_roots)
-    sessions = _project_sessions(project_root, root)
-    if starts_on is not None and ends_on is not None:
-        sessions = [
-            session
-            for session in sessions
-            if starts_on <= session.started_at.date() <= ends_on
-        ]
-    if not sessions:
-        if starts_on is None or ends_on is None:
-            raise ApiError(422, "no_pi_sessions", "这个项目还没有可读取的 pi 会话")
-        raise ApiError(
-            422, "no_pi_sessions_in_range", "这个项目的 pi 会话都不在当前范围内"
-        )
-    days = [session.started_at.date() for session in sessions]
-    return render_evidence_document(
+    """读取项目全部会话并渲染证据文档（文档头时间范围取会话实际首尾日期，
+    内容是数据的纯函数）。"""
+    project_root, label = resolve_project_directory(
+        path_raw, allowed_roots=allowed_roots, kind="pi", product_name="pi"
+    )
+    sessions = scan_project_sessions(
+        root,
+        project_root=project_root,
+        glob_pattern="*.jsonl",
+        read_project_cwd=_read_session_cwd,
+        scan_file=lambda path: scan_session_file(path, _classify_record),
+    )
+    return render_project_evidence(
+        sessions,
         source_label="pi agent sessions",
+        product_name="pi",
         project_label=label,
         project_display=str(project_root),
-        starts_on=starts_on if starts_on is not None else min(days),
-        ends_on=ends_on if ends_on is not None else max(days),
-        sessions=sessions,
-        collaboration_title=f"在 {label} 与 pi 协作",
-        claim_noun="pi",
+        empty_error_code="no_pi_sessions",
+        empty_error_message="这个项目还没有可读取的 pi 会话",
     )
-
-
-def _resolve_project(path_raw: str, *, allowed_roots: str) -> tuple[Path, str]:
-    """pi 会话统一放在转义目录下，项目归属由首行 cwd 决定，输入必须是
-    真实项目目录（与 codex 适配器同法）。"""
-    cleaned = (path_raw or "").strip()
-    if not cleaned:
-        raise ApiError(422, "pi_path_required", "请填写要导入的 pi 项目路径")
-
-    candidate = Path(cleaned).expanduser()
-    if not candidate.is_dir():
-        raise ApiError(422, "pi_sessions_not_found", "这个路径下没有找到 pi 会话记录")
-    resolved = candidate.resolve()
-    require_path_allowed(resolved, allowed_roots, error_code="pi_path_not_allowed")
-    return resolved, resolved.name or "pi-project"
-
-
-def _project_sessions(project_root: Path, sessions_root: str) -> list[SessionSummary]:
-    """扫描根目录下全部 pi 会话文件，返回归属本项目的人机线程。
-
-    确定性过滤规则：首行不是可解析的 session 记录 → 跳过；首行 cwd 解析
-    后不等于项目路径 → 跳过；文件内没有任何可读时间戳 → 跳过。
-    """
-    root = Path(sessions_root).expanduser()
-    summaries: list[SessionSummary] = []
-    if not root.is_dir():
-        return summaries
-    for file_path in sorted(root.rglob("*.jsonl")):
-        cwd = _read_session_cwd(file_path)
-        if cwd is None:
-            continue
-        try:
-            if Path(cwd).expanduser().resolve() != project_root:
-                continue
-        except OSError:
-            continue
-        summary = scan_session_file(file_path, _classify_record)
-        if summary is not None:
-            summaries.append(summary)
-    return summaries
 
 
 def _read_session_cwd(path: Path) -> str | None:
