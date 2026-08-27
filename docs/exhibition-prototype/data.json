@@ -1,0 +1,180 @@
+{
+  "_readme": "AI 人生档案馆 · 展览页数据（样本）。结构：intro（开场）/ chapters（章节与时间线节点）/ stats（读数）。替换为你自己的档案后刷新页面即可；渲染函数见 index.html 内联脚本。",
+  "intro": {
+    "overline": "DIGITAL MUSEUM · 午夜档案馆 · 常设展",
+    "title": "一个人的 AI 编年史",
+    "subtitle": "不让 AI 替我编写人生",
+    "summary": "这里陈列的不是「我与 AI 的聊天记录」，而是被哈希封存、不可涂改的原始证据，以及证据之上，我愿意逐条署名的人生段落。灯光会随你的移动亮起——像走进一座只在深夜开放的档案馆。",
+    "meta": ["档案编号 DM-2026-08", "本地导出 · 无云端依赖", "证据 blob 749 份 · sha256 全部一致", "叙事 100% 用户确认"],
+    "bootLines": [
+      "$ museum --scan",
+      "mounting local archive ............ ok",
+      "scanning ~/.claude/projects ....... 412 sessions",
+      "scanning ~/.codex/sessions ........ 187 sessions",
+      "scanning ~/.pi/agent/sessions ..... 96 sessions",
+      "scanning ~/.dsh/sessions .......... 54 sessions",
+      "verifying sha256 evidence blobs ... 749 intact",
+      "trust contract verified ⇄ candidate ... ready"
+    ]
+  },
+  "chapters": [
+    {
+      "date": "2026-08-25",
+      "title": "通道清剿：把档案馆交给会话本身",
+      "mood": "breakthrough",
+      "narrative": [
+        "为了口径的纯粹，我在这一天删掉了笔记上传、Git 仓库导入和整个照片管线。档案馆从此只收藏一件事：我与 AI 面对面相处的时间。",
+        "删除键按下的时候没有犹豫——证据要么是原始会话，要么什么都不是。"
+      ],
+      "code": {
+        "lang": "diff",
+        "caption": "EXHIBIT · 变更摘要 2026-08-25",
+        "text": "- adapter: photo-evidence-v1   (deleted, stage-4)\n- adapter: git-evidence-v1     (deleted, stage-3)\n- channel: note upload         (purged, ADR-0002)\n\n+ fuel: agent session transcripts only\n+ claude / codex / pi / dsh\n+   strict reading, no interpretation\n+   never write back to ~/.claude or friends"
+      },
+      "evidence": [
+        {
+          "kind": "session",
+          "title": "会话记录 · codex-evidence-v1",
+          "meta": "2026-08-25 09:12 · 41 条消息 · thread_source=user",
+          "excerpt": "把 photo-evidence-v1 整体删除，存量照片谱系数据走迁移清理……",
+          "sha": "e5a2c7f9…1b4d",
+          "full": "[2026-08-25 09:12:44] session opened · codex-evidence-v1\n[09:12:44] user:\n    把 photo-evidence-v1 整体删除，存量照片谱系数据走迁移清理，\n    spec 引用 stage-4 文档，不要从 git 历史复活旧通道。\n[09:13:02] assistant:\n    将移除适配器注册与发现面板入口，并准备迁移脚本 e5a2c7f91b4d。\n[09:41:37] assistant:\n    通道清剿完成。?all-sources 开关随之消亡。\n[11:47:19] sync ok · occurrences merged by source_key · tests 47/47 green"
+        },
+        {
+          "kind": "metric",
+          "title": "回归读数 · test:backend",
+          "meta": "2026-08-25 11:47 · 确定性读数",
+          "excerpt": "47 passed in 3.4s —— 全绿。",
+          "sha": null,
+          "full": "$ npm run test:backend\n\n  backend/tests/test_sync_idempotent ........ passed\n  backend/tests/test_adapters_claude ....... passed\n  backend/tests/test_adapters_codex ........ passed\n  backend/tests/test_adapters_pi ........... passed\n  backend/tests/test_adapters_dsh .......... passed\n  backend/tests/test_migration_e5a2 ........ passed\n\n  47 passed in 3.4s"
+        }
+      ]
+    },
+    {
+      "date": "2026-06-14",
+      "title": "凌晨两点的红色测试",
+      "mood": "struggle",
+      "narrative": [
+        "同步幂等的 bug 追了我三个晚上：中断的快照在下一轮同步里变成重复的事件，档案开始说谎。凌晨两点，我盯着 FAILED 的红字，第一次对一台机器产生了「真相」之外的执念。",
+        "最后收束为一行契约：source_key 唯一，完整才跳过，破碎就重建。"
+      ],
+      "code": {
+        "lang": "log",
+        "caption": "EXHIBIT · 一夜的战场",
+        "text": "FAILED backend/tests/test_sync.py::test_sync_idempotent\n      - assert 1 == 2\n      + occurrence duplicated: codex:/Users/x/proj\n\n  02:14  red\n  02:51  still red\n  03:07  source_key 唯一键落笔 · 全库归一\n\n  ........................  47 passed in 3.4s"
+      },
+      "evidence": [
+        {
+          "kind": "session",
+          "title": "会话记录 · claude-code-evidence-v1",
+          "meta": "2026-06-14 02:07 · 156 条消息",
+          "excerpt": "同步跑第二次出现重复事件……是不是中断的快照没被重建？",
+          "sha": "7c11d0aa…93e2",
+          "full": "[2026-06-14 02:07:51] session opened · claude-code-evidence-v1\n[02:07:51] user:\n    同步跑第二次出现重复事件。同一项目同一天出现两条,\n    是不是中断的快照没被重建?\n[02:09:18] assistant:\n    怀疑点: occurrence 完整性判定只校验 completed 标记,\n    未校验证据文档字节是否一致。\n[02:44:03] assistant:\n    建议: source_key 唯一约束 + 快照替换(先摘开事件引用再删旧 occurrence)。\n[03:07:29] user:\n    就这么定。中断的快照,下一轮同步自动重建。\n[03:31:55] sync ok · idempotent under interruption"
+        },
+        {
+          "kind": "log",
+          "title": "同步日志 · POST /archive/sync",
+          "meta": "2026-06-14 03:31 · 第 3 次重试",
+          "excerpt": "WARNING occurrence duplicated → RESOLVED by source_key",
+          "sha": null,
+          "full": "03:31:02  POST /api/v1/archive/sync\n03:31:04  scan   ~/.claude/projects ....... 412 files\n03:31:05  scan   ~/.codex/sessions ........ 187 files\n03:31:05  WARN   occurrence duplicated: codex:/Users/x/proj\n03:31:06  FIX    merge by source_key (unique)\n03:31:07  FIX    rebuild broken snapshot (bytes mismatch)\n03:31:09  done   occurrences=749 · duplicated=0\n03:31:55  idempotent under interruption: PASS"
+        }
+      ]
+    },
+    {
+      "date": "2026-04-02",
+      "title": "四种方言，一种心跳",
+      "mood": "flow",
+      "narrative": [
+        "Claude Code、Codex、pi、dsh——四个 Agent 各说各的方言，我把它们收进同一副扫描骨架。那天下午没有开音乐，四个目录在后台依次亮起，像同一首曲子的四个声部。"
+      ],
+      "code": {
+        "lang": "python",
+        "caption": "EXHIBIT · agent_session_evidence.py",
+        "text": "AGENT_PRODUCTS = {\n    \"claude\": ClaudeAdapter(KIND=\"claude-code-evidence-v1\"),\n    \"codex\":  CodexAdapter(KIND=\"codex-evidence-v1\"),\n    \"pi\":     PiAdapter(KIND=\"pi-agent-evidence-v1\"),\n    \"dsh\":    DshAdapter(KIND=\"dsh-evidence-v1\"),\n}\n\n# 一键同步: POST /archive/sync\n# 四个骨架, 一种心跳:\n#   只读 · 不改本机目录 · 单行损坏确定性跳过"
+      },
+      "evidence": [
+        {
+          "kind": "session",
+          "title": "会话记录 · pi-agent-evidence-v1",
+          "meta": "2026-04-02 15:20 · 63 条消息 · cwd=/Users/x/digital-museum",
+          "excerpt": "帮我把 pi 的会话目录接进统一扫描骨架……",
+          "sha": "b40e77c2…08af",
+          "full": "[2026-04-02 15:20:11] session opened · pi-agent-evidence-v1\n[15:20:11] user:\n    帮我把 pi 的会话目录接进统一扫描骨架,\n    项目归属按首行 cwd 判定。\n[15:22:47] assistant:\n    已注册 pi_sessions_root, content 片段取 {type:\"text\"}。\n[15:58:30] sync ok · pi sessions merged · zero writes to ~/.pi"
+        },
+        {
+          "kind": "session",
+          "title": "会话记录 · dsh-evidence-v1",
+          "meta": "2026-04-02 16:44 · 38 条消息 · zstd 解压",
+          "excerpt": "dsh 的 session 是 zstd 压缩的，发现端只惰性解压首行……",
+          "sha": "1f9ac3d5…6e01",
+          "full": "[2026-04-02 16:44:02] session opened · dsh-evidence-v1\n[16:44:02] user:\n    dsh 的 session 是 zstd 压缩的, 发现端只惰性解压首行,\n    delegationDepth != 0 的子代理线程一律排除。\n[16:45:30] assistant:\n    epoch 毫秒时间戳已按本机时区归日, 注入消息同步过滤。\n[17:12:08] sync ok · dsh threads merged · subagents excluded"
+        }
+      ]
+    },
+    {
+      "date": "2026-01-20",
+      "title": "真实性契约",
+      "mood": "calm",
+      "narrative": [
+        "这一天我们把最重要的一句话写进了系统的骨头里：模型可以起草，但永远不能盖章。verified 只属于确定性读数，与我的亲笔确认。",
+        "信任是要分级的，就像档案馆的灯光——有的照在展品上，有的只照在标签上。"
+      ],
+      "code": {
+        "lang": "python",
+        "caption": "EXHIBIT · 契约条目（伪代码）",
+        "text": "if output.origin == \"model\":\n    output.status = \"candidate\"   # 永不 verified\n\nblob  = sha256(raw_bytes)        # 内容即地址\nblob -> read_only()              # 无列举 · 无删除\n\n叙事 = 用户确认之后, 才成立"
+      },
+      "evidence": [
+        {
+          "kind": "session",
+          "title": "会话记录 · claude-code-evidence-v1",
+          "meta": "2026-01-20 21:05 · 88 条消息",
+          "excerpt": "我想定一条铁律：模型输出永远只能产生 candidate……",
+          "sha": "44be09f1…c7d2",
+          "full": "[2026-01-20 21:05:33] session opened · claude-code-evidence-v1\n[21:05:33] user:\n    我想定一条铁律: 模型输出永远只能产生 candidate,\n    verified 只属于确定性读数和我的确认。\n[21:06:40] assistant:\n    同意。这将写进 PRD 的真实性契约,\n    并在将来任何模型接入时作为不可协商的前置约束。\n[21:38:12] user:\n    还有: 会话时间戳的核实, 不等于解读了对话内容。\n    措辞要诚实。\n[22:01:57] assistant:\n    已区分「确定性读取」与「事实核实」的表述边界。\n[23:14:20] contract drafted · PRD §8"
+        }
+      ]
+    },
+    {
+      "date": "2025-11-03",
+      "title": "第一份证据落盘",
+      "mood": "wonder",
+      "narrative": [
+        "深夜，第一份会话转录以 SHA-256 的名字躺进了 data/uploads/。从那一刻起，它不可原地改写、不可抵赖，也不会被谁悄悄涂改。",
+        "我盯着那串十六进制看了很久——那是我第一次被机器认真地记录，也是我第一次认真地记录机器。"
+      ],
+      "code": {
+        "lang": "shell",
+        "caption": "EXHIBIT · 第一次封存",
+        "text": "$ sha256sum first-session.jsonl\n9f2c41d0e81b…  first-session.jsonl\n\n$ mv 9f2c41d0e81b… data/uploads/\n\n# 第一份证据落盘, 从此只读\n# GET /api/v1/blobs/{sha256} · 永久缓存 · fail closed"
+      },
+      "evidence": [
+        {
+          "kind": "session",
+          "title": "会话记录 · claude-code-evidence-v1 · No.001",
+          "meta": "2025-11-03 23:41 · 12 条消息 · 一切的开始",
+          "excerpt": "我想给自己建一座档案馆，只收我和 AI 共处的时间……",
+          "sha": "9f2c41d0…e81b",
+          "full": "[2025-11-03 23:41:07] session opened · claude-code-evidence-v1\n[23:41:07] user:\n    我想给自己建一座档案馆, 只收我和 AI 共处的时间。\n    原始记录一个字都不许改。\n[23:41:52] assistant:\n    方案: 证据以 SHA-256 内容哈希落盘, 路径只从数据库解析,\n    对外只读。先做最小闭环。\n[23:58:19] user:\n    就叫它, 午夜档案馆。\n[00:02:41] blob stored · sha256=9f2c41d0…e81b · size=48,213B"
+        },
+        {
+          "kind": "metric",
+          "title": "封存读数 · 当夜",
+          "meta": "2025-11-04 00:02 · 确定性读数",
+          "excerpt": "证据 blob 1 份 · sha256 一致。",
+          "sha": null,
+          "full": "blobs stored ........ 1\nsha256 verified ..... 1/1\nupload dir .......... data/uploads/\nwrite policy ........ append-only\nmood ................ 不可复原的初版心跳"
+        }
+      ]
+    }
+  ],
+  "stats": [
+    { "label": "总会话数", "value": 749, "unit": "场", "hint": "claude 412 / codex 187 / pi 96 / dsh 54 · 确定性读数" },
+    { "label": "活跃天数", "value": 302, "unit": "天", "hint": "首份证据 2025-11-03 至今 · 按会话时间戳归日" },
+    { "label": "协作项目", "value": 17, "unit": "个", "hint": "按 cwd 归属 · cwd 已消失者不列不导" },
+    { "label": "生成代码行数", "value": 128400, "unit": "行", "hint": "含 AI 参与 · 推断口径 · 未经核实（candidate）" },
+    { "label": "证据 blob", "value": 749, "unit": "份", "hint": "sha256 全部一致 · 只读 · 内容寻址" }
+  ]
+}

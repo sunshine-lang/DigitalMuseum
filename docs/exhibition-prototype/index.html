@@ -1,0 +1,1062 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="description" content="AI 人生档案馆 · 静态展览页：被哈希封存的原始证据，与用户确认署名的人生叙事。">
+<meta name="theme-color" content="#0b0b0d">
+<title>一个人的 AI 编年史 · AI 人生档案馆</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b0b0d'/%3E%3Ccircle cx='32' cy='32' r='11' fill='%23847dff'/%3E%3Ccircle cx='32' cy='32' r='4' fill='%23e6c89a'/%3E%3C/svg%3E">
+
+<!--
+  ══════════════════════════════════════════════════════════════════
+  AI 人生档案馆 · 静态展览页（设计原型）
+  ──────────────────────────────────────────────────────────────────
+  · 单文件自包含：全部 CSS / JS 内联，无构建工具、无框架运行时。
+  · 双重视觉语言：叙事 = 衬线（Noto Serif SC），证据 = 等宽（Fira Code）。
+  · 数据：优先 fetch 外部 data.json（支持 ?data=xxx.json 覆盖），
+    file:// 直开或加载失败时回退到内嵌样本 EMBEDDED_DATA。
+  · 无障碍：跳转链接、焦点管理、Esc/遮罩关闭、prefers-reduced-motion。
+  · 替换数据：编辑同目录 data.json（或内嵌 EMBEDDED_DATA）后刷新即可。
+  ══════════════════════════════════════════════════════════════════
+-->
+
+<!-- 字体：在线时走 Google Fonts；离线时回退到系统衬线/等宽（宋体/Menlo 等） -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;900&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+/* ══════════════════════════════════════════════════════════════
+   0. 设计令牌 —— 午夜档案馆色系（与站内展览同源）
+   ══════════════════════════════════════════════════════════════ */
+:root{
+  --bg:        #0b0b0d;   /* 馆内底色 */
+  --bg-raise:  #141416;   /* 卡片抬升层 */
+  --ink:       #f5f5f7;   /* 主文字 */
+  --ink-soft:  #c9c9ce;   /* 次级文字 */
+  --ink-dim:   #9f9fa0;   /* 证据/读数 */
+  --ink-faint: #7b7b80;   /* 脚注 */
+  --accent:    #847dff;   /* 罗兰紫 —— 能量与链接 */
+  --accent-soft:#a89dff;
+  --gold:      #e6c89a;   /* 暖金 —— 档案馆灯光 */
+  --gold-deep: #c9a25e;
+  --mood:      var(--accent);   /* 每章心境色，由数据驱动覆盖 */
+  --line:      rgba(245,245,247,.09);
+
+  --serif: 'Noto Serif SC','Songti SC','STSong','SimSun',Georgia,serif;
+  --mono:  'Fira Code','SF Mono','Menlo','Consolas','Courier New',monospace;
+
+  --maxw: 1080px;
+  --spine: 72px;          /* 时间线主脊宽度（桌面） */
+  --ease: cubic-bezier(.22,.61,.21,1);
+  --mx: 50vw;             /* 手电筒微光坐标，由 JS 持续更新 */
+  --my: 34vh;
+}
+
+/* ── 基础重置（等价 preflight，自包含不引外部重置） ───────────── */
+*,*::before,*::after{ box-sizing:border-box; margin:0; padding:0 }
+html{ scroll-behavior:smooth }
+html.locked{ overflow:hidden }          /* 抽屉打开 / 开场期间锁滚动 */
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:var(--serif);
+  line-height:1.7;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  overflow-x:hidden;
+}
+img,svg{ display:block; max-width:100% }
+button{ font:inherit; color:inherit; background:none; border:none; cursor:pointer }
+a{ color:var(--accent-soft); text-decoration:none }
+a:hover{ text-decoration:underline }
+::selection{ background:rgba(132,125,255,.32); color:var(--ink) }
+
+/* 键盘焦点可见性（鼠标点击不显焦） */
+:focus{ outline:none }
+:focus-visible{ outline:2px solid var(--accent); outline-offset:3px; border-radius:2px }
+
+/* 跳转链接（默认移出视野，聚焦时回到画面） */
+.skip-link{
+  position:fixed; top:10px; left:10px; z-index:120;
+  padding:.6em 1.2em; background:var(--bg-raise); color:var(--gold);
+  border:1px solid var(--line); border-radius:6px; font-family:var(--mono); font-size:.8rem;
+  transform:translateY(-260%); transition:transform .25s var(--ease);
+}
+.skip-link:focus-visible{ transform:none }
+
+/* ══════════════════════════════════════════════════════════════
+   1. 环境层：暗部渐变 + 胶片噪点 + 鼠标微光「手电筒」
+   ══════════════════════════════════════════════════════════════ */
+.ambient{                       /* 页面底层暗部氛围 */
+  position:fixed; inset:0; z-index:-2; pointer-events:none;
+  background:
+    radial-gradient(120% 90% at 50% -10%, #17171d 0%, transparent 55%),
+    radial-gradient(90% 60% at 85% 110%, #121118 0%, transparent 60%),
+    var(--bg);
+}
+.grain{                         /* 胶片颗粒（内联 SVG，离线可用） */
+  position:fixed; inset:-50%; z-index:-1; pointer-events:none; opacity:.05;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E");
+}
+.glow{                          /* 双色手电筒：紫光为大底，金光为灯芯 */
+  position:fixed; inset:0; z-index:0; pointer-events:none;
+  background:
+    radial-gradient(560px circle at var(--mx) var(--my), rgba(132,125,255,.075), transparent 65%),
+    radial-gradient(210px circle at var(--mx) var(--my), rgba(230,200,154,.05), transparent 70%);
+}
+/* 触屏设备无悬停，微光退化为顶部常亮氛围 */
+@media (hover:none){
+  .glow{ background:radial-gradient(70% 46% at 50% 0%, rgba(132,125,255,.06), transparent 70%) }
+}
+.page{ position:relative; z-index:1 }   /* 内容浮于微光之上 */
+
+/* 顶部阅读进度（scaleX 变换，不触发布局） */
+#progress{
+  position:fixed; top:0; left:0; right:0; height:2px; z-index:95;
+  background:transparent; pointer-events:none;
+}
+#progress i{
+  display:block; height:100%; transform:scaleX(0); transform-origin:0 50%;
+  background:linear-gradient(90deg, var(--accent), var(--gold));
+}
+
+/* ══════════════════════════════════════════════════════════════
+   2. 沉浸式开场：终端扫描序列
+   ══════════════════════════════════════════════════════════════ */
+#boot{
+  position:fixed; inset:0; z-index:110;
+  display:flex; align-items:center; justify-content:center;
+  background:var(--bg);
+  transition:opacity .65s var(--ease);
+  cursor:pointer;                 /* 点击任意处跳过 */
+}
+#boot.done{ opacity:0; pointer-events:none }
+#boot[hidden]{ display:none }
+.boot-box{
+  width:min(640px, 88vw);
+  border:1px solid var(--line); border-radius:10px;
+  background:rgba(20,20,22,.7);
+  padding:1.4rem 1.5rem 1.2rem;
+  box-shadow:0 24px 80px rgba(0,0,0,.55);
+}
+.boot-bar{
+  display:flex; align-items:center; gap:.55rem;
+  font-family:var(--mono); font-size:.72rem; color:var(--ink-faint);
+  letter-spacing:.18em; margin-bottom:1rem;
+}
+.boot-bar .lamp{ width:9px; height:9px; border-radius:50%; background:var(--gold);
+  box-shadow:0 0 10px rgba(230,200,154,.8); animation:lamp 1.6s infinite }
+@keyframes lamp{ 0%,100%{opacity:1} 50%{opacity:.35} }
+#boot-log{
+  font-family:var(--mono); font-size:.78rem; line-height:2.05; color:var(--ink-dim);
+  min-height:11em; white-space:pre-wrap; word-break:break-all;
+}
+.boot-line{ animation:bootin .28s var(--ease) both }
+@keyframes bootin{ from{ opacity:0; transform:translateY(4px) } to{ opacity:1; transform:none } }
+.boot-skip{
+  margin-top:1rem; text-align:right;
+  font-family:var(--mono); font-size:.68rem; color:var(--ink-faint); letter-spacing:.14em;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   3. 英雄区（开场结束后逐层升起）
+   ══════════════════════════════════════════════════════════════ */
+.hero{
+  min-height:100svh;
+  display:flex; flex-direction:column; justify-content:center; align-items:center;
+  text-align:center; padding:6rem 1.5rem 4rem; position:relative;
+}
+.hero .rise{ opacity:0; transform:translateY(26px); transition:opacity .9s var(--ease), transform .9s var(--ease); transition-delay:var(--d,0ms) }
+body.ready .hero .rise{ opacity:1; transform:none }
+
+.overline{
+  font-family:var(--mono); font-size:.72rem; letter-spacing:.42em;
+  color:var(--gold); text-transform:uppercase; text-indent:.42em;   /* 抵消末字间距 */
+}
+.hero-title{
+  margin-top:1.6rem;
+  font-size:clamp(2.5rem, 7vw, 4.6rem); font-weight:900; line-height:1.22;
+  letter-spacing:.04em;
+  background:linear-gradient(180deg, var(--ink) 55%, #b9b9bf);
+  -webkit-background-clip:text; background-clip:text;
+  -webkit-text-fill-color:transparent; color:var(--ink);
+}
+.hero-sub{
+  margin-top:1.1rem; font-size:clamp(1.05rem, 2.4vw, 1.35rem);
+  color:var(--accent-soft); letter-spacing:.22em; text-indent:.22em;
+}
+.hero-summary{
+  margin-top:2.2rem; max-width:34em;
+  font-size:clamp(.98rem, 1.8vw, 1.08rem); line-height:2.15; color:var(--ink-soft);
+}
+.hero-meta{
+  margin-top:2.6rem; display:flex; flex-wrap:wrap; gap:.6rem 1.1rem; justify-content:center;
+  list-style:none;
+}
+.hero-meta li{
+  font-family:var(--mono); font-size:.7rem; letter-spacing:.08em; color:var(--ink-faint);
+  padding:.42em 1em; border:1px solid var(--line); border-radius:999px;
+  background:rgba(20,20,22,.5);
+}
+.scroll-cue{
+  position:absolute; bottom:2.4rem; left:50%; transform:translateX(-50%);
+  display:flex; flex-direction:column; align-items:center; gap:.7rem;
+  font-family:var(--mono); font-size:.68rem; letter-spacing:.3em; text-indent:.3em;
+  color:var(--ink-faint);
+}
+.scroll-cue i{
+  width:1px; height:44px; overflow:hidden; position:relative;
+  background:var(--line);
+}
+.scroll-cue i::after{
+  content:''; position:absolute; left:0; top:-40%; width:100%; height:40%;
+  background:linear-gradient(180deg, transparent, var(--gold));
+  animation:drip 2.2s var(--ease) infinite;
+}
+@keyframes drip{ to{ top:110% } }
+
+/* ══════════════════════════════════════════════════════════════
+   4. 展厅小节标签
+   ══════════════════════════════════════════════════════════════ */
+main{ display:block }
+.gallery-label{
+  display:flex; align-items:center; gap:1.4rem;
+  max-width:var(--maxw); margin:0 auto; padding:0 1.5rem 3.2rem;
+  font-family:var(--mono); font-size:.72rem; letter-spacing:.4em; text-indent:.4em;
+  color:var(--gold-deep); white-space:nowrap;
+}
+.gallery-label::before,.gallery-label::after{
+  content:''; height:1px; flex:1; background:linear-gradient(90deg, transparent, var(--line));
+}
+.gallery-label::after{ background:linear-gradient(90deg, var(--line), transparent) }
+
+/* ══════════════════════════════════════════════════════════════
+   5. 时间线叙事区（Scrollytelling 主战场）
+   ══════════════════════════════════════════════════════════════ */
+#timeline{
+  position:relative; max-width:var(--maxw); margin:0 auto; padding:0 1.5rem 4rem;
+}
+/* 主脊：一条自上而下渐隐的光线 */
+#timeline::before{
+  content:''; position:absolute; top:-1rem; bottom:0; left:calc(50% + 1.5rem - .5px);
+  width:1px;
+  background:linear-gradient(180deg, transparent, rgba(230,200,154,.34) 6%, rgba(132,125,255,.30) 50%, rgba(230,200,154,.28) 94%, transparent);
+}
+.chapter{
+  position:relative;
+  display:grid; grid-template-columns:1fr var(--spine) 1fr; column-gap:2rem;
+  padding:3.2rem 0;
+}
+/* 章节心境氛围：极低透明度的径向染色，随滚动进入视野 */
+.chapter::before{
+  content:''; position:absolute; inset:-6% -18%; pointer-events:none;
+  background:radial-gradient(52% 42% at 50% 30%, var(--mood) 0%, transparent 72%);
+  opacity:0; transition:opacity 1.1s var(--ease);
+}
+.chapter.in::before{ opacity:.05 }
+
+/* 时间标签：置于主脊对侧，与卡片遥遥相望 */
+.when{
+  grid-row:1; align-self:start; margin-top:.55rem;
+  font-family:var(--mono); font-size:.74rem; letter-spacing:.14em;
+  color:var(--ink-dim);
+  display:flex; flex-direction:column; gap:.55rem;
+}
+.when-date{ color:var(--gold); }
+.when-mood{ display:flex; align-items:center; gap:.5rem; color:var(--ink-faint) }
+.mood-dot{
+  width:9px; height:9px; border-radius:50%; background:var(--mood);
+  box-shadow:0 0 10px var(--mood);
+}
+.chapter:nth-child(odd) .when{ grid-column:3; justify-self:start; padding-left:1rem }
+.chapter:nth-child(even) .when{ grid-column:1; justify-self:end; text-align:right; align-items:flex-end; padding-right:1rem }
+
+/* 脊节点：进入视野时呼吸点亮 */
+.node{ grid-row:1; grid-column:2; justify-self:center; align-self:start; margin-top:1.05rem; position:relative }
+.node::before{
+  content:''; display:block; width:11px; height:11px; border-radius:50%;
+  background:var(--bg); border:2px solid var(--mood);
+  transition:box-shadow .8s var(--ease), background .8s var(--ease);
+}
+.chapter.in .node::before{ background:var(--mood); box-shadow:0 0 18px var(--mood) }
+.chapter.in .node::after{          /* 一次性涟漪 */
+  content:''; position:absolute; left:50%; top:50%; width:11px; height:11px;
+  border-radius:50%; transform:translate(-50%,-50%);
+  border:1px solid var(--mood); opacity:0;
+  animation:ripple 1.3s var(--ease) .25s both;
+}
+@keyframes ripple{ 0%{ opacity:.8; width:11px; height:11px } 100%{ opacity:0; width:64px; height:64px } }
+
+/* 章节卡片（展签本体） */
+.card{
+  grid-row:1; position:relative;
+  max-width:34em;
+  padding:1.7rem 1.8rem 1.5rem;
+  background:rgba(20,20,22,.62);
+  border:1px solid var(--line); border-radius:12px;
+  -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px);
+  transition:border-color .5s var(--ease), transform .5s var(--ease), box-shadow .5s var(--ease);
+}
+.card:hover{ border-color:rgba(245,245,247,.18); transform:translateY(-3px);
+  box-shadow:0 18px 50px rgba(0,0,0,.4) }
+.chapter:nth-child(odd) .card{ grid-column:1; justify-self:end }
+.chapter:nth-child(even) .card{ grid-column:3; justify-self:start }
+/* 卡片 → 主脊的连接发丝线 */
+.chapter:nth-child(odd) .card::after{
+  content:''; position:absolute; top:1.6rem; right:-2rem; width:2rem; height:1px;
+  background:linear-gradient(90deg, var(--mood), transparent); opacity:.5;
+}
+.chapter:nth-child(even) .card::after{
+  content:''; position:absolute; top:1.6rem; left:-2rem; width:2rem; height:1px;
+  background:linear-gradient(270deg, var(--mood), transparent); opacity:.5;
+}
+
+.ch-title{
+  font-size:clamp(1.28rem, 2.6vw, 1.55rem); font-weight:600; line-height:1.5;
+  letter-spacing:.02em;
+}
+.ch-narrative{ margin-top:1.05rem }
+.ch-narrative p{
+  font-size:clamp(1rem, 1.9vw, 1.13rem); line-height:2.1; color:#dedee3;
+  text-align:justify;
+}
+.ch-narrative p + p{ margin-top:.85em }
+
+/* ── 代码诗意排版 ─────────────────────────────────────────────── */
+.code-poem{
+  margin-top:1.4rem;
+  border-left:2px solid var(--mood); opacity:.85;
+  background:rgba(11,11,13,.55);
+  border-radius:0 8px 8px 0;
+  transition:opacity .5s var(--ease);
+}
+.code-poem:hover{ opacity:1 }
+.code-poem figcaption{
+  padding:.75rem 1.3rem .1rem;
+  font-family:var(--mono); font-size:.66rem; letter-spacing:.2em;
+  color:var(--ink-faint);
+}
+.code-poem pre{
+  padding:.55rem 1.3rem 1.05rem; overflow-x:auto;
+  font-family:var(--mono); font-size:.76rem; line-height:1.95;
+  color:var(--ink-dim); tab-size:2;
+}
+.cl{ display:block; min-height:1.95em }        /* 保留空行的呼吸感 */
+.cl.add{ color:#9fd6c2; background:rgba(159,214,194,.07) }
+.cl.del{ color:#e08a72; background:rgba(224,122,95,.07) }
+.cl.meta{ color:var(--ink-faint) }
+.tok-com{ color:#6b6b74; font-style:italic }
+.tok-str{ color:#d8bd93 }
+.tok-num{ color:#9fb8f5 }
+.tok-kw { color:var(--accent-soft) }
+
+/* ── 原始证据卡（等宽 · 脚注级视觉） ──────────────────────────── */
+.evidence{ margin-top:1.5rem }
+.evidence-head{
+  display:flex; justify-content:space-between; align-items:baseline;
+  font-family:var(--mono); font-size:.64rem; letter-spacing:.26em;
+  color:var(--ink-faint); padding-bottom:.55rem; border-bottom:1px dashed var(--line);
+}
+.evidence-stack{ display:flex; flex-direction:column; gap:.65rem; margin-top:.85rem }
+.evidence-card{
+  display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:.9rem;
+  width:100%; min-height:52px;                     /* 移动端触摸热区 ≥44px */
+  padding:.7rem .95rem; text-align:left;
+  background:rgba(11,11,13,.5); border:1px solid var(--line); border-radius:8px;
+  font-family:var(--mono); color:var(--ink-dim);
+  transition:border-color .35s var(--ease), transform .35s var(--ease), background .35s var(--ease);
+}
+.evidence-card:hover{ border-color:rgba(132,125,255,.45); background:rgba(20,20,24,.72); transform:translateY(-2px) }
+.ev-kind{
+  font-size:.95rem; color:var(--mood);
+  width:1.6em; text-align:center;
+}
+.ev-main{ display:flex; flex-direction:column; gap:.28rem; min-width:0 }
+.ev-title{ font-size:.76rem; color:var(--ink-soft); letter-spacing:.04em }
+.ev-meta{ font-size:.64rem; color:var(--ink-faint) }
+.ev-excerpt{
+  font-size:.68rem; color:var(--ink-faint); line-height:1.7;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+.ev-cta{ font-size:.66rem; color:var(--gold-deep); letter-spacing:.14em; white-space:nowrap }
+
+/* ══════════════════════════════════════════════════════════════
+   6. 数据沉淀区（读数卡网格 + 数字滚动）
+   ══════════════════════════════════════════════════════════════ */
+#stats{
+  max-width:var(--maxw); margin:0 auto; padding:0 1.5rem 5rem;
+  display:grid; grid-template-columns:repeat(auto-fit, minmax(200px,1fr)); gap:1rem;
+}
+.stat{
+  padding:1.5rem 1.4rem 1.3rem;
+  background:rgba(20,20,22,.55); border:1px solid var(--line); border-radius:12px;
+  border-top:2px solid var(--mood, var(--accent));
+  position:relative; overflow:hidden;
+  transition:border-color .5s var(--ease), transform .5s var(--ease);
+}
+.stat:hover{ transform:translateY(-3px); border-color:rgba(245,245,247,.16) }
+.stat-num{
+  font-family:var(--mono); font-weight:500;
+  font-size:clamp(1.9rem, 4.5vw, 2.7rem); line-height:1.15;
+  color:var(--ink); font-variant-numeric:tabular-nums;
+}
+.stat-unit{ font-size:.72em; color:var(--ink-faint); margin-left:.3em }
+.stat-label{ margin-top:.5rem; font-size:.98rem; color:var(--ink-soft); letter-spacing:.08em }
+.stat-hint{
+  margin-top:.55rem; font-family:var(--mono); font-size:.62rem; line-height:1.8;
+  color:var(--ink-faint); letter-spacing:.04em;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   7. 尾厅 · 契约声明
+   ══════════════════════════════════════════════════════════════ */
+footer.colophon{
+  border-top:1px solid var(--line);
+  padding:4.5rem 1.5rem 5rem; text-align:center;
+}
+.colophon .seal{
+  width:46px; height:46px; margin:0 auto 1.6rem; border-radius:50%;
+  border:1px solid rgba(230,200,154,.4); position:relative;
+}
+.colophon .seal::before{
+  content:'档'; position:absolute; inset:0; display:grid; place-items:center;
+  font-size:1.05rem; color:var(--gold);
+}
+.colophon p{ max-width:36em; margin:0 auto; font-size:.92rem; line-height:2.1; color:var(--ink-dim) }
+.colophon .fine{
+  margin-top:1.6rem; font-family:var(--mono); font-size:.64rem; letter-spacing:.12em;
+  color:var(--ink-faint); line-height:2;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   8. 证据溯源抽屉（模态侧栏）
+   ══════════════════════════════════════════════════════════════ */
+.drawer-overlay{
+  position:fixed; inset:0; z-index:80;
+  background:rgba(5,5,7,.6);
+  -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px);
+  opacity:0; transition:opacity .4s var(--ease);
+}
+.drawer-overlay.open{ opacity:1 }
+.drawer{
+  position:fixed; top:0; right:0; bottom:0; z-index:90;
+  width:min(560px, 94vw);
+  display:flex; flex-direction:column;
+  background:#101014; border-left:1px solid var(--line);
+  box-shadow:-30px 0 90px rgba(0,0,0,.6);
+  transform:translateX(102%);
+  transition:transform .42s var(--ease);
+}
+.drawer.open{ transform:none }
+.drawer-overlay[hidden],.drawer[hidden]{ display:none }
+.drawer-head{
+  display:flex; align-items:flex-start; justify-content:space-between; gap:1rem;
+  padding:1.3rem 1.4rem 1.1rem; border-bottom:1px solid var(--line);
+}
+.drawer-head h3{
+  font-size:1.02rem; font-weight:600; color:var(--ink); letter-spacing:.03em;
+}
+.drawer-head .meta{
+  margin-top:.45rem; font-family:var(--mono); font-size:.64rem;
+  color:var(--ink-faint); letter-spacing:.06em; line-height:1.8;
+}
+.drawer-close{
+  flex:none; width:44px; height:44px; margin:-.35rem -.55rem 0 0;   /* ≥44px 触摸热区 */
+  display:grid; place-items:center; border-radius:8px;
+  color:var(--ink-dim); font-size:1rem;
+  border:1px solid transparent;
+  transition:color .25s, border-color .25s, background .25s;
+}
+.drawer-close:hover{ color:var(--ink); border-color:var(--line); background:rgba(245,245,247,.05) }
+.drawer-body{
+  flex:1; overflow:auto; padding:1.3rem 1.4rem;
+  font-family:var(--mono); font-size:.72rem; line-height:2; color:var(--ink-dim);
+  -webkit-overflow-scrolling:touch;
+}
+.drawer-foot{
+  padding:.9rem 1.4rem 1.1rem; border-top:1px solid var(--line);
+  font-family:var(--mono); font-size:.62rem; color:var(--ink-faint); letter-spacing:.06em;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   9. 滚动淡入（IntersectionObserver 驱动）
+   ══════════════════════════════════════════════════════════════ */
+.reveal{ opacity:0; transform:translateY(26px);
+  transition:opacity .85s var(--ease), transform .85s var(--ease);
+  transition-delay:var(--d,0ms) }
+.reveal.in{ opacity:1; transform:none }
+
+/* ══════════════════════════════════════════════════════════════
+   10. 响应式
+   ══════════════════════════════════════════════════════════════ */
+@media (max-width:920px){
+  #timeline{ padding-left:1.25rem; padding-right:1.25rem }
+  #timeline::before{ left:calc(1.25rem + 18px) }
+  .chapter{ display:block; padding:2.6rem 0 2.6rem 52px; position:relative }
+  .when{ margin:0 0 .8rem; text-align:left; align-items:flex-start }
+  .node{ position:absolute; left:13.5px; top:2.95rem; margin:0 }
+  .card{ max-width:none }
+  .card::after{ display:none }
+  .chapter::before{ inset:-4% -30% }
+}
+@media (max-width:600px){
+  .hero{ padding-top:4.5rem }
+  .hero-summary{ text-align:left }
+  .ch-narrative p{ text-align:left; font-size:1rem }
+  .code-poem pre{ font-size:.68rem }
+  .evidence-card{ grid-template-columns:auto 1fr; }
+  .ev-cta{ display:none }          /* 移动端整卡即热区，文案提示省略 */
+  .stat{ padding:1.25rem 1.1rem 1.1rem }
+  .drawer{ width:100vw; border-left:none }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   11. 动效克制：尊重系统「减少动态」偏好
+   ══════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion:reduce){
+  html{ scroll-behavior:auto }
+  *,*::before,*::after{ animation:none !important; transition:none !important }
+  .reveal,.hero .rise{ opacity:1 !important; transform:none !important }
+  #boot{ display:none }
+  .glow{ display:none }
+}
+</style>
+</head>
+
+<body>
+<a class="skip-link" href="#timeline">跳过开场，直接进入时间线</a>
+
+<!-- ── 环境层 ─────────────────────────────────────────────── -->
+<div class="ambient" aria-hidden="true"></div>
+<div class="grain"   aria-hidden="true"></div>
+<div class="glow"    aria-hidden="true"></div>
+<div id="progress"   aria-hidden="true"><i></i></div>
+
+<!-- ── 开场：终端扫描序列（点击 / 任意键跳过） ─────────────── -->
+<div id="boot" aria-hidden="true">
+  <div class="boot-box" role="presentation">
+    <div class="boot-bar"><span class="lamp"></span>ARCHIVE BOOT · 午夜档案馆</div>
+    <div id="boot-log"></div>
+    <div class="boot-skip">点击任意处跳过 SKIP ▸</div>
+  </div>
+</div>
+
+<div class="page">
+  <!-- ── 英雄区（内容由 renderIntro 填充） ─────────────────── -->
+  <header class="hero" id="hero">
+    <p  class="overline rise" id="intro-overline" style="--d:80ms"></p>
+    <h1 class="hero-title rise" id="intro-title" style="--d:200ms"></h1>
+    <p  class="hero-sub rise"   id="intro-sub" style="--d:340ms"></p>
+    <p  class="hero-summary rise" id="intro-summary" style="--d:480ms"></p>
+    <ul class="hero-meta rise"  id="intro-meta" style="--d:640ms"></ul>
+    <div class="scroll-cue rise" style="--d:900ms"><i></i><span>向下滚动 · 进入档案</span></div>
+  </header>
+
+  <main>
+    <!-- ── 第一展厅：时间线叙事（renderChapters 填充） ─────── -->
+    <p class="gallery-label">EXHIBIT Ⅰ · 编年 CHRONICLE</p>
+    <section id="timeline" aria-label="时间线叙事区"></section>
+
+    <!-- ── 第二展厅：数据沉淀（renderStats 填充） ──────────── -->
+    <p class="gallery-label">EXHIBIT Ⅱ · 沉淀 SEDIMENT</p>
+    <section id="stats" aria-label="数据沉淀区"></section>
+  </main>
+
+  <!-- ── 尾厅：契约声明 ────────────────────────────────────── -->
+  <footer class="colophon">
+    <div class="seal" aria-hidden="true"></div>
+    <p id="colophon-text">
+      本页所有叙事段落均经档案主人逐条确认；所有读数均为确定性导入。
+      模型可以起草草稿，但永远不能盖章——<em>verified</em> 只属于机器的诚实读数与人的亲笔署名。
+    </p>
+    <p class="fine">
+      DIGITAL MUSEUM · 午夜档案馆 · 设计原型（需 JavaScript，非正式的无脚本静态导出）<br>
+      证据原文以 SHA-256 内容哈希封存 · 只读 · 不可原地改写
+    </p>
+  </footer>
+</div>
+
+<!-- ── 证据溯源抽屉 ────────────────────────────────────────── -->
+<div class="drawer-overlay" id="drawerOverlay" hidden></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" hidden>
+  <header class="drawer-head">
+    <div>
+      <h3 id="drawerTitle"></h3>
+      <p class="meta" id="drawerMeta"></p>
+    </div>
+    <button class="drawer-close" id="drawerClose" aria-label="关闭证据详情" title="关闭 (Esc)">✕</button>
+  </header>
+  <pre class="drawer-body" id="drawerBody" tabindex="-1"></pre>
+  <footer class="drawer-foot" id="drawerFoot"></footer>
+</aside>
+
+<noscript><p style="padding:2rem;text-align:center;font-family:monospace">此展览需要启用 JavaScript 渲染（设计原型）。</p></noscript>
+
+<script>
+/* ══════════════════════════════════════════════════════════════
+   AI 人生档案馆 · 展览页脚本
+   模块：数据加载 → 渲染 → 开场序列 → 滚动系统 → 微光 → 抽屉
+   ══════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+
+/* ── 0. 小工具 ─────────────────────────────────────────────── */
+var $  = function(s){ return document.querySelector(s); };
+var $$ = function(s){ return Array.prototype.slice.call(document.querySelectorAll(s)); };
+function esc(s){                       /* 转义动态文本（文本节点；保留引号供分词器匹配字符串） */
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function escAttr(s){                   /* 属性值专用：额外转义引号，防属性破出 */
+  return esc(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function sleep(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+var REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ── 1. 数据 ──────────────────────────────────────────────── */
+/* 优先级：?data= 参数 > 同目录 data.json > 内嵌样本。
+   file:// 直开时浏览器拦截 fetch，自动落到内嵌样本，保证离线可用。 */
+var CONFIG = {
+  dataUrl: new URLSearchParams(location.search).get('data') || 'data.json'
+};
+
+/* 心境 → 颜色/标签映射（缺省回退罗兰紫） */
+var MOODS = {
+  breakthrough:{ color:'#e6c89a', label:'突破' },
+  struggle:    { color:'#e07a5f', label:'攻坚' },
+  flow:        { color:'#9fd6c2', label:'心流' },
+  calm:        { color:'#90b8f0', label:'沉淀' },
+  wonder:      { color:'#a89dff', label:'初醒' }
+};
+var KIND_GLYPH = { session:'◇', diff:'±', metric:'#', log:'▤' };
+
+/* 内嵌样本：与 data.json 同构，作为离线回退与格式参考 */
+var EMBEDDED_DATA = {
+  "intro": {
+    "overline": "DIGITAL MUSEUM · 午夜档案馆 · 常设展",
+    "title": "一个人的 AI 编年史",
+    "subtitle": "不让 AI 替我编写人生",
+    "summary": "这里陈列的不是「我与 AI 的聊天记录」，而是被哈希封存、不可涂改的原始证据，以及证据之上，我愿意逐条署名的人生段落。灯光会随你的移动亮起——像走进一座只在深夜开放的档案馆。",
+    "meta": ["档案编号 DM-2026-08", "本地导出 · 无云端依赖", "证据 blob 749 份 · sha256 全部一致", "叙事 100% 用户确认"],
+    "bootLines": [
+      "$ museum --scan",
+      "mounting local archive ............ ok",
+      "scanning ~/.claude/projects ....... 412 sessions",
+      "scanning ~/.codex/sessions ........ 187 sessions",
+      "scanning ~/.pi/agent/sessions ..... 96 sessions",
+      "scanning ~/.dsh/sessions .......... 54 sessions",
+      "verifying sha256 evidence blobs ... 749 intact",
+      "trust contract verified ⇄ candidate ... ready"
+    ]
+  },
+  "chapters": [
+    {
+      "date": "2026-08-25", "title": "通道清剿：把档案馆交给会话本身", "mood": "breakthrough",
+      "narrative": [
+        "为了口径的纯粹，我在这一天删掉了笔记上传、Git 仓库导入和整个照片管线。档案馆从此只收藏一件事：我与 AI 面对面相处的时间。",
+        "删除键按下的时候没有犹豫——证据要么是原始会话，要么什么都不是。"
+      ],
+      "code": { "lang": "diff", "caption": "EXHIBIT · 变更摘要 2026-08-25", "text": "- adapter: photo-evidence-v1   (deleted, stage-4)\n- adapter: git-evidence-v1     (deleted, stage-3)\n- channel: note upload         (purged, ADR-0002)\n\n+ fuel: agent session transcripts only\n+ claude / codex / pi / dsh\n+   strict reading, no interpretation\n+   never write back to ~/.claude or friends" },
+      "evidence": [
+        { "kind": "session", "title": "会话记录 · codex-evidence-v1", "meta": "2026-08-25 09:12 · 41 条消息 · thread_source=user",
+          "excerpt": "把 photo-evidence-v1 整体删除，存量照片谱系数据走迁移清理……",
+          "sha": "e5a2c7f9…1b4d",
+          "full": "[2026-08-25 09:12:44] session opened · codex-evidence-v1\n[09:12:44] user:\n    把 photo-evidence-v1 整体删除，存量照片谱系数据走迁移清理，\n    spec 引用 stage-4 文档，不要从 git 历史复活旧通道。\n[09:13:02] assistant:\n    将移除适配器注册与发现面板入口，并准备迁移脚本 e5a2c7f91b4d。\n[09:41:37] assistant:\n    通道清剿完成。?all-sources 开关随之消亡。\n[11:47:19] sync ok · occurrences merged by source_key · tests 47/47 green" },
+        { "kind": "metric", "title": "回归读数 · test:backend", "meta": "2026-08-25 11:47 · 确定性读数",
+          "excerpt": "47 passed in 3.4s —— 全绿。",
+          "sha": null,
+          "full": "$ npm run test:backend\n\n  backend/tests/test_sync_idempotent ........ passed\n  backend/tests/test_adapters_claude ....... passed\n  backend/tests/test_adapters_codex ........ passed\n  backend/tests/test_adapters_pi ........... passed\n  backend/tests/test_adapters_dsh .......... passed\n  backend/tests/test_migration_e5a2 ........ passed\n\n  47 passed in 3.4s" }
+      ]
+    },
+    {
+      "date": "2026-06-14", "title": "凌晨两点的红色测试", "mood": "struggle",
+      "narrative": [
+        "同步幂等的 bug 追了我三个晚上：中断的快照在下一轮同步里变成重复的事件，档案开始说谎。凌晨两点，我盯着 FAILED 的红字，第一次对一台机器产生了「真相」之外的执念。",
+        "最后收束为一行契约：source_key 唯一，完整才跳过，破碎就重建。"
+      ],
+      "code": { "lang": "log", "caption": "EXHIBIT · 一夜的战场", "text": "FAILED backend/tests/test_sync.py::test_sync_idempotent\n      - assert 1 == 2\n      + occurrence duplicated: codex:/Users/x/proj\n\n  02:14  red\n  02:51  still red\n  03:07  source_key 唯一键落笔 · 全库归一\n\n  ........................  47 passed in 3.4s" },
+      "evidence": [
+        { "kind": "session", "title": "会话记录 · claude-code-evidence-v1", "meta": "2026-06-14 02:07 · 156 条消息",
+          "excerpt": "同步跑第二次出现重复事件……是不是中断的快照没被重建？",
+          "sha": "7c11d0aa…93e2",
+          "full": "[2026-06-14 02:07:51] session opened · claude-code-evidence-v1\n[02:07:51] user:\n    同步跑第二次出现重复事件。同一项目同一天出现两条,\n    是不是中断的快照没被重建?\n[02:09:18] assistant:\n    怀疑点: occurrence 完整性判定只校验 completed 标记,\n    未校验证据文档字节是否一致。\n[02:44:03] assistant:\n    建议: source_key 唯一约束 + 快照替换(先摘开事件引用再删旧 occurrence)。\n[03:07:29] user:\n    就这么定。中断的快照,下一轮同步自动重建。\n[03:31:55] sync ok · idempotent under interruption" },
+        { "kind": "log", "title": "同步日志 · POST /archive/sync", "meta": "2026-06-14 03:31 · 第 3 次重试",
+          "excerpt": "WARNING occurrence duplicated → RESOLVED by source_key",
+          "sha": null,
+          "full": "03:31:02  POST /api/v1/archive/sync\n03:31:04  scan   ~/.claude/projects ....... 412 files\n03:31:05  scan   ~/.codex/sessions ........ 187 files\n03:31:05  WARN   occurrence duplicated: codex:/Users/x/proj\n03:31:06  FIX    merge by source_key (unique)\n03:31:07  FIX    rebuild broken snapshot (bytes mismatch)\n03:31:09  done   occurrences=749 · duplicated=0\n03:31:55  idempotent under interruption: PASS" }
+      ]
+    },
+    {
+      "date": "2026-04-02", "title": "四种方言，一种心跳", "mood": "flow",
+      "narrative": [
+        "Claude Code、Codex、pi、dsh——四个 Agent 各说各的方言，我把它们收进同一副扫描骨架。那天下午没有开音乐，四个目录在后台依次亮起，像同一首曲子的四个声部。"
+      ],
+      "code": { "lang": "python", "caption": "EXHIBIT · agent_session_evidence.py", "text": "AGENT_PRODUCTS = {\n    \"claude\": ClaudeAdapter(KIND=\"claude-code-evidence-v1\"),\n    \"codex\":  CodexAdapter(KIND=\"codex-evidence-v1\"),\n    \"pi\":     PiAdapter(KIND=\"pi-agent-evidence-v1\"),\n    \"dsh\":    DshAdapter(KIND=\"dsh-evidence-v1\"),\n}\n\n# 一键同步: POST /archive/sync\n# 四个骨架, 一种心跳:\n#   只读 · 不改本机目录 · 单行损坏确定性跳过" },
+      "evidence": [
+        { "kind": "session", "title": "会话记录 · pi-agent-evidence-v1", "meta": "2026-04-02 15:20 · 63 条消息 · cwd=/Users/x/digital-museum",
+          "excerpt": "帮我把 pi 的会话目录接进统一扫描骨架……",
+          "sha": "b40e77c2…08af",
+          "full": "[2026-04-02 15:20:11] session opened · pi-agent-evidence-v1\n[15:20:11] user:\n    帮我把 pi 的会话目录接进统一扫描骨架,\n    项目归属按首行 cwd 判定。\n[15:22:47] assistant:\n    已注册 pi_sessions_root, content 片段取 {type:\"text\"}。\n[15:58:30] sync ok · pi sessions merged · zero writes to ~/.pi" },
+        { "kind": "session", "title": "会话记录 · dsh-evidence-v1", "meta": "2026-04-02 16:44 · 38 条消息 · zstd 解压",
+          "excerpt": "dsh 的 session 是 zstd 压缩的，发现端只惰性解压首行……",
+          "sha": "1f9ac3d5…6e01",
+          "full": "[2026-04-02 16:44:02] session opened · dsh-evidence-v1\n[16:44:02] user:\n    dsh 的 session 是 zstd 压缩的, 发现端只惰性解压首行,\n    delegationDepth != 0 的子代理线程一律排除。\n[16:45:30] assistant:\n    epoch 毫秒时间戳已按本机时区归日, 注入消息同步过滤。\n[17:12:08] sync ok · dsh threads merged · subagents excluded" }
+      ]
+    },
+    {
+      "date": "2026-01-20", "title": "真实性契约", "mood": "calm",
+      "narrative": [
+        "这一天我们把最重要的一句话写进了系统的骨头里：模型可以起草，但永远不能盖章。verified 只属于确定性读数，与我的亲笔确认。",
+        "信任是要分级的，就像档案馆的灯光——有的照在展品上，有的只照在标签上。"
+      ],
+      "code": { "lang": "python", "caption": "EXHIBIT · 契约条目（伪代码）", "text": "if output.origin == \"model\":\n    output.status = \"candidate\"   # 永不 verified\n\nblob  = sha256(raw_bytes)        # 内容即地址\nblob -> read_only()              # 无列举 · 无删除\n\n叙事 = 用户确认之后, 才成立" },
+      "evidence": [
+        { "kind": "session", "title": "会话记录 · claude-code-evidence-v1", "meta": "2026-01-20 21:05 · 88 条消息",
+          "excerpt": "我想定一条铁律：模型输出永远只能产生 candidate……",
+          "sha": "44be09f1…c7d2",
+          "full": "[2026-01-20 21:05:33] session opened · claude-code-evidence-v1\n[21:05:33] user:\n    我想定一条铁律: 模型输出永远只能产生 candidate,\n    verified 只属于确定性读数和我的确认。\n[21:06:40] assistant:\n    同意。这将写进 PRD 的真实性契约,\n    并在将来任何模型接入时作为不可协商的前置约束。\n[21:38:12] user:\n    还有: 会话时间戳的核实, 不等于解读了对话内容。\n    措辞要诚实。\n[22:01:57] assistant:\n    已区分「确定性读取」与「事实核实」的表述边界。\n[23:14:20] contract drafted · PRD §8" }
+      ]
+    },
+    {
+      "date": "2025-11-03", "title": "第一份证据落盘", "mood": "wonder",
+      "narrative": [
+        "深夜，第一份会话转录以 SHA-256 的名字躺进了 data/uploads/。从那一刻起，它不可原地改写、不可抵赖，也不会被谁悄悄涂改。",
+        "我盯着那串十六进制看了很久——那是我第一次被机器认真地记录，也是我第一次认真地记录机器。"
+      ],
+      "code": { "lang": "shell", "caption": "EXHIBIT · 第一次封存", "text": "$ sha256sum first-session.jsonl\n9f2c41d0e81b…  first-session.jsonl\n\n$ mv 9f2c41d0e81b… data/uploads/\n\n# 第一份证据落盘, 从此只读\n# GET /api/v1/blobs/{sha256} · 永久缓存 · fail closed" },
+      "evidence": [
+        { "kind": "session", "title": "会话记录 · claude-code-evidence-v1 · No.001", "meta": "2025-11-03 23:41 · 12 条消息 · 一切的开始",
+          "excerpt": "我想给自己建一座档案馆，只收我和 AI 共处的时间……",
+          "sha": "9f2c41d0…e81b",
+          "full": "[2025-11-03 23:41:07] session opened · claude-code-evidence-v1\n[23:41:07] user:\n    我想给自己建一座档案馆, 只收我和 AI 共处的时间。\n    原始记录一个字都不许改。\n[23:41:52] assistant:\n    方案: 证据以 SHA-256 内容哈希落盘, 路径只从数据库解析,\n    对外只读。先做最小闭环。\n[23:58:19] user:\n    就叫它, 午夜档案馆。\n[00:02:41] blob stored · sha256=9f2c41d0…e81b · size=48,213B" },
+        { "kind": "metric", "title": "封存读数 · 当夜", "meta": "2025-11-04 00:02 · 确定性读数",
+          "excerpt": "证据 blob 1 份 · sha256 一致。",
+          "sha": null,
+          "full": "blobs stored ........ 1\nsha256 verified ..... 1/1\nupload dir .......... data/uploads/\nwrite policy ........ append-only\nmood ................ 不可复原的初版心跳" }
+      ]
+    }
+  ],
+  "stats": [
+    { "label": "总会话数",   "value": 749,    "unit": "场", "hint": "claude 412 / codex 187 / pi 96 / dsh 54 · 确定性读数" },
+    { "label": "活跃天数",   "value": 302,    "unit": "天", "hint": "首份证据 2025-11-03 至今 · 按会话时间戳归日" },
+    { "label": "协作项目",   "value": 17,     "unit": "个", "hint": "按 cwd 归属 · cwd 已消失者不列不导" },
+    { "label": "生成代码行数", "value": 128400, "unit": "行", "hint": "含 AI 参与 · 推断口径 · 未经核实（candidate）" },
+    { "label": "证据 blob",  "value": 749,    "unit": "份", "hint": "sha256 全部一致 · 只读 · 内容寻址" }
+  ]
+};
+
+/* 外部 JSON 加载（失败回退内嵌样本） */
+function loadArchiveData(){
+  return fetch(CONFIG.dataUrl, { cache:'no-store' })
+    .then(function(res){ if(!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
+    .then(function(data){
+       if(!data || !Array.isArray(data.chapters) || !data.intro) throw new Error('schema');
+       return data;
+     })
+    .catch(function(){ return JSON.parse(JSON.stringify(EMBEDDED_DATA)); });
+}
+
+/* ── 2. 代码诗意渲染（先转义，再按行包 span） ─────────────── */
+/* 单趟分词：字符串/数字/关键词用交替正则一次匹配，回调内包裹。
+   绝不能先包数字再扫关键词——回扫会把已插入标记里的 class 等单词
+   再包一层，产出畸形嵌套标签（已在浏览器实测中踩过）。 */
+var TOKEN_RE = /("[^"\n]*"|'[^'\n]*')|\b(\d+(?:\.\d+)?)\b|\b(const|let|var|function|return|if|else|for|while|import|from|export|class|new|await|async|try|catch|except|raise|with|def|None|True|False|null|true|false|not|and|or|in|is|assert|pass)\b/g;
+
+function prettyLine(line){
+  /* 粗粒度启发式：行首或空白后的 # / // 视为注释尾巴 */
+  var code = line, comment = '';
+  var m = line.match(/(?:^|\s)(#.*|\/\/.*)$/);
+  if(m){ code = line.slice(0, m.index); comment = m[1]; }
+  var html = code.replace(TOKEN_RE, function(all, str, num, kw){
+    if(str) return '<span class="tok-str">' + str + '</span>';
+    if(num) return '<span class="tok-num">' + num + '</span>';
+    return '<span class="tok-kw">' + kw + '</span>';
+  });
+  if(comment) html += '<span class="tok-com">' + comment + '</span>';
+  return html || ' ';
+}
+function renderCode(text, lang){
+  var lines = esc(text).split('\n');
+  return lines.map(function(l){
+    var cls = '';
+    if(lang === 'diff'){
+      cls = /^@@/.test(l) ? 'meta' : /^\+/.test(l) ? 'add' : /^-/.test(l) ? 'del' : '';
+    }else if(lang === 'log' || lang === 'shell'){
+      cls = /(FAILED|ERROR|WARN|Traceback)/.test(l) ? 'del'
+          : /(passed|ok|PASS|stored|verified|ready)/.test(l) ? 'add'
+          : /^(\[|\$|\d{2}:\d{2})/.test(l) ? 'meta' : '';
+      return '<span class="cl' + (cls ? ' ' + cls : '') + '">' + (prettyLine(l) || ' ') + '</span>';
+    }
+    if(lang === 'python' || lang === 'javascript') return '<span class="cl">' + prettyLine(l) + '</span>';
+    return '<span class="cl' + (cls ? ' ' + cls : '') + '">' + (l || ' ') + '</span>';
+  }).join('');
+}
+
+/* ── 3. 渲染：intro / chapters / stats ────────────────────── */
+function renderIntro(intro){
+  $('#intro-overline').textContent = intro.overline || '';
+  $('#intro-title').textContent    = intro.title || '';
+  $('#intro-sub').textContent      = intro.subtitle || '';
+  $('#intro-summary').textContent  = intro.summary || '';
+  if(intro.title) document.title = intro.title + ' · AI 人生档案馆';
+  var ul = $('#intro-meta');
+  (intro.meta || []).forEach(function(m){
+    var li = document.createElement('li'); li.textContent = m; ul.appendChild(li);
+  });
+}
+
+function buildChapter(ch, ci){
+  var mood = MOODS[ch.mood] || MOODS.breakthrough;
+  var sect = document.createElement('section');
+  sect.className = 'chapter reveal';
+  sect.style.setProperty('--mood', mood.color);
+  sect.setAttribute('data-mood', ch.mood || 'breakthrough');
+
+  /* 时间标签（置于主脊对侧） */
+  var when = document.createElement('div');
+  when.className = 'when';
+  when.innerHTML =
+    '<span class="when-date">' + esc((ch.date || '').replace(/-/g, ' · ')) + '</span>' +
+    '<span class="when-mood"><i class="mood-dot" aria-hidden="true"></i>' +
+    esc(ch.moodLabel || mood.label) + '</span>';
+
+  /* 脊节点 */
+  var node = document.createElement('div');
+  node.className = 'node'; node.setAttribute('aria-hidden','true');
+
+  /* 展签卡片 */
+  var card = document.createElement('article');
+  card.className = 'card';
+  var html = '<h2 class="ch-title">' + esc(ch.title || '') + '</h2>';
+
+  var paras = Array.isArray(ch.narrative) ? ch.narrative : (ch.narrative ? [ch.narrative] : []);
+  html += '<div class="ch-narrative">' + paras.map(function(p){ return '<p>' + esc(p) + '</p>'; }).join('') + '</div>';
+
+  if(ch.code && ch.code.text){
+    html += '<figure class="code-poem"><figcaption>' + esc(ch.code.caption || ch.code.lang || 'CODE') +
+            '</figcaption><pre><code>' + renderCode(ch.code.text, ch.code.lang) + '</code></pre></figure>';
+  }
+
+  if(ch.evidence && ch.evidence.length){
+    html += '<div class="evidence"><div class="evidence-head"><span>RAW EVIDENCE · 原始证据</span><span>' +
+            String(ch.evidence.length).padStart(2,'0') + ' 份</span></div><div class="evidence-stack">';
+    ch.evidence.forEach(function(ev, ei){
+      html += '<button class="evidence-card" data-ci="' + ci + '" data-ei="' + ei + '" aria-haspopup="dialog">' +
+                '<span class="ev-kind" aria-hidden="true">' + (KIND_GLYPH[ev.kind] || '◇') + '</span>' +
+                '<span class="ev-main">' +
+                  '<span class="ev-title">' + esc(ev.title) + '</span>' +
+                  '<span class="ev-meta">' + esc(ev.meta || '') + '</span>' +
+                  '<span class="ev-excerpt">' + esc(ev.excerpt || '') + '</span>' +
+                '</span>' +
+                '<span class="ev-cta">溯源 →</span>' +
+              '</button>';
+    });
+    html += '</div></div>';
+  }
+  card.innerHTML = html;
+
+  sect.appendChild(when);
+  sect.appendChild(node);
+  sect.appendChild(card);
+  return sect;
+}
+
+function renderChapters(chapters){
+  var host = $('#timeline');
+  chapters.forEach(function(ch, i){ host.appendChild(buildChapter(ch, i)); });
+}
+
+function renderStats(stats){
+  var host = $('#stats');
+  stats.forEach(function(s, i){
+    var el = document.createElement('div');
+    el.className = 'stat reveal';
+    el.style.setProperty('--d', (i * 90) + 'ms');
+    el.innerHTML =
+      '<div class="stat-num"><span class="stat-value" data-value="' + escAttr(s.value) + '">0</span>' +
+      '<span class="stat-unit">' + esc(s.unit || '') + '</span></div>' +
+      '<div class="stat-label">' + esc(s.label) + '</div>' +
+      '<div class="stat-hint">' + esc(s.hint || '') + '</div>';
+    host.appendChild(el);
+  });
+}
+
+/* ── 4. 开场序列（可跳过） ────────────────────────────────── */
+function runBoot(lines){
+  return new Promise(function(resolve){
+    var boot = $('#boot'), log = $('#boot-log');
+    var skipped = false;
+    var onKey = function(){ skipped = true; };
+    var onPtr = function(){ skipped = true; };
+    window.addEventListener('keydown', onKey, true);
+    boot.addEventListener('pointerdown', onPtr, true);
+
+    var i = 0;
+    function step(){
+      if(skipped || i >= lines.length){
+        window.removeEventListener('keydown', onKey, true);
+        boot.removeEventListener('pointerdown', onPtr, true);
+        resolve();
+        return;
+      }
+      var div = document.createElement('div');
+      div.className = 'boot-line';
+      div.textContent = lines[i++];
+      log.appendChild(div);
+      setTimeout(step, Math.min(300, 130 + div.textContent.length * 5));
+    }
+    step();
+  });
+}
+async function playIntroSequence(lines){
+  document.documentElement.classList.add('locked');
+  if(!REDUCED){
+    await runBoot(lines && lines.length ? lines : EMBEDDED_DATA.intro.bootLines);
+    await sleep(REDUCED ? 0 : 380);            /* 让最后一行停留一拍 */
+    var boot = $('#boot');
+    boot.classList.add('done');
+    setTimeout(function(){ boot.hidden = true; }, 700);
+  }
+  document.body.classList.add('ready');
+  document.documentElement.classList.remove('locked');
+}
+
+/* ── 5. 滚动系统：进度条 + 淡入 + 章节点亮 ────────────────── */
+function setupScrollSystems(){
+  /* 阅读进度 */
+  var bar = $('#progress i');
+  var pending = false;
+  window.addEventListener('scroll', function(){
+    if(pending) return; pending = true;
+    requestAnimationFrame(function(){
+      pending = false;
+      var max = document.documentElement.scrollHeight - window.innerHeight;
+      bar.style.transform = 'scaleX(' + (max > 0 ? (window.scrollY / max) : 0) + ')';
+    }, { passive:true });
+  }, { passive:true });
+
+  /* 淡入与章节氛围（同一 IO，两处消费 .in 状态） */
+  var targets = $$('.reveal');
+  if(REDUCED || !('IntersectionObserver' in window)){
+    targets.forEach(function(el){ el.classList.add('in'); });
+    countAllUp();
+    return;
+  }
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); }
+    });
+  }, { threshold:.12, rootMargin:'0px 0px -6% 0px' });
+  targets.forEach(function(el){ io.observe(el); });
+
+  /* 读数区进入视野时统一触发数字滚动 */
+  var statsIO = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if(en.isIntersecting){ countAllUp(); statsIO.disconnect(); }
+    });
+  }, { threshold:.25 });
+  statsIO.observe($('#stats'));
+}
+
+/* ── 6. 数字滚动 ──────────────────────────────────────────── */
+var counted = false;
+function countAllUp(){
+  if(counted) return; counted = true;
+  $$('.stat-value').forEach(function(el){
+    var target = parseInt(el.getAttribute('data-value'), 10) || 0;
+    if(REDUCED){ el.textContent = target.toLocaleString('zh-Hans-CN'); return; }
+    var t0 = null, DUR = 1400;
+    function frame(t){
+      if(t0 === null) t0 = t;
+      var p = Math.min(1, (t - t0) / DUR);
+      var eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = Math.round(target * eased).toLocaleString('zh-Hans-CN');
+      if(p < 1) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  });
+}
+
+/* ── 7. 微光「手电筒」：指针跟随 + 惯性拖尾 ───────────────── */
+function setupGlow(){
+  if(REDUCED) return;
+  if(!window.matchMedia('(hover:hover) and (pointer:fine)').matches) return;
+  var tx = window.innerWidth / 2, ty = window.innerHeight * .35;
+  var x = tx, y = ty;
+  window.addEventListener('pointermove', function(e){ tx = e.clientX; ty = e.clientY; }, { passive:true });
+  (function tick(){
+    if(!document.hidden){
+      x += (tx - x) * .12;  y += (ty - y) * .12;
+      document.documentElement.style.setProperty('--mx', x + 'px');
+      document.documentElement.style.setProperty('--my', y + 'px');
+    }
+    requestAnimationFrame(tick);
+  })();
+}
+
+/* ── 8. 证据溯源抽屉 ──────────────────────────────────────── */
+var drawer, overlay, lastFocus = null;
+function setupDrawer(data){
+  drawer = $('#drawer'); overlay = $('#drawerOverlay');
+  var closeBtn = $('#drawerClose');
+
+  function open(evMeta, trigger){
+    lastFocus = trigger || null;
+    $('#drawerTitle').textContent = evMeta.title || '原始证据';
+    $('#drawerMeta').textContent  = [evMeta.meta, evMeta.kind ? '类型 ' + evMeta.kind : ''].filter(Boolean).join(' · ');
+    $('#drawerBody').innerHTML    = renderCode(evMeta.full || evMeta.excerpt || '', evMeta.render || 'log');
+    $('#drawerFoot').textContent  = evMeta.sha ? ('sha256:' + evMeta.sha + ' · 只读副本 · 未随导出携带锚点')
+                                               : '确定性读数 · 无关联 blob';
+    overlay.hidden = false; drawer.hidden = false;
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){
+      overlay.classList.add('open'); drawer.classList.add('open');
+    }); });
+    document.documentElement.classList.add('locked');
+    closeBtn.focus();
+  }
+  function close(){
+    overlay.classList.remove('open'); drawer.classList.remove('open');
+    document.documentElement.classList.remove('locked');
+    setTimeout(function(){
+      overlay.hidden = true; drawer.hidden = true;
+      if(lastFocus) lastFocus.focus();
+    }, REDUCED ? 0 : 440);
+  }
+
+  /* 事件委托：所有证据卡 */
+  document.addEventListener('click', function(e){
+    var btn = e.target.closest ? e.target.closest('.evidence-card') : null;
+    if(!btn) return;
+    var ci = +btn.getAttribute('data-ci'), ei = +btn.getAttribute('data-ei');
+    var ev = data.chapters[ci] && data.chapters[ci].evidence[ei];
+    if(ev) open(ev, btn);
+  });
+  closeBtn.addEventListener('click', close);
+  overlay.addEventListener('click', close);
+
+  /* Esc 关闭 + 单控件焦点圈闭 */
+  document.addEventListener('keydown', function(e){
+    if(drawer.hidden) return;
+    if(e.key === 'Escape'){ e.preventDefault(); close(); }
+    else if(e.key === 'Tab'){ e.preventDefault(); closeBtn.focus(); }
+  });
+}
+
+/* ── 9. 启动 ──────────────────────────────────────────────── */
+loadArchiveData().then(function(data){
+  renderIntro(data.intro);
+  renderChapters(data.chapters);
+  renderStats(data.stats || []);
+  setupScrollSystems();
+  setupGlow();
+  setupDrawer(data);
+  playIntroSequence(data.intro.bootLines);
+}).catch(function(err){
+  console.error('[museum] 渲染失败：', err);
+});
+
+})();
+</script>
+</body>
+</html>
