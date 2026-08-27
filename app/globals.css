@@ -660,7 +660,7 @@ mark.mvp-evidence-hit {
 /* 核对问题卡统一为墨蓝虚线（AI 整理态契约色） */
 .mvp-review-view .mvp-question-card { border-color: rgba(62, 88, 113, 0.42); background: rgba(62, 88, 113, 0.05); }
 
-/* 展览阅读进度条（滚动联动，随主题 accent 变色） */
+/* 展览阅读进度条（滚动联动，紫→暖金渐变） */
 .expo-progress {
   position: fixed;
   top: 0;
@@ -668,7 +668,7 @@ mark.mvp-evidence-hit {
   z-index: 40;
   width: 100%;
   height: 3px;
-  background: var(--e-accent);
+  background: linear-gradient(90deg, var(--e-accent), var(--e-gold, #e6c89a));
   transform-origin: 0 50%;
   transform: scaleX(0);
   pointer-events: none;
@@ -693,17 +693,10 @@ mark.mvp-evidence-hit {
 /* 草稿展品卡：半透明（AI 整理态），与确认卡形成契约对比 */
 .expo-card.draft { background: color-mix(in srgb, var(--e-card) 82%, transparent); }
 
-/* 章节头吸顶：滚动观展时保持当前展厅的引导 */
-.expo-chapter > header {
-  position: sticky;
-  top: 58px;
-  z-index: 6;
-  background: var(--e-bg);
-}
+/* 章节头吸顶的生效规则在 museum-night 主题层（厅头吸顶） */
 
 @media (max-width: 640px) {
   .mvp-legend { gap: 6px 14px; font-size: 11px; }
-  .expo-chapter > header { top: 52px; }
 }
 
 /* ============================================================
@@ -885,7 +878,7 @@ mark.mvp-evidence-hit {
   pointer-events: none;
   animation: expo-spot 1.4s ease both;
 }
-.expo-cover-inner { position: relative; max-width: 920px; padding: 0 24px; animation: expo-rise .9s cubic-bezier(.2, .7, .2, 1) both; }
+.expo-cover-inner { position: relative; max-width: 920px; padding: 0 24px; }
 .expo-cover-kicker { margin: 0 0 26px; font-size: 11px; letter-spacing: .32em; color: var(--e-muted); }
 .expo-cover h1 {
   margin: 0;
@@ -948,7 +941,7 @@ mark.mvp-evidence-hit {
 .expo-chapter h2 { margin: 0 0 7px; font-family: var(--e-heading-font); font-size: clamp(24px, 3vw, 34px); }
 .expo-chapter header p { margin: 0; color: var(--e-muted); font-size: 13px; letter-spacing: .05em; }
 
-.expo-hall { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 26px; padding-bottom: 26px; }
+.expo-hall { display: grid; gap: 26px; padding-bottom: 26px; }
 .expo-card {
   position: relative;
   display: flex;
@@ -978,37 +971,7 @@ mark.mvp-evidence-hit {
 .expo-card-status { border: 1px solid var(--e-line); padding: 3px 10px; border-radius: 999px; }
 .expo-card h3 { margin: 0; font-family: var(--e-heading-font); font-size: 21px; line-height: 1.45; }
 
-.expo-labels { margin-top: auto; display: grid; gap: 10px; }
-.expo-label { border-top: 1px dashed var(--e-line); padding-top: 11px; font-size: 13px; }
-.expo-label summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  cursor: pointer;
-  color: var(--e-muted);
-  font-size: 11.5px;
-  letter-spacing: .1em;
-  list-style: none;
-}
-.expo-label summary::-webkit-details-marker { display: none; }
-.expo-label summary::after { content: "＋"; font-size: 13px; }
-.expo-label[open] summary::after { content: "－"; }
-.expo-label blockquote {
-  margin: 11px 0;
-  padding: 10px 14px;
-  border-left: 3px solid var(--e-accent);
-  background: rgba(127, 127, 127, 0.07);
-  font-size: 13px;
-  line-height: 1.75;
-}
-.expo-anchor p { margin: 0 0 7px; color: var(--e-muted); font-size: 12px; line-height: 1.7; }
-.expo-anchor dl { display: flex; gap: 22px; margin: 0 0 4px; }
-.expo-anchor dt { font-size: 10px; color: var(--e-muted); letter-spacing: .08em; }
-.expo-anchor dd { margin: 2px 0 0; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; }
-/* 展品标签内的哈希、文件名等长串在窄屏可断行，避免横向溢出 */
-.expo-label, .expo-label summary, .expo-label blockquote,
-.expo-anchor, .expo-anchor p, .expo-anchor dd,
+/* 展品标签已升级为侧滑证据抽屉（见 S5 展厅叙事层），此处仅保留标题断行 */
 .expo-card h3 {
   overflow-wrap: anywhere;
   min-width: 0;
@@ -1040,10 +1003,6 @@ a.mvp-primary {
 .expo-reveal { opacity: 0; transform: translateY(26px); transition: opacity .7s ease, transform .7s cubic-bezier(.2, .7, .2, 1); }
 .expo-reveal.is-visible { opacity: 1; transform: none; }
 
-@keyframes expo-rise {
-  from { opacity: 0; transform: translateY(36px); }
-  to { opacity: 1; transform: none; }
-}
 @keyframes expo-spot {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -1061,7 +1020,7 @@ a.mvp-primary {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .expo-cover-inner, .expo-cover::before { animation: none; }
+  .expo-cover::before { animation: none; }
   .expo-reveal { opacity: 1; transform: none; transition: none; }
   .expo-card, .expo-cover-cta { transition: none; }
 }
@@ -1078,46 +1037,27 @@ a.mvp-primary {
   --e-display: "Playfair Display", "Noto Serif SC", Georgia, serif;
 }
 
-/* —— 封面：纪念碑海报 + 双束射灯 + 巨幅幽灵年份 —— */
+/* —— 封面：深夜开卷（S5 叙事层接管，幽灵年份与漂移射灯退役） —— */
 .expo-show .expo-cover { position: relative; min-height: 100svh; overflow: hidden; }
 .expo-show .expo-cover::before {
   content: "";
   position: absolute;
-  inset: -22%;
+  inset: 0;
   background:
-    radial-gradient(38% 52% at 24% 16%, color-mix(in srgb, var(--e-accent) 15%, transparent), transparent 70%),
-    radial-gradient(30% 44% at 78% 6%, color-mix(in srgb, var(--e-accent) 10%, transparent), transparent 72%),
-    radial-gradient(64% 32% at 50% 110%, color-mix(in srgb, var(--e-ink) 9%, transparent), transparent 72%);
-  animation: expo-light-drift 26s ease-in-out infinite alternate;
+    radial-gradient(46% 34% at 50% -6%, color-mix(in srgb, var(--e-accent) 9%, transparent), transparent 70%),
+    radial-gradient(60% 30% at 50% 112%, color-mix(in srgb, var(--e-ink) 7%, transparent), transparent 72%);
   pointer-events: none;
 }
 .expo-show .expo-cover-inner { position: relative; z-index: 2; }
-.expo-show .expo-cover-ghost {
-  position: absolute;
-  z-index: 1;
-  left: 0;
-  right: 0;
-  bottom: 4vh;
-  font-family: var(--e-display);
-  font-weight: 900;
-  font-size: clamp(180px, 34vw, 540px);
-  line-height: 0.8;
-  letter-spacing: -0.04em;
-  text-align: center;
-  color: transparent;
-  -webkit-text-stroke: 1px color-mix(in srgb, var(--e-ink) 24%, transparent);
-  opacity: 0.55;
-  pointer-events: none;
-  user-select: none;
-}
 .expo-show .expo-cover h1 {
   font-family: var(--e-display);
   font-weight: 900;
-  font-size: clamp(46px, 8.2vw, 116px);
-  line-height: 1.05;
-  letter-spacing: -0.03em;
+  font-size: clamp(42px, 7vw, 92px);
+  line-height: 1.06;
+  letter-spacing: -0.02em;
   text-wrap: balance;
-  max-width: 13ch;
+  max-width: 14ch;
+  margin-inline: auto;
 }
 .expo-show .expo-cover-kicker,
 .expo-show .expo-cover-dates {
@@ -1143,10 +1083,6 @@ a.mvp-primary {
   line-height: 1;
 }
 .expo-show .expo-cover-cta { font-family: var(--e-mono); letter-spacing: 0.16em; text-transform: uppercase; }
-@keyframes expo-light-drift {
-  from { transform: translate3d(-1.6%, -1%, 0) scale(1); }
-  to { transform: translate3d(1.6%, 1.4%, 0) scale(1.05); }
-}
 
 /* —— 序言：首字下沉 —— */
 
@@ -1167,28 +1103,26 @@ a.mvp-primary {
   clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
 }
 
-/* —— 展厅：幽灵厅号 + 铭牌 —— */
+/* —— 厅章：等宽序号铭牌 + 衬线厅名（幽灵厅号随 S5 脊线退役） —— */
 .expo-show .expo-chapter { position: relative; }
 .expo-show .expo-chapter-num {
-  position: absolute;
-  top: -18px;
-  left: -6px;
-  z-index: 0;
-  font-family: var(--e-display);
-  font-weight: 900;
-  font-size: clamp(140px, 21vw, 300px);
-  line-height: 0.8;
-  color: transparent;
-  -webkit-text-stroke: 1px var(--e-chapter-color);
-  pointer-events: none;
-  user-select: none;
+  font-family: var(--e-mono);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.3em;
+  color: var(--hall-accent, var(--e-chapter-color));
+  border: 1px solid color-mix(in srgb, var(--hall-accent, var(--e-accent)) 45%, transparent);
+  padding: 6px 10px;
+  border-radius: 3px;
+  align-self: baseline;
 }
 .expo-show .expo-chapter > header { position: relative; z-index: 1; }
 .expo-show .expo-chapter h2 {
   font-family: var(--e-heading-font);
   font-weight: 900;
-  font-size: clamp(34px, 5.2vw, 68px);
-  line-height: 1.06;
+  font-size: clamp(24px, 3.4vw, 40px);
+  line-height: 1.12;
   letter-spacing: var(--e-heading-track);
 }
 .expo-show .expo-chapter header p {
@@ -1197,12 +1131,8 @@ a.mvp-primary {
   letter-spacing: 0.16em;
 }
 
-/* —— 展墙：首展通栏 + 7/5 错落 —— */
-.expo-show .expo-hall { display: grid; grid-template-columns: repeat(12, 1fr); gap: 26px; }
-.expo-show .expo-card { grid-column: span 6; position: relative; }
-.expo-show .expo-hall > .expo-card:nth-child(odd) { grid-column: span 7; }
-.expo-show .expo-hall > .expo-card:nth-child(even) { grid-column: span 5; }
-.expo-show .expo-hall > .expo-card:first-child { grid-column: 1 / -1; }
+/* —— 展墙：主展通栏 + 脊线交错（布局细节见 S5 展厅叙事层） —— */
+.expo-show .expo-card { position: relative; }
 
 /* —— 展签：铭牌字体 + 圆形钢印 + 拾升聚光 —— */
 .expo-show .expo-card h3 {
@@ -1211,10 +1141,7 @@ a.mvp-primary {
   font-size: clamp(21px, 2.4vw, 30px);
   line-height: 1.35;
 }
-.expo-show .expo-card-no,
-.expo-show .expo-label summary,
-.expo-show .expo-anchor dt,
-.expo-show .expo-anchor dd { font-family: var(--e-mono); }
+.expo-show .expo-card-no { font-family: var(--e-mono); }
 .expo-show .expo-seal {
   display: inline-grid;
   place-items: center;
@@ -1234,26 +1161,8 @@ a.mvp-primary {
   transform: rotate(-8deg);
   padding: 4px;
 }
-.expo-show .expo-card { transition: transform 0.35s ease; }
-.expo-show .expo-card::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  opacity: 0;
-  transition: opacity 0.35s ease;
-  background: radial-gradient(60% 46% at 50% 0%, color-mix(in srgb, var(--e-accent) 13%, transparent), transparent 70%);
-  pointer-events: none;
-}
+.expo-show .expo-card { transition: transform 0.35s ease, border-color 0.35s ease; }
 .expo-show .expo-card:hover { transform: translateY(-5px); }
-.expo-show .expo-card:hover::after { opacity: 1; }
-
-/* —— 入场节奏：展墙内错落 60ms —— */
-.expo-show .expo-hall > .expo-reveal { transition: opacity 0.5s ease, transform 0.5s ease; }
-.expo-show .expo-hall > .expo-reveal:nth-child(2) { transition-delay: 0.06s; }
-.expo-show .expo-hall > .expo-reveal:nth-child(3) { transition-delay: 0.12s; }
-.expo-show .expo-hall > .expo-reveal:nth-child(4) { transition-delay: 0.18s; }
-.expo-show .expo-hall > .expo-reveal:nth-child(5) { transition-delay: 0.24s; }
 
 /* —— 尾声：大字收束 —— */
 .expo-show .expo-epilogue { border-top: 1px solid var(--e-line); }
@@ -1267,19 +1176,11 @@ a.mvp-primary {
 
 @media (prefers-reduced-motion: reduce) {
   .expo-show .expo-cover::before { animation: none; }
-  .expo-show .expo-card,
-  .expo-show .expo-card::after,
-  .expo-show .expo-hall > .expo-reveal { transition: none; }
+  .expo-show .expo-card { transition: none; }
 }
 
 @media (max-width: 760px) {
-  .expo-show .expo-hall { grid-template-columns: 1fr; gap: 18px; }
-  .expo-show .expo-hall > .expo-card,
-  .expo-show .expo-hall > .expo-card:first-child,
-  .expo-show .expo-hall > .expo-card:nth-child(odd),
-  .expo-show .expo-hall > .expo-card:nth-child(even) { grid-column: auto; }
-  .expo-show .expo-cover-ghost { font-size: clamp(120px, 42vw, 240px); bottom: 8vh; }
-  .expo-show .expo-chapter-num { font-size: clamp(96px, 30vw, 180px); }
+  .expo-show .expo-hall { gap: 18px; }
   .expo-show .expo-seal { width: 54px; height: 54px; font-size: 9px; }
 }
 
@@ -1306,7 +1207,6 @@ a.mvp-primary {
   letter-spacing: 0.18em; text-transform: uppercase; color: var(--e-muted);
 }
 .expo-show .expo-card-caption h3 { margin: 0; }
-.expo-show .expo-labels { padding: 8px 18px 16px; margin-top: auto; }
 .expo-show .expo-card.draft .expo-art { opacity: 0.78; }
 
 @media (max-width: 760px) {
@@ -1413,6 +1313,7 @@ a.mvp-primary {
   --e-muted: #9f9fa0;
   --e-accent: #847dff;
   --e-accent-ink: #0b0b0d;
+  --e-gold: #e6c89a;
   --e-line: rgba(245, 245, 247, 0.1);
   --e-card: #141416;
   --e-card-border: 1px solid rgba(245, 245, 247, 0.08);
@@ -1451,14 +1352,7 @@ a.mvp-primary {
   letter-spacing: 0.22em;
 }
 
-/* 厅章：衬线厅名 + 等宽眉标 + 厅色细规线 */
-[data-expo-theme="museum-night"] .expo-chapter {
-  border-left: 2px solid var(--hall-accent, var(--e-accent));
-  padding-left: clamp(18px, 3vw, 40px);
-}
-[data-expo-theme="museum-night"] .expo-chapter-num {
-  -webkit-text-stroke: 1px var(--hall-accent, var(--e-chapter-color));
-}
+/* 厅章：等宽眉标随厅色（厅间分隔由 S5 脊线接管，左规线退役） */
 [data-expo-theme="museum-night"] .expo-chapter header p {
   color: var(--hall-accent, var(--e-muted));
   letter-spacing: 0.22em;
@@ -1484,27 +1378,7 @@ a.mvp-primary {
   border-color: rgba(245, 245, 247, 0.14);
 }
 
-/* 证据收纳：展品标签压成等宽档案签（在但不喧哗） */
-[data-expo-theme="museum-night"] .expo-label summary,
-[data-expo-theme="museum-night"] .expo-label summary small {
-  font-family: var(--e-mono);
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--e-muted);
-}
-[data-expo-theme="museum-night"] .expo-anchor p,
-[data-expo-theme="museum-night"] .expo-anchor dd {
-  font-family: var(--e-mono);
-  font-size: 11px;
-  line-height: 1.8;
-  color: var(--e-muted);
-}
-[data-expo-theme="museum-night"] .expo-anchor p {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+/* 证据收纳已升级为侧滑抽屉（S5），此处仅留编目号字距 */
 [data-expo-theme="museum-night"] .expo-card-no {
   letter-spacing: 0.14em;
 }
@@ -1527,7 +1401,7 @@ a.mvp-primary {
 }
 
 @media (max-width: 760px) {
-  [data-expo-theme="museum-night"] .expo-chapter { padding-left: 14px; }
+  [data-expo-theme="museum-night"] .expo-chapter { padding-left: 0; }
 }
 
 /* —— 展签：叙事底稿（两行截断；主展位在刀一层放开） —— */
@@ -1939,45 +1813,11 @@ a.mvp-primary {
 
 /* ============================================================
    刀一 · 展陈节奏（2026-08-25 展览页设计调研落地）：
-   换厅门楣（幽灵月号 + 厅色规线）/ 数据选出的主展位（通栏 + 开场引言）/
-   展签补媒介来源行 / 聚光微缩。手法对照：Cipher Museum 编目语言、
-   Eladio Dieste 年份海报字、真实展签 medium + credit line。
+   数据选出的主展位（通栏 + 开场引言）/ 展签补媒介来源行 /
+   厅色渗光。换厅门楣（幽灵月号）已随 S5 脊线时间线退役。
+   手法对照：Cipher Museum 编目语言、Eladio Dieste 年份海报字、
+   真实展签 medium + credit line。
    ============================================================ */
-
-/* —— 换厅门楣：厅与厅之间的海报时刻，厅色在此登场 —— */
-.expo-show .expo-chapter { padding-top: 12px; }
-.expo-gate {
-  position: relative;
-  display: grid;
-  justify-items: center;
-  padding: 92px 24px 10px;
-  line-height: 1;
-}
-.expo-gate::before,
-.expo-gate::after {
-  content: "";
-  position: absolute;
-  left: 24px;
-  right: 24px;
-  height: 1px;
-  background: linear-gradient(90deg,
-    transparent,
-    color-mix(in srgb, var(--hall-accent, var(--e-accent)) 42%, transparent),
-    transparent);
-}
-.expo-gate::before { top: 64px; }
-.expo-gate::after { bottom: 0; }
-.expo-gate-month {
-  font-family: var(--e-display);
-  font-weight: 900;
-  font-size: clamp(104px, 15vw, 196px);
-  line-height: 0.78;
-  color: transparent;
-  -webkit-text-stroke: 1px color-mix(in srgb, var(--hall-accent, var(--e-accent)) 55%, transparent);
-  opacity: 0.85;
-  user-select: none;
-  pointer-events: none;
-}
 
 /* 厅色渗进展厅顶部（午夜档案馆的“一厅一光”） */
 [data-expo-theme="museum-night"] .expo-chapter {
@@ -2141,10 +1981,6 @@ a.mvp-primary {
 }
 
 @media (max-width: 760px) {
-  .expo-gate { padding: 64px 16px 2px; }
-  .expo-gate::before { top: 46px; }
-  .expo-gate::before, .expo-gate::after { left: 16px; right: 16px; }
-  .expo-gate-month { font-size: clamp(72px, 26vw, 128px); }
   .expo-show .expo-card.hero .expo-card-caption { padding: 16px 18px 2px; }
   .expo-hero-quote { padding: 12px 14px; font-size: 16px; }
   .expo-archive-stamp { width: 104px; height: 104px; }
@@ -2154,4 +1990,486 @@ a.mvp-primary {
 @media (prefers-reduced-motion: reduce) {
   .expo-show .expo-art svg { transition: none; }
   .expo-show .expo-card:hover .expo-art svg { transform: none; }
+}
+
+/* ============================================================
+   S5 · 展厅叙事层（2026-08-27 展览页叙事化改版，设计原型见
+   docs/exhibition-prototype/）：开馆终端序列 / 手电筒微光 /
+   中央脊线编年 / 叙事优先展签 / 侧滑证据抽屉 / 代码诗意排版 /
+   读数滚动。动效只动 transform/opacity，全量尊重 reduced-motion。
+   ============================================================ */
+
+/* —— 开馆序列：终端扫描覆盖层（z 低于顶栏 30 与风险确认 60，不挡终点动作） —— */
+.expo-boot {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  display: grid;
+  place-items: center;
+  background: var(--e-bg, #0b0b0d);
+  cursor: pointer;
+  transition: opacity .5s ease;
+}
+.expo-boot.done { opacity: 0; pointer-events: none; }
+.expo-boot-box {
+  width: min(600px, 88vw);
+  border: 1px solid var(--e-line, rgba(245, 245, 247, .1));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--e-card, #141416) 72%, transparent);
+  padding: 20px 22px 16px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .55);
+}
+.expo-boot-bar {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 14px;
+  font-family: var(--e-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: .18em;
+  color: var(--e-muted, #9f9fa0);
+}
+.expo-boot-bar i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--e-gold, #e6c89a);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--e-gold, #e6c89a) 80%, transparent);
+  animation: expo-boot-lamp 1.6s ease-in-out infinite;
+}
+@keyframes expo-boot-lamp { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+.expo-boot-log {
+  min-height: 11.5em;
+  font-family: var(--e-mono, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 2.05;
+  color: var(--e-muted, #9f9fa0);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.expo-boot-log > div { animation: expo-boot-line .28s ease both; }
+@keyframes expo-boot-line {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.expo-boot-skip {
+  margin-top: 12px;
+  text-align: right;
+  font-family: var(--e-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: .14em;
+  color: color-mix(in srgb, var(--e-muted, #9f9fa0) 72%, transparent);
+}
+
+/* —— 手电筒微光：双色径向光跟随指针（坐标由 JS 写入 --e-mx/--e-my） —— */
+.expo-glow {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(560px circle at var(--e-mx, 50vw) var(--e-my, 34vh), color-mix(in srgb, var(--e-accent, #847dff) 8%, transparent), transparent 65%),
+    radial-gradient(210px circle at var(--e-mx, 50vw) var(--e-my, 34vh), color-mix(in srgb, var(--e-gold, #e6c89a) 5%, transparent), transparent 70%);
+}
+/* 触屏设备无悬停：微光退化为顶部氛围光 */
+@media (hover: none) {
+  .expo-glow {
+    background: radial-gradient(70% 46% at 50% 0%, color-mix(in srgb, var(--e-accent, #847dff) 6%, transparent), transparent 70%);
+  }
+}
+
+/* —— 封面：开馆序列结束后逐层升起（risen 由 React 在 bootDone 时挂上） —— */
+.expo-show .expo-cover-inner {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity .9s cubic-bezier(.22, .61, .21, 1), transform .9s cubic-bezier(.22, .61, .21, 1);
+}
+.expo-show .expo-cover-inner.risen { opacity: 1; transform: none; }
+.expo-show .expo-cover-sub {
+  margin: 14px 0 0;
+  font-family: var(--e-mono, ui-monospace, monospace);
+  font-size: 12px;
+  letter-spacing: .3em;
+  text-indent: .3em;
+  color: var(--e-accent, #847dff);
+}
+.expo-show .expo-cover-dates { margin: 16px 0 40px; }
+.expo-scroll-cue {
+  position: absolute;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--e-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: .3em;
+  text-indent: .3em;
+  color: color-mix(in srgb, var(--e-muted, #9f9fa0) 80%, transparent);
+}
+.expo-scroll-cue i {
+  position: relative;
+  width: 1px;
+  height: 44px;
+  background: var(--e-line, rgba(245, 245, 247, .1));
+  overflow: hidden;
+}
+.expo-scroll-cue i::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: -40%;
+  width: 100%;
+  height: 40%;
+  background: linear-gradient(180deg, transparent, var(--e-gold, #e6c89a));
+  /* 动效约定：只动 transform——滴落 = 自身高度的 375% 位移（父高 44px、元素 40%） */
+  animation: expo-cue-drip 2.2s cubic-bezier(.22, .61, .21, 1) infinite;
+}
+@keyframes expo-cue-drip { to { transform: translateY(375%); } }
+
+/* —— 厅章间距：门楣退役后由统一的厅间留白接管 —— */
+.expo-show .expo-chapter { padding: 88px 24px 16px; }
+
+/* —— 脊线编年：中央光脊 + 事件卡交错 —— */
+.expo-spine {
+  position: relative;
+  display: grid;
+  gap: 34px;
+  padding: 10px 0 6px;
+}
+.expo-spine::before {
+  content: "";
+  position: absolute;
+  top: -10px;
+  bottom: -10px;
+  left: 50%;
+  width: 1px;
+  background: linear-gradient(180deg,
+    transparent,
+    color-mix(in srgb, var(--hall-accent, var(--e-accent)) 38%, transparent) 7%,
+    color-mix(in srgb, var(--hall-accent, var(--e-accent)) 30%, transparent) 93%,
+    transparent);
+}
+.expo-spine-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 64px 1fr;
+  column-gap: 18px;
+  align-items: start;
+}
+.expo-spine-item > .expo-card { grid-row: 1; max-width: 34em; }
+.expo-spine-item:not(.flip) > .expo-card { grid-column: 1; justify-self: end; }
+.expo-spine-item.flip > .expo-card { grid-column: 3; justify-self: start; }
+.expo-spine-node {
+  grid-row: 1;
+  grid-column: 2;
+  justify-self: center;
+  margin-top: 20px;
+  position: relative;
+}
+.expo-spine-node::before {
+  content: "";
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--e-bg, #0b0b0d);
+  border: 2px solid var(--hall-accent, var(--e-accent));
+  transition: box-shadow .8s ease, background .8s ease;
+}
+.expo-spine-item.is-visible .expo-spine-node::before {
+  background: var(--hall-accent, var(--e-accent));
+  box-shadow: 0 0 16px color-mix(in srgb, var(--hall-accent, var(--e-accent)) 70%, transparent);
+}
+.expo-spine-item.is-visible .expo-spine-node::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  border: 1px solid var(--hall-accent, var(--e-accent));
+  /* 动效约定：只动 transform/opacity——涟漪从节点尺寸放大到 62px 环 */
+  transform: translate(-50%, -50%) scale(.16);
+  opacity: 0;
+  animation: expo-spine-ripple 1.3s cubic-bezier(.22, .61, .21, 1) .25s both;
+}
+@keyframes expo-spine-ripple {
+  0% { opacity: .8; transform: translate(-50%, -50%) scale(.16); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+}
+/* 卡片 → 脊线的发丝连接线 */
+.expo-spine-item:not(.flip) > .expo-card::after {
+  content: "";
+  position: absolute;
+  top: 28px;
+  right: -50px;
+  width: 50px;
+  height: 1px;
+  background: linear-gradient(90deg, var(--hall-accent, var(--e-accent)), transparent);
+  opacity: .4;
+}
+.expo-spine-item.flip > .expo-card::after {
+  content: "";
+  position: absolute;
+  top: 28px;
+  left: -50px;
+  width: 50px;
+  height: 1px;
+  background: linear-gradient(270deg, var(--hall-accent, var(--e-accent)), transparent);
+  opacity: .4;
+}
+
+/* —— 叙事优先展签（非主展卡）：日期/编目/印章一行，衬线叙事不截断 —— */
+.expo-show .expo-card:not(.hero) {
+  padding: 22px 24px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.expo-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.expo-card-head time {
+  font-family: var(--e-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--e-muted, #9f9fa0);
+}
+.expo-show .expo-card:not(.hero) .expo-card-narrative {
+  display: block;
+  -webkit-line-clamp: initial;
+  overflow: visible;
+  font-size: 14px;
+  line-height: 2;
+  color: color-mix(in srgb, var(--e-muted, #9f9fa0) 30%, var(--e-ink, #f5f5f7));
+}
+.expo-show .expo-card:not(.hero) h3 { font-size: clamp(19px, 2vw, 24px); }
+
+/* —— RAW EVIDENCE 证据区 —— */
+.expo-evidence { margin-top: auto; padding-top: 12px; }
+.expo-card.hero .expo-evidence { padding: 10px 24px 20px; }
+.expo-evidence-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--e-line, rgba(245, 245, 247, .1));
+  font-family: var(--e-mono, ui-monospace, monospace);
+  font-size: 9.5px;
+  letter-spacing: .26em;
+  color: color-mix(in srgb, var(--e-muted, #9f9fa0) 78%, transparent);
+}
+.expo-evidence-stack { display: grid; gap: 10px; margin-top: 10px; }
+.expo-evidence-btn {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 14px;
+  text-align: left;
+  background: color-mix(in srgb, var(--e-bg, #0b0b0d) 55%, transparent);
+  border: 1px solid var(--e-line, rgba(245, 245, 247, .1));
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color .3s ease, transform .3s ease, background .3s ease;
+}
+.expo-evidence-btn:hover {
+  border-color: color-mix(in srgb, var(--e-accent, #847dff) 45%, transparent);
+  background: color-mix(in srgb, var(--e-card, #141416) 80%, transparent);
+  transform: translateY(-2px);
+}
+.expo-evidence-kind {
+  width: 1.6em;
+  text-align: center;
+  font-size: 14px;
+  color: var(--hall-accent, var(--e-accent, #847dff));
+}
+.expo-evidence-main { display: grid; gap: 3px; min-width: 0; }
+.expo-evidence-main strong {
+  font-family: var(--e-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .04em;
+  color: var(--e-ink, #f5f5f7);
+}
+.expo-evidence-main small {
+  font-family: var(--e-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--e-muted, #9f9fa0);
+}
+.expo-evidence-main em {
+  font-style: normal;
+  font-family: var(--e-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  line-height: 1.7;
+  color: var(--e-muted, #9f9fa0);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.expo-evidence-cta {
+  font-family: var(--e-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: .14em;
+  white-space: nowrap;
+  color: var(--e-gold, #e6c89a);
+}
+
+/* —— 侧滑证据抽屉 —— */
+.expo-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgba(5, 5, 7, .6);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  opacity: 0;
+  transition: opacity .35s ease;
+}
+.expo-drawer-overlay.open { opacity: 1; }
+.expo-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 56;
+  width: min(560px, 94vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--e-bg-soft, #101013);
+  border-left: 1px solid var(--e-line, rgba(245, 245, 247, .1));
+  box-shadow: -30px 0 90px rgba(0, 0, 0, .6);
+  transform: translateX(102%);
+  transition: transform .4s cubic-bezier(.22, .61, .21, 1);
+}
+.expo-drawer.open { transform: none; }
+.expo-drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--e-line, rgba(245, 245, 247, .1));
+}
+.expo-drawer-head h3 { margin: 0; font-family: var(--e-heading-font, serif); font-weight: 400; font-size: 17px; }
+.expo-drawer-head p {
+  margin: 6px 0 0;
+  font-family: var(--e-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: .06em;
+  line-height: 1.8;
+  color: var(--e-muted, #9f9fa0);
+}
+.expo-drawer-close {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  color: var(--e-muted, #9f9fa0);
+  font-size: 15px;
+  cursor: pointer;
+  transition: color .25s ease, border-color .25s ease, background .25s ease;
+}
+.expo-drawer-close:hover {
+  color: var(--e-ink, #f5f5f7);
+  border-color: var(--e-line, rgba(245, 245, 247, .1));
+  background: rgba(245, 245, 247, .05);
+}
+.expo-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 20px;
+  -webkit-overflow-scrolling: touch;
+}
+.expo-drawer-claim {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border-left: 3px solid var(--hall-accent, var(--e-accent, #847dff));
+  background: rgba(127, 127, 127, .07);
+  font-size: 13px;
+  line-height: 1.85;
+  color: var(--e-ink, #f5f5f7);
+  overflow-wrap: anywhere;
+}
+.expo-drawer-foot {
+  padding: 12px 20px 14px;
+  border-top: 1px solid var(--e-line, rgba(245, 245, 247, .1));
+  font-family: var(--e-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: .06em;
+  color: var(--e-muted, #9f9fa0);
+}
+
+/* —— 代码诗意排版：锚定原文按行渲染为等宽诗行 —— */
+.expo-poem { margin: 0 0 16px; }
+.expo-poem figcaption {
+  padding-bottom: 6px;
+  font-family: var(--e-mono, ui-monospace, monospace);
+  font-size: 9.5px;
+  letter-spacing: .2em;
+  color: color-mix(in srgb, var(--e-muted, #9f9fa0) 78%, transparent);
+}
+.expo-poem pre {
+  margin: 0;
+  padding: 12px 16px;
+  border-left: 2px solid var(--hall-accent, var(--e-accent, #847dff));
+  border-radius: 0 8px 8px 0;
+  background: color-mix(in srgb, var(--e-bg, #0b0b0d) 55%, transparent);
+  font-family: var(--e-mono, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 2;
+  color: var(--e-muted, #9f9fa0);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.expo-poem .cl { display: block; min-height: 2em; }
+.expo-poem .cl.meta { color: color-mix(in srgb, var(--e-muted, #9f9fa0) 60%, transparent); }
+.expo-poem .cl.warn { color: #e08a72; }
+.expo-poem .cl.ok { color: #9fd6c2; }
+
+/* —— 响应式：脊线单列化（≤920px）与移动微调（≤640px） —— */
+@media (max-width: 920px) {
+  .expo-spine::before { left: 6px; }
+  .expo-spine-item { display: block; padding-left: 36px; }
+  .expo-spine-item > .expo-card { max-width: none; }
+  .expo-spine-node { position: absolute; left: 0; top: 22px; margin: 0; }
+  .expo-spine-item > .expo-card::after { display: none; }
+}
+@media (max-width: 640px) {
+  .expo-evidence-btn { grid-template-columns: auto 1fr; }
+  .expo-evidence-cta { display: none; }
+  .expo-drawer { width: 100vw; border-left: none; }
+  .expo-show .expo-card:not(.hero) { padding: 18px 16px 14px; }
+}
+
+/* —— 动效克制：全量尊重 reduced-motion —— */
+@media (prefers-reduced-motion: reduce) {
+  .expo-boot { display: none; }
+  .expo-glow { display: none; }
+  .expo-show .expo-cover-inner { opacity: 1; transform: none; transition: none; }
+  .expo-boot-bar i,
+  .expo-boot-log > div,
+  .expo-scroll-cue i::after,
+  .expo-spine-item.is-visible .expo-spine-node::after { animation: none; }
+  .expo-spine-node::before { transition: none; }
+  .expo-drawer,
+  .expo-drawer-overlay,
+  .expo-evidence-btn { transition: none; }
 }

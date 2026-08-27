@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { CandidateEvent, listArchiveEvents } from "../phase0-api";
+import { CandidateEvent, Claim, listArchiveEvents } from "../phase0-api";
 import {
   dateSpanOf,
   errorTextOf,
@@ -39,12 +39,19 @@ const EXPO_THEME = "museum-night";
 
 const HALL_ACCENTS = ["#847dff", "#dd90d8", "#90b8f0", "#d1c9ff"];
 
+// 开馆终端序列的行距（ms）与收尾停留（ms）：总时长约 2.4s，可随时跳过。
+const BOOT_STEP_MS = 240;
+const BOOT_HOLD_MS = 900;
+
 type ArchiveMeta = {
   name: string;
   starts_on: string;
   ends_on: string;
   evidence_count: number;
 };
+
+// 证据抽屉的状态：只存定位键，正文渲染时再从事件里取，避免复制数据。
+type DrawerState = { eventId: string; claimIndex: number } | null;
 
 // 封面元数据全部由档案数据推导：跨度取可见经历的首尾日期，
 // 原始记录数取事件锚点引用的不同证据文档（blob 指纹）数。
@@ -113,6 +120,87 @@ function pickHallHero(
   })[0];
 }
 
+function prefersReducedMotion(): boolean {
+  return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/* —— 读数滚动（S5）：进入视野后缓出计数；reduced-motion 直接落值 —— */
+function CountUp({ value }: { value: number }) {
+  const ref = useRef<HTMLSpanElement | null>(null);
+  // animated 为 null 表示尚未开始：此时按环境降级直接显示终值或 0。
+  const [animated, setAnimated] = useState<number | null>(null);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    if (prefersReducedMotion() || !("IntersectionObserver" in window)) return;
+    let raf = 0;
+    let started = false;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (started || !entries.some((entry) => entry.isIntersecting)) return;
+        started = true;
+        observer.disconnect();
+        const t0 = performance.now();
+        const duration = 1200;
+        const frame = (t: number) => {
+          const progress = Math.min(1, (t - t0) / duration);
+          setAnimated(Math.round(value * (1 - Math.pow(1 - progress, 3))));
+          if (progress < 1) raf = requestAnimationFrame(frame);
+        };
+        raf = requestAnimationFrame(frame);
+      },
+      { threshold: 0.4 },
+    );
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(raf);
+    };
+  }, [value]);
+  const display =
+    animated ?? (prefersReducedMotion() || !("IntersectionObserver" in window) ? value : 0);
+  return (
+    <span ref={ref}>
+      {display.toLocaleString("zh-Hans-CN")}
+    </span>
+  );
+}
+
+/* —— 代码诗意排版（S5）：锚定原文按行渲染为等宽诗行。
+ * React 文本节点自动转义，不拼 HTML；着色只按行内容确定性分类。
+ */
+function poemLineClass(line: string): string {
+  if (/^\s*\$/.test(line) || /^\[\d/.test(line) || /\d{1,2}:\d{2}/.test(line)) return "cl meta";
+  if (/(FAILED|ERROR|Traceback)/i.test(line)) return "cl warn";
+  if (/(passed|ready|blob stored|sync ok)/i.test(line)) return "cl ok";
+  return "cl";
+}
+
+function PoemText({ text }: { text: string }) {
+  const lines = text.split("\n");
+  return (
+    <>
+      {lines.map((line, index) => (
+        <span className={poemLineClass(line)} key={index}>
+          {line.length ? line : "\u00A0"}
+        </span>
+      ))}
+    </>
+  );
+}
+
+/* —— 分级信任印章：confirmed=已入馆钢印 / verified=系统核实方章 / 其余=草稿状态药丸 —— */
+function StatusSeal({ status }: { status: string }) {
+  if (status === "confirmed") return <span className="expo-seal">已入馆</span>;
+  if (status === "verified") return <span className="expo-seal sys">系统核实</span>;
+  return <span className="expo-card-status">{statusLabel(status)}</span>;
+}
+
+/* —— 编目号：厅号两位 + 展位两位（主展占 01，脊线卡从 02 起编） —— */
+function catalogNo(chapterIndex: number, slot: number): string {
+  return `No. ${String(chapterIndex + 1).padStart(2, "0")}${String(slot + 1).padStart(2, "0")}`;
+}
+
 export default function ExhibitionWorkspace() {
   const [status, setStatus] = useState<LoadStatus>("loading");
   const [errorMessage, setErrorMessage] = useState("");
@@ -120,6 +208,18 @@ export default function ExhibitionWorkspace() {
   const [phase, setPhase] = useState<ExpoPhase>("select");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const progressRef = useRef<HTMLDivElement | null>(null);
+  const showRef = useRef<HTMLElement | null>(null);
+
+  // 开馆终端序列：bootDone 后覆盖层淡出、封面升起、解锁滚动。
+  const [bootDone, setBootDone] = useState(false);
+  const [bootStep, setBootStep] = useState(0);
+
+  // 证据抽屉：drawer 存定位键，drawerOpen 驱动滑入/滑出过渡。
+  const [drawer, setDrawer] = useState<DrawerState>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const drawerCloseRef = useRef<HTMLButtonElement | null>(null);
+  const drawerTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const drawerTimerRef = useRef<number | null>(null);
 
   const visibleEvents = useMemo(() => sortEvents(events.filter(isVisibleExperience)), [events]);
   const archive = useMemo(() => deriveArchiveMeta(visibleEvents), [visibleEvents]);
@@ -155,6 +255,28 @@ export default function ExhibitionWorkspace() {
     () => selectedEvents.filter((event) => event.status === "verified").length,
     [selectedEvents],
   );
+  const draftCount = selectedEvents.length - confirmedCount - verifiedCount;
+  const spanMonths = archive ? monthsBetween(archive.starts_on, archive.ends_on) : groups.length;
+
+  // 开馆序列的行数据：全部来自确定性读数，不含任何推断性文案。
+  const bootLines = useMemo(() => {
+    const lines = [
+      "$ museum --open",
+      "mounting local archive ............ ok",
+      `selected exhibits ................. ${selectedEvents.length} 段`,
+    ];
+    if (archive) {
+      lines.push(
+        `covering ${archive.starts_on} — ${archive.ends_on} · ${spanMonths} 个月`,
+        `evidence blobs ................... ${archive.evidence_count} 份 · 只读`,
+      );
+    }
+    lines.push(
+      `本人确认 ${confirmedCount} · 系统核实 ${verifiedCount} · 草稿 ${draftCount}`,
+      "midnight archive ................. ready",
+    );
+    return lines;
+  }, [archive, confirmedCount, draftCount, selectedEvents.length, spanMonths, verifiedCount]);
 
   useEffect(() => {
     listArchiveEvents()
@@ -181,6 +303,40 @@ export default function ExhibitionWorkspace() {
       });
   }, []);
 
+  // 开馆终端序列：逐行打出，点击/按键跳过；reduced-motion 由派生值直接视为完成。
+  const bootComplete = bootDone || prefersReducedMotion();
+  useEffect(() => {
+    if (phase !== "show" || bootDone || prefersReducedMotion()) return;
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      setBootDone(true);
+    };
+    const onSkip = () => finish();
+    window.addEventListener("keydown", onSkip, { once: true });
+    document.addEventListener("pointerdown", onSkip, { once: true });
+    const stepper = window.setInterval(() => {
+      setBootStep((step) => (step >= bootLines.length ? step : step + 1));
+    }, BOOT_STEP_MS);
+    const total = window.setTimeout(finish, bootLines.length * BOOT_STEP_MS + BOOT_HOLD_MS);
+    return () => {
+      window.clearInterval(stepper);
+      window.clearTimeout(total);
+      window.removeEventListener("keydown", onSkip);
+      document.removeEventListener("pointerdown", onSkip);
+    };
+  }, [phase, bootDone, bootLines]);
+
+  // 开馆期间锁定滚动（覆盖层淡出即解锁）。
+  useEffect(() => {
+    if (phase !== "show" || bootDone || prefersReducedMotion()) return;
+    document.documentElement.style.overflow = "hidden";
+    return () => {
+      document.documentElement.style.overflow = "";
+    };
+  }, [phase, bootDone]);
+
   useEffect(() => {
     if (phase !== "show") return;
     const elements = document.querySelectorAll<HTMLElement>(".expo-reveal");
@@ -201,7 +357,7 @@ export default function ExhibitionWorkspace() {
     );
     elements.forEach((element) => observer.observe(element));
     return () => observer.disconnect();
-  }, [phase, selectedIds]);
+  }, [phase, selectedIds, bootDone]);
 
   useEffect(() => {
     if (phase !== "show") return;
@@ -221,6 +377,99 @@ export default function ExhibitionWorkspace() {
       window.removeEventListener("resize", updateProgress);
     };
   }, [phase, selectedIds]);
+
+  // 手电筒微光（S5）：指针跟随 + 惯性拖尾；触屏与 reduced-motion 退出。
+  useEffect(() => {
+    if (phase !== "show") return;
+    if (prefersReducedMotion()) return;
+    if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+    const showEl = showRef.current;
+    if (!showEl) return;
+    let targetX = window.innerWidth / 2;
+    let targetY = window.innerHeight * 0.35;
+    let x = targetX;
+    let y = targetY;
+    let raf = 0;
+    const onMove = (event: PointerEvent) => {
+      targetX = event.clientX;
+      targetY = event.clientY;
+    };
+    const tick = () => {
+      if (!document.hidden) {
+        x += (targetX - x) * 0.12;
+        y += (targetY - y) * 0.12;
+        showEl.style.setProperty("--e-mx", `${x}px`);
+        showEl.style.setProperty("--e-my", `${y}px`);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    raf = requestAnimationFrame(tick);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      cancelAnimationFrame(raf);
+    };
+  }, [phase]);
+
+  const openEvidenceDrawer = useCallback(
+    (eventId: string, claimIndex: number, trigger: HTMLButtonElement) => {
+      // 取消尚在飞行的关闭定时器，避免旧 timeout 把刚打开的抽屉强制关掉。
+      if (drawerTimerRef.current !== null) {
+        window.clearTimeout(drawerTimerRef.current);
+        drawerTimerRef.current = null;
+      }
+      drawerTriggerRef.current = trigger;
+      setDrawer({ eventId, claimIndex });
+      requestAnimationFrame(() => setDrawerOpen(true));
+    },
+    [],
+  );
+
+  const closeDrawer = useCallback(() => {
+    setDrawerOpen(false);
+    drawerTimerRef.current = window.setTimeout(
+      () => {
+        drawerTimerRef.current = null;
+        setDrawer(null);
+        drawerTriggerRef.current?.focus();
+      },
+      prefersReducedMotion() ? 0 : 400,
+    );
+  }, []);
+
+  // 组件卸载（回到选展）时掐掉飞行中的关闭定时器，防止过期 setState。
+  useEffect(
+    () => () => {
+      if (drawerTimerRef.current !== null) window.clearTimeout(drawerTimerRef.current);
+    },
+    [],
+  );
+
+  // 抽屉打开时：锁定背景滚动（记录原值，与开馆序列的锁互不踩踏）、
+  // 焦点与键盘圈闭（Esc 关闭、Tab 收拢到关闭按钮）。
+  useEffect(() => {
+    if (!drawer) return;
+    const previousOverflow = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+    drawerCloseRef.current?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeDrawer();
+      } else if (event.key === "Tab") {
+        event.preventDefault();
+        drawerCloseRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.documentElement.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [drawer, closeDrawer]);
+
+  const drawerEvent = drawer ? events.find((event) => event.id === drawer.eventId) : undefined;
+  const drawerClaim: Claim | undefined = drawerEvent?.claims[drawer?.claimIndex ?? -1];
 
   function toggleEvent(eventId: string) {
     setSelectedIds((current) => {
@@ -245,6 +494,9 @@ export default function ExhibitionWorkspace() {
   }
 
   function openExhibition() {
+    // 每次开馆都重放开馆序列（约 2.4s，可跳过）。
+    setBootDone(false);
+    setBootStep(0);
     setPhase("show");
     window.scrollTo({ top: 0 });
   }
@@ -379,9 +631,7 @@ export default function ExhibitionWorkspace() {
     );
   }
 
-  const spanMonths = archive ? monthsBetween(archive.starts_on, archive.ends_on) : groups.length;
   const style = buildCollaborationStyle(selectedEvents);
-  const draftCount = selectedEvents.length - confirmedCount - verifiedCount;
   let closingLine: string;
   if (confirmedCount === 0 && verifiedCount === 0) {
     closingLine = "今天展出的仍是草稿。完成核对之后，它们会真正属于你。";
@@ -401,8 +651,23 @@ export default function ExhibitionWorkspace() {
   }
 
   return (
-    <main className="expo-show" data-expo-theme={EXPO_THEME}>
+    <main className="expo-show" data-expo-theme={EXPO_THEME} ref={showRef}>
       <div className="expo-progress" ref={progressRef} aria-hidden="true" />
+      <div className="expo-glow" aria-hidden="true" />
+
+      {/* 开馆终端序列：bootComplete 后淡出（覆盖层低于顶栏与风险确认弹窗，不挡终点动作） */}
+      <div className={`expo-boot${bootComplete ? " done" : ""}`} aria-hidden="true">
+        <div className="expo-boot-box">
+          <div className="expo-boot-bar"><i aria-hidden="true" />ARCHIVE BOOT · 午夜档案馆</div>
+          <div className="expo-boot-log">
+            {bootLines.slice(0, bootStep).map((line, index) => (
+              <div key={index}>{line}</div>
+            ))}
+          </div>
+          <div className="expo-boot-skip">点击任意处跳过 SKIP ▸</div>
+        </div>
+      </div>
+
       <header className="expo-show-topbar">
         <span className="expo-show-brand">DIGITAL MUSEUM</span>
         <span className="expo-show-theme">午夜档案馆</span>
@@ -418,22 +683,24 @@ export default function ExhibitionWorkspace() {
       </header>
 
       <section className="expo-cover">
-        <span className="expo-cover-ghost" aria-hidden="true">
-          {(archive?.ends_on ?? "").slice(0, 4) || "EXPO"}
-        </span>
-        <div className="expo-cover-inner">
+        <div className={`expo-cover-inner${bootComplete ? " risen" : ""}`}>
           <p className="expo-cover-kicker">PRIVATE EXHIBITION · 未公开</p>
           <h1>{archive?.name ?? "我的回顾"}</h1>
+          <p className="expo-cover-sub">原始证据 · 分级核实 · 未由模型补写</p>
           <p className="expo-cover-dates">{archive?.starts_on} — {archive?.ends_on}</p>
           <dl className="expo-cover-stats">
-            <div><dt>展出经历</dt><dd>{selectedEvents.length}</dd></div>
-            <div><dt>本人确认</dt><dd>{confirmedCount}</dd></div>
-            <div><dt>原始记录</dt><dd>{archive?.evidence_count ?? 0}</dd></div>
-            <div><dt>时间跨度</dt><dd>{spanMonths}<small> 个月</small></dd></div>
+            <div><dt>展出经历</dt><dd><CountUp value={selectedEvents.length} /></dd></div>
+            <div><dt>本人确认</dt><dd><CountUp value={confirmedCount} /></dd></div>
+            <div><dt>原始记录</dt><dd><CountUp value={archive?.evidence_count ?? 0} /></dd></div>
+            <div><dt>时间跨度</dt><dd><CountUp value={spanMonths} /><small> 个月</small></dd></div>
           </dl>
           <button className="expo-cover-cta" type="button" onClick={() => document.getElementById("expo-prologue")?.scrollIntoView({ behavior: "smooth" })}>
             开始观展 <span aria-hidden>↓</span>
           </button>
+        </div>
+        <div className="expo-scroll-cue" aria-hidden="true">
+          <i />
+          <span>向下滚动 · 进入档案</span>
         </div>
       </section>
 
@@ -456,9 +723,8 @@ export default function ExhibitionWorkspace() {
           const confirmedHere = shown.filter((event) => event.status === "confirmed").length;
           const verifiedHere = shown.filter((event) => event.status === "verified").length;
           const hero = pickHallHero(shown, milestoneFor);
-          const ordered = hero
-            ? [hero, ...shown.filter((event) => event.id !== hero.id)]
-            : shown;
+          const heroRole = hero ? heroRoleLabel(milestoneFor(hero)) : "";
+          const rest = hero ? shown.filter((event) => event.id !== hero.id) : shown;
           return (
             <section
               className="expo-chapter"
@@ -466,9 +732,6 @@ export default function ExhibitionWorkspace() {
               key={key}
               style={{ "--hall-accent": HALL_ACCENTS[chapterIndex % HALL_ACCENTS.length] } as CSSProperties}
             >
-              <div className="expo-gate" aria-hidden="true">
-                <span className="expo-gate-month">{key === "undated" ? "··" : key.slice(5, 7)}</span>
-              </div>
               <header className="expo-reveal">
                 <span className="expo-chapter-num">{String(chapterIndex + 1).padStart(2, "0")}</span>
                 <div>
@@ -477,64 +740,51 @@ export default function ExhibitionWorkspace() {
                 </div>
               </header>
               <div className="expo-hall">
-                {ordered.map((event, exhibitIndex) => {
-                  const isHero = event.id === hero?.id;
-                  const milestone = milestoneFor(event);
-                  const roleLabel = heroRoleLabel(milestone);
-                  const openingQuote = isHero ? openingQuoteOf(event) : "";
-                  return (
+                {hero && (
                   <article
-                    className={`expo-card expo-reveal${isHero ? " hero" : ""}${event.status === "confirmed" || event.status === "verified" ? "" : " draft"}`}
-                    key={event.id}
+                    className={`expo-card hero expo-reveal${hero.status === "confirmed" || hero.status === "verified" ? "" : " draft"}`}
+                    key={hero.id}
                   >
                     <figure className="expo-art">
-                      <SpecimenArt seed={event.claims[0]?.anchors[0]?.blob_sha256 ?? event.id} />
-                      <span className="expo-card-no">No. {String(chapterIndex + 1).padStart(2, "0")}{String(exhibitIndex + 1).padStart(2, "0")}</span>
-                      {event.status === "confirmed" ? (
-                        <span className="expo-seal">已入馆</span>
-                      ) : event.status === "verified" ? (
-                        <span className="expo-seal sys">系统核实</span>
-                      ) : (
-                        <span className="expo-card-status">
-                          {statusLabel(event.status)}
-                        </span>
-                      )}
+                      <SpecimenArt seed={hero.claims[0]?.anchors[0]?.blob_sha256 ?? hero.id} />
+                      <span className="expo-card-no">{catalogNo(chapterIndex, 0)}</span>
+                      <StatusSeal status={hero.status} />
                     </figure>
                     <div className="expo-card-caption">
-                      {isHero && (
-                        <span className="expo-hero-role">主展{roleLabel ? ` · ${roleLabel}` : ""}</span>
-                      )}
-                      <time>{event.occurred_on ?? "时间待定"}</time>
-                      <h3>{event.title}</h3>
-                      <p className="expo-card-medium">{mediumLineOf(event.origin, event.source_count)}</p>
-                      <p className="expo-card-narrative">{exhibitNarrative(event, milestone)}</p>
-                      {isHero && openingQuote && (
-                        <blockquote className="expo-hero-quote">「{openingQuote}」</blockquote>
-                      )}
+                      <span className="expo-hero-role">主展{heroRole ? ` · ${heroRole}` : ""}</span>
+                      <time>{hero.occurred_on ?? "时间待定"}</time>
+                      <h3>{hero.title}</h3>
+                      <p className="expo-card-medium">{mediumLineOf(hero.origin, hero.source_count)}</p>
+                      <p className="expo-card-narrative">{exhibitNarrative(hero, milestoneFor(hero))}</p>
+                      {(() => {
+                        const quote = openingQuoteOf(hero);
+                        return quote ? <blockquote className="expo-hero-quote">「{quote}」</blockquote> : null;
+                      })()}
                     </div>
-                    <div className="expo-labels">
-                      {event.claims.map((claim, claimIndex) => (
-                        <details className="expo-label" key={claim.id}>
-                          <summary>
-                            <span>展品标签{event.claims.length > 1 ? ` ${claimIndex + 1}` : ""}</span>
-                            <small>{event.source_count} 份来源 · {claim.anchors.length} 个证据位置</small>
-                          </summary>
-                          <blockquote>{claim.text}</blockquote>
-                          {claim.anchors.map((anchor) => (
-                            <div className="expo-anchor" key={`${anchor.blob_sha256}-${anchor.char_start}`}>
-                              <p>{anchor.quote}</p>
-                              <dl>
-                                <div><dt>行号</dt><dd>{anchor.line_start}{anchor.line_end !== anchor.line_start ? `–${anchor.line_end}` : ""}</dd></div>
-                                <div><dt>文件指纹</dt><dd title={anchor.blob_sha256}>{anchor.blob_sha256.slice(0, 14)}…</dd></div>
-                              </dl>
-                            </div>
-                          ))}
-                        </details>
-                      ))}
-                    </div>
+                    <EvidenceSection event={hero} chapterIndex={chapterIndex} exhibitIndex={0} onOpen={openEvidenceDrawer} />
                   </article>
-                  );
-                })}
+                )}
+                {rest.length > 0 && (
+                  <div className="expo-spine">
+                    {rest.map((event, exhibitIndex) => (
+                      <div className={`expo-spine-item${exhibitIndex % 2 === 1 ? " flip" : ""} expo-reveal`} key={event.id}>
+                        <span className="expo-spine-node" aria-hidden="true" />
+                        <article
+                          className={`expo-card${event.status === "confirmed" || event.status === "verified" ? "" : " draft"}`}
+                        >
+                          <header className="expo-card-head">
+                            <time>{catalogNo(chapterIndex, exhibitIndex + 1)} · {event.occurred_on ?? "时间待定"}</time>
+                            <StatusSeal status={event.status} />
+                          </header>
+                          <h3>{event.title}</h3>
+                          <p className="expo-card-medium">{mediumLineOf(event.origin, event.source_count)}</p>
+                          <p className="expo-card-narrative">{exhibitNarrative(event, milestoneFor(event))}</p>
+                          <EvidenceSection event={event} chapterIndex={chapterIndex} exhibitIndex={exhibitIndex + 1} onOpen={openEvidenceDrawer} />
+                        </article>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </section>
           );
@@ -569,10 +819,10 @@ export default function ExhibitionWorkspace() {
             </p>
           </div>
           <div className="expo-epilogue-stats" aria-label="阶段统计">
-            <div><strong>{selectedEvents.length}</strong><span>段经历</span></div>
-            <div><strong>{confirmedCount}</strong><span>你亲自确认</span></div>
-            <div><strong>{verifiedCount}</strong><span>系统核实</span></div>
-            <div><strong>{archive?.evidence_count ?? 0}</strong><span>份原始记录</span></div>
+            <div><strong><CountUp value={selectedEvents.length} /></strong><span>段经历</span></div>
+            <div><strong><CountUp value={confirmedCount} /></strong><span>你亲自确认</span></div>
+            <div><strong><CountUp value={verifiedCount} /></strong><span>系统核实</span></div>
+            <div><strong><CountUp value={archive?.evidence_count ?? 0} /></strong><span>份原始记录</span></div>
           </div>
           <p className="expo-epilogue-trust">
             {closingLine} 所有展品由本地真实档案确定性生成，未经模型补写。
@@ -619,7 +869,95 @@ export default function ExhibitionWorkspace() {
           </div>
         </div>
       )}
+
+      {drawer && drawerEvent && drawerClaim && (
+        <>
+          <div className={`expo-drawer-overlay${drawerOpen ? " open" : ""}`} onClick={closeDrawer} />
+          <aside
+            className={`expo-drawer${drawerOpen ? " open" : ""}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label="展品标签详情"
+          >
+            <header className="expo-drawer-head">
+              <div>
+                <h3>展品标签{drawerEvent.claims.length > 1 ? ` ${(drawer?.claimIndex ?? 0) + 1}` : ""}</h3>
+                <p>{drawerEvent.source_count} 份来源 · {drawerClaim.anchors.length} 个证据位置 · {statusLabel(drawerEvent.status)}</p>
+              </div>
+              <button
+                ref={drawerCloseRef}
+                type="button"
+                className="expo-drawer-close"
+                aria-label="关闭展品标签"
+                title="关闭 (Esc)"
+                onClick={closeDrawer}
+              >
+                ✕
+              </button>
+            </header>
+            <div className="expo-drawer-body">
+              <blockquote className="expo-drawer-claim">{drawerClaim.text}</blockquote>
+              {drawerClaim.anchors.map((anchor) => (
+                <figure className="expo-poem" key={`${anchor.blob_sha256}-${anchor.char_start}`}>
+                  <figcaption>
+                    锚定原文 · 行 {anchor.line_start}{anchor.line_end !== anchor.line_start ? `–${anchor.line_end}` : ""} · sha256 {anchor.blob_sha256.slice(0, 10)}…
+                  </figcaption>
+                  <pre><PoemText text={anchor.quote} /></pre>
+                </figure>
+              ))}
+            </div>
+            <footer className="expo-drawer-foot">
+              {drawerClaim.processor_version ? `${drawerClaim.processor_version} · ` : ""}确定性锚定 · 只读 · 不随导出携带
+            </footer>
+          </aside>
+        </>
+      )}
     </main>
+  );
+}
+
+/* —— 证据区（RAW EVIDENCE）：卡片内的等宽脚注层，点击打开侧滑抽屉 ——
+ * 必须留在组件外定义：放进去会让每次父渲染（开馆序列逐行 tick）都
+ * 重挂载证据按钮，丢掉 IO 揭示状态与抽屉的焦点返回引用。
+ */
+function EvidenceSection({
+  event,
+  chapterIndex,
+  exhibitIndex,
+  onOpen,
+}: {
+  event: CandidateEvent;
+  chapterIndex: number;
+  exhibitIndex: number;
+  onOpen: (eventId: string, claimIndex: number, trigger: HTMLButtonElement) => void;
+}) {
+  if (!event.claims.length) return null;
+  return (
+    <div className="expo-evidence">
+        <div className="expo-evidence-head">
+          <span>RAW EVIDENCE · 展品标签</span>
+          <span>{String(event.claims.length).padStart(2, "0")} 份 · {catalogNo(chapterIndex, exhibitIndex)}</span>
+        </div>
+      <div className="expo-evidence-stack">
+        {event.claims.map((claim, claimIndex) => (
+          <button
+            type="button"
+            className="expo-evidence-btn"
+            key={claim.id}
+            aria-haspopup="dialog"
+            onClick={(clickEvent) => onOpen(event.id, claimIndex, clickEvent.currentTarget)}
+          >
+            <span className="expo-evidence-kind" aria-hidden="true">◇</span>
+            <span className="expo-evidence-main">
+              <strong>展品标签{event.claims.length > 1 ? ` ${claimIndex + 1}` : ""}</strong>
+              <small>{event.source_count} 份来源 · {claim.anchors.length} 个证据位置</small>
+              <em>{claim.text}</em>
+            </span>
+            <span className="expo-evidence-cta" aria-hidden="true">溯源 →</span>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -638,6 +976,7 @@ function ExpoTopbar({ stageName }: { stageName: string }) {
 /**
  * 证据标本版画：从证据指纹（blob sha256）确定性生成的 SVG 图形。
  * 同一证据永远得到同一幅画，不含任何随机数；主题色经 CSS 变量注入。
+ * S5 之后只随每厅主展位展出，普通叙事卡让位给文字。
  */
 function SpecimenArt({ seed }: { seed: string }) {
   const hex = (seed.match(/[0-9a-f]/g) ?? ["0"]).join("").padEnd(24, "0");
