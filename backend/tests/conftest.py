@@ -20,7 +20,6 @@ def client(app_paths: tuple[str, Path]) -> TestClient:
         create_app(
             database_url=database_url,
             upload_dir=upload_dir,
-            max_upload_bytes=1024,
         )
     ) as test_client:
         yield test_client

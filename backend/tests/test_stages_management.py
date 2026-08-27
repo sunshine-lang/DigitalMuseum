@@ -127,7 +127,6 @@ def test_delete_stage_keeps_archive_rows_and_blobs(
         create_app(
             database_url=database_url,
             upload_dir=upload_dir,
-            max_upload_bytes=1024,
         )
     ) as restarted:
         stages = restarted.get("/api/v1/stages").json()["data"]

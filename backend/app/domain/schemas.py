@@ -92,14 +92,6 @@ class EventOut(BaseModel):
     latest_review: ReviewOut | None
 
 
-class OccurrenceOut(BaseModel):
-    id: str
-    blob_sha256: str | None
-    original_filename: str
-    status: str
-    imported_at: datetime
-
-
 class CoverageOut(BaseModel):
     id: str
     occurrence_id: str

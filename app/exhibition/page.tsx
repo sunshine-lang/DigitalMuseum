@@ -515,7 +515,7 @@ export default function ExhibitionWorkspace() {
                         <details className="expo-label" key={claim.id}>
                           <summary>
                             <span>展品标签{event.claims.length > 1 ? ` ${claimIndex + 1}` : ""}</span>
-                            <small>{event.source_count ?? 1} 份来源 · {claim.anchors.length} 个证据位置</small>
+                            <small>{event.source_count} 份来源 · {claim.anchors.length} 个证据位置</small>
                           </summary>
                           <blockquote>{claim.text}</blockquote>
                           {claim.anchors.map((anchor) => (

@@ -28,20 +28,6 @@ from app.services import (
     pi_agent_evidence_service,
 )
 
-ALLOWED_SUFFIXES = {".md": "text/markdown", ".txt": "text/plain"}
-ALLOWED_DECLARED_MEDIA_TYPES = {
-    ".md": {"text/markdown", "text/plain", "application/octet-stream"},
-    ".txt": {"text/plain", "application/octet-stream"},
-}
-KNOWN_BINARY_PREFIXES = (
-    b"%PDF-",
-    b"\x89PNG\r\n\x1a\n",
-    b"\xff\xd8\xff",
-    b"GIF87a",
-    b"GIF89a",
-    b"PK\x03\x04",
-    b"\x1f\x8b",
-)
 BLOB_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 

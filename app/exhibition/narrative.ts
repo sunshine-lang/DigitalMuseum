@@ -248,10 +248,7 @@ export function exhibitNarrative(
       ? `从「${milestone.firstTopic}」一路走到这里`
       : "";
     const ending = topic ? `以「${topic}」作结` : "";
-    const tail = [walk, ending, stats]
-      .filter(Boolean)
-      .map((part, index) => (index === 0 ? part : part))
-      .join("，");
+    const tail = [walk, ending, stats].filter(Boolean).join("，");
     return `${span} 天协作的收尾${tail ? `：${tail}。` : "。"}`;
   }
 

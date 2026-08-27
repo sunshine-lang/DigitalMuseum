@@ -76,7 +76,6 @@ def test_review_uses_revision_guard_and_survives_app_restart(
         create_app(
             database_url=database_url,
             upload_dir=upload_dir,
-            max_upload_bytes=1024,
         )
     ) as restarted:
         restored = restarted.get(f"/api/v1/events/{event_id}")

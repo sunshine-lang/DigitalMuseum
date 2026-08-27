@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -18,7 +17,6 @@ class Settings(BaseSettings):
 
     database_url: str = f"sqlite:///{PROJECT_ROOT / 'data' / 'digital_museum.db'}"
     upload_dir: Path = PROJECT_ROOT / "data" / "uploads"
-    max_upload_bytes: int = Field(default=2 * 1024 * 1024, ge=1)
     allowed_repo_roots: str = "~"
     claude_projects_root: str = "~/.claude/projects"
     codex_sessions_root: str = "~/.codex/sessions"

@@ -167,25 +167,6 @@ def require_stage(session: Session, stage_id: str) -> Stage:
     return stage
 
 
-def record_failed_import(
-    session: Session,
-    *,
-    original_filename: str,
-    step: str,
-    error_code: str,
-) -> None:
-    occurrence = EvidenceOccurrence(
-        blob_sha256=None,
-        original_filename=original_filename,
-        status="failed",
-    )
-    occurrence.coverage_items.append(
-        CoverageItem(step=step, status="failed", error_code=error_code)
-    )
-    session.add(occurrence)
-    session.commit()
-
-
 def start_evidence_import(
     session: Session,
     *,
@@ -268,7 +249,7 @@ def _import_activity_evidence(
     """Agent 会话同步链路的公共尾部：
 
     证据文档落 blob → 起始 occurrence → 持久化机器候选（失败则标记失败
-    coverage 后原样抛出）→ 只保留本次 occurrence 的 coverage 并组装返回。
+    coverage 后原样抛出）→ 返回本次生成的事件。
     """
     occurrence = start_evidence_import(
         session,
@@ -297,11 +278,7 @@ def _import_activity_evidence(
             processor_version=processor_version,
         )
         raise
-    return {
-        "occurrence": serialize_occurrence(occurrence),
-        "events": events,
-        "coverage": _occurrence_coverage(session, occurrence_id),
-    }
+    return {"events": events}
 
 
 def _persist_machine_candidates(
@@ -601,22 +578,6 @@ def list_coverage(session: Session) -> list[dict]:
             COVERAGE_ORDER[item["step"]],
         ),
     )
-
-
-def _occurrence_coverage(session: Session, occurrence_id: str) -> list[dict]:
-    """导入返回只携带本次 occurrence 的 coverage（全档案列表按 occurrence 过滤）。"""
-    coverage = list_coverage(session)
-    return [item for item in coverage if item["occurrence_id"] == occurrence_id]
-
-
-def serialize_occurrence(occurrence: EvidenceOccurrence) -> dict:
-    return {
-        "id": occurrence.id,
-        "blob_sha256": occurrence.blob_sha256,
-        "original_filename": occurrence.original_filename,
-        "status": occurrence.status,
-        "imported_at": occurrence.imported_at,
-    }
 
 
 def serialize_event(event: CandidateEvent, session: Session) -> dict:

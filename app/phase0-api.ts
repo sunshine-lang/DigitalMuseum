@@ -73,7 +73,7 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
     response = await fetch(`${apiBaseUrl}${path}`, {
       ...init,
       headers: {
-        ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
+        "Content-Type": "application/json",
         ...init?.headers,
       },
     });

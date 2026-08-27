@@ -17,10 +17,7 @@ import {
   syncArchive,
   wipeArchive,
 } from "./phase0-api";
-import {
-  isVisibleExperience as isVisibleExperienceBase,
-  statusLabels,
-} from "./events-shared";
+import { isVisibleExperience, statusLabels } from "./events-shared";
 
 type WorkspaceView = "sync" | "browse" | "review";
 
@@ -36,7 +33,7 @@ const viewItems: Array<{ id: WorkspaceView; label: string; helper: string }> = [
   { id: "review", label: "查看回顾", helper: "静态展览导出" },
 ];
 
-// 状态文案基于共享表（含 merged/split/rejected 全 8 态）；工作台语境里
+// 状态文案基于共享表（含 rejected 全 6 态）；工作台语境里
 // candidate/confirmed/unknown 用“你”视角措辞，作为差异键本地覆写。
 const friendlyStatus: Record<CandidateEvent["status"], string> = {
   ...statusLabels,
@@ -44,10 +41,6 @@ const friendlyStatus: Record<CandidateEvent["status"], string> = {
   confirmed: "你已确认",
   unknown: "暂时不确定",
 };
-
-function isVisibleExperience(event: CandidateEvent): boolean {
-  return isVisibleExperienceBase(event);
-}
 
 function originChipLabel(event: CandidateEvent): string {
   if (event.origin === "claude") return "来自 Claude Code 会话";
@@ -761,7 +754,7 @@ function ReviewView({ event, remaining, note, busy, noteRef, evidenceRef, active
 function EvidenceDetails({ event, activeAnchor, onAnchorActivate }: {
   event: CandidateEvent;
   activeAnchor?: ActiveAnchor | null;
-  onAnchorActivate?: (claimId: string, anchorKey: string, quote: string) => void;
+  onAnchorActivate: (claimId: string, anchorKey: string, quote: string) => void;
 }) {
   return (
     <div className="mvp-evidence-list">
@@ -774,9 +767,6 @@ function EvidenceDetails({ event, activeAnchor, onAnchorActivate }: {
             {claim.anchors.map((anchor) => {
               const anchorKey = `${anchor.blob_sha256}-${anchor.char_start}`;
               const body = (<><p>{anchor.quote}</p><dl><div><dt>行号</dt><dd>{anchor.line_start}{anchor.line_end !== anchor.line_start ? `–${anchor.line_end}` : ""}</dd></div><div><dt>文件指纹</dt><dd title={anchor.blob_sha256}>{anchor.blob_sha256.slice(0, 14)}…</dd></div></dl></>);
-              if (!onAnchorActivate) {
-                return <div className="mvp-anchor" key={anchorKey}>{body}</div>;
-              }
               return (
                 <div
                   className={`mvp-anchor interactive${activeAnchor?.key === anchorKey ? " active" : ""}`}
