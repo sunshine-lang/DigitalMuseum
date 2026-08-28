@@ -602,6 +602,9 @@ function BrowseView({ events, selectedEvent, activeAnchor, onSelect, onAnchorAct
           <span><i className="unsure" aria-hidden="true" />虚线留白 · 暂不确定 / 有异议</span>
           <span><i className="ai" aria-hidden="true" />虚线半透明 · 等待核对的草稿</span>
         </div>
+        {events.length > 0 && (
+          <Link className="mvp-browse-next" href="/exhibition">全部浏览无误后 → 第 3 步 · 查看回顾（布展与静态导出）</Link>
+        )}
         {events.length === 0 ? (
           <div className="mvp-empty-state"><strong>档案还是空的</strong><p>回到「同步会话」点一下同步，系统会自动整理出经历。</p></div>
         ) : (
@@ -652,6 +655,15 @@ function BrowseView({ events, selectedEvent, activeAnchor, onSelect, onAnchorAct
             ))}
             </section>
             ))}
+          </div>
+        )}
+        {events.length > 0 && (
+          <div className="mvp-next-step">
+            <div>
+              <strong>这一页的经历都看过了？</strong>
+              <p>下一步进入「查看回顾」：勾选要展出的经历、开馆观展，并可导出断网也能双击打开的静态 HTML 回顾。</p>
+            </div>
+            <Link className="mvp-primary" href="/exhibition">下一步 · 查看回顾 →</Link>
           </div>
         )}
       </div>

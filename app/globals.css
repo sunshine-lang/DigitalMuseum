@@ -785,7 +785,19 @@ mark.mvp-evidence-hit {
 .expo-module > header strong { font-size: 15px; }
 .expo-module > header small { color: var(--muted); font-size: 11px; }
 
-.expo-module ul { list-style: none; margin: 0; padding: 6px; }
+.expo-module ul {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  /* 月卡等高：清单随视口限高、卡内滚动（多段月份不再拉长页面），滚动不外溢到页面 */
+  max-height: clamp(280px, 56vh, 640px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+.expo-module ul::-webkit-scrollbar { width: 6px; }
+.expo-module ul::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
 .expo-module li + li { border-top: 1px solid var(--line); }
 .expo-module label {
   display: flex;
@@ -1186,7 +1198,14 @@ a.mvp-primary {
 
 /* —— 视觉优先改版：证据标本版画 + 铭牌式卡面（少文字，多视觉） —— */
 .expo-show .expo-card { padding: 0; display: flex; flex-direction: column; }
-.expo-show .expo-art { position: relative; margin: 0; aspect-ratio: 4 / 3; background: var(--e-bg-soft); border-bottom: var(--e-card-border); }
+.expo-show .expo-art {
+  position: relative;
+  margin: 0;
+  aspect-ratio: 4 / 3;
+  /* 版画的舞台：极淡的厅色天光让图形从底色里浮出来 */
+  background: radial-gradient(80% 100% at 50% 0%, color-mix(in srgb, var(--e-accent) 6%, transparent), transparent 62%), var(--e-bg-soft);
+  border-bottom: var(--e-card-border);
+}
 .expo-show .expo-hall > .expo-card:first-child .expo-art { aspect-ratio: 21 / 9; }
 .expo-show .expo-art svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .expo-show .expo-art .expo-card-no {
@@ -1585,6 +1604,31 @@ a.mvp-primary {
 .mvp-wipe-panel p { margin: 0 0 12px; font-size: 12px; color: var(--mvp-muted); }
 
 .mvp-browse-view { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(300px, 1fr); gap: 22px; align-items: start; }
+
+/* 浏览视图的首尾「下一步」引导：把用户送去第 3 步查看回顾（/exhibition） */
+.mvp-browse-next {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--mvp-muted);
+  text-underline-offset: 4px;
+}
+.mvp-browse-next:hover { color: var(--mvp-ink); }
+.mvp-next-step {
+  margin-top: 26px;
+  padding: 18px 20px;
+  border: 1px solid var(--mvp-line-strong);
+  border-top: 3px solid var(--mvp-ink);
+  background: var(--mvp-card);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.mvp-next-step strong { font-size: 15px; }
+.mvp-next-step p { margin: 4px 0 0; color: var(--mvp-muted); font-size: 12.5px; line-height: 1.7; }
 .mvp-browse-main { padding: 22px; }
 .mvp-timeline-groups { display: grid; gap: 26px; }
 .mvp-timeline-date { display: block; margin-bottom: 10px; font: 700 12px var(--mvp-mono); letter-spacing: .1em; color: var(--mvp-muted); }

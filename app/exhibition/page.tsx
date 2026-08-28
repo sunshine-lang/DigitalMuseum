@@ -994,8 +994,8 @@ function SpecimenArt({ seed }: { seed: string }) {
       const r = 16 + i * (13 + (byte(4) % 9));
       marks.push(
         <circle key={`arc-${i}`} cx={cx} cy={cy} r={r} fill="none"
-          stroke={i === count - 1 ? accent : ink} strokeWidth={i % 3 === 0 ? 1.4 : 0.7}
-          opacity={i === count - 1 ? 0.85 : 0.28 + (i % 3) * 0.14} />,
+          stroke={i === count - 1 ? accent : ink} strokeWidth={i % 3 === 0 ? 1.6 : 1.0}
+          opacity={i === count - 1 ? 0.95 : 0.45 + (i % 3) * 0.15} />,
       );
     }
   } else if (variant === 1) {
@@ -1005,11 +1005,11 @@ function SpecimenArt({ seed }: { seed: string }) {
       const x = 36 + (i % 8) * 42;
       const y = 30 + Math.floor(i / 8) * 36;
       if (b % 5 === 0) {
-        marks.push(<rect key={`cell-${i}`} x={x} y={y} width={26} height={24} fill={accent} opacity={0.16 + (b % 3) * 0.07} />);
+        marks.push(<rect key={`cell-${i}`} x={x} y={y} width={26} height={24} fill={accent} opacity={0.34 + (b % 3) * 0.13} />);
       } else if (b % 5 === 1) {
-        marks.push(<rect key={`cell-${i}`} x={x} y={y} width={26} height={24} fill="none" stroke={ink} strokeWidth={0.7} opacity={0.4} />);
+        marks.push(<rect key={`cell-${i}`} x={x} y={y} width={26} height={24} fill="none" stroke={ink} strokeWidth={1.0} opacity={0.62} />);
       } else if (b % 5 === 2) {
-        marks.push(<circle key={`cell-${i}`} cx={x + 13} cy={y + 12} r={2.4} fill={ink} opacity={0.5} />);
+        marks.push(<circle key={`cell-${i}`} cx={x + 13} cy={y + 12} r={2.6} fill={ink} opacity={0.8} />);
       }
     }
   } else if (variant === 2) {
@@ -1020,10 +1020,10 @@ function SpecimenArt({ seed }: { seed: string }) {
         <rect key={`band-${i}`} x={-80 + i * 82} y={-60} width={w} height={420}
           transform={`rotate(${angle} 200 150)`}
           fill={i === (byte(3) % 7) ? accent : ink}
-          opacity={i === (byte(3) % 7) ? 0.18 : 0.05 + (byte(i + 5) % 4) * 0.045} />,
+          opacity={i === (byte(3) % 7) ? 0.45 : 0.1 + (byte(i + 5) % 4) * 0.08} />,
       );
     }
-    marks.push(<line key="axis" x1={24} y1={252} x2={376} y2={252} stroke={ink} strokeWidth={0.8} opacity={0.5} />);
+    marks.push(<line key="axis" x1={24} y1={252} x2={376} y2={252} stroke={ink} strokeWidth={0.8} opacity={0.65} />);
   } else {
     for (let i = 0; i < 26; i++) {
       const b = byte(i);
@@ -1033,16 +1033,16 @@ function SpecimenArt({ seed }: { seed: string }) {
       marks.push(
         <circle key={`dot-${i}`} cx={cx} cy={cy} r={2 + (b % 6)}
           fill={accentDot ? accent : "none"} stroke={accentDot ? "none" : ink}
-          strokeWidth={0.9} opacity={accentDot ? 0.8 : 0.4} />,
+          strokeWidth={1.1} opacity={accentDot ? 0.9 : 0.62} />,
       );
     }
-    marks.push(<circle key={`ring-${marks.length}`} cx={200} cy={150} r={104} fill="none" stroke={accent} strokeWidth={0.7} opacity={0.35} />);
+    marks.push(<circle key={`ring-${marks.length}`} cx={200} cy={150} r={104} fill="none" stroke={accent} strokeWidth={0.7} opacity={0.5} />);
   }
 
   return (
     <svg viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
       {marks}
-      <g stroke="var(--e-ink)" strokeWidth={0.9} opacity={0.55}>
+      <g stroke="var(--e-ink)" strokeWidth={0.9} opacity={0.7}>
         <line x1={16} y1={16} x2={16} y2={28} /><line x1={16} y1={16} x2={28} y2={16} />
         <line x1={384} y1={16} x2={384} y2={28} /><line x1={384} y1={16} x2={372} y2={16} />
         <line x1={16} y1={284} x2={16} y2={272} /><line x1={16} y1={284} x2={28} y2={284} />
