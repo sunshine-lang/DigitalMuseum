@@ -1,82 +1,157 @@
-# Digital Museum
+<div align="center">
 
-> 把散落的 Agent 会话，变成一份看得懂的成长回顾。
+# Digital Museum · AI 人生档案馆
 
-开源本地工具：一键同步本机各 Agent 产品（Claude Code、Codex、pi、dsh）的会话转录，建立确定性档案并解析为「系统核实」的经历；浏览档案时间线、对存疑记录提出异议，最后把选定的时间跨度导出为一份无脚本自包含的静态展览网页——离线可看、可发朋友。
+**把散落的 Agent 会话，变成一份真实可溯、值得回看的成长展览。**
 
-```text
-打开应用 → 自动增量同步本机会话（或一键全量）
-→ 档案时间线（按日分组 · 系统核实 · 逐字锚定的证据可展开）
-→ /exhibition 开展（项目级里程碑叙事，每张展卡句式不同）
-→ 导出静态展览（HTML，导出前敏感信息扫描）
-```
+[![Phase](https://img.shields.io/badge/phase-0.3-172033?style=flat-square)](docs/prd/digital-museum-prd-v0.3.md)
+[![Local first](https://img.shields.io/badge/data-local--first-2f6f62?style=flat-square)](#隐私与真实性边界)
+[![Model calls](https://img.shields.io/badge/model_calls-0-b38a45?style=flat-square)](#隐私与真实性边界)
+[![License](https://img.shields.io/badge/license-MIT-d9664c?style=flat-square)](LICENSE)
 
-档案库为根（ADR-0001）：数据全局归属唯一的档案库，同步幂等并入、删视图不删数据；「清空档案库」是唯一的破坏性操作。笔记上传、Git 仓库导入、合并/拆分整理与人工展签已按 ADR-0002 整体删除——第一燃料只有会话转录（严口径：对话主体 + 时间戳 + 项目归属）。全部解析确定性、零模型调用；适配器绝不修改 `~/.claude`、`~/.codex`、`~/.pi`、`~/.dsh` 下的任何内容。
+![Digital Museum：把散落的数字痕迹，变成你的人生博物馆](public/og.png)
 
-## 本地启动
+</div>
 
-需要：Node.js 22 LTS、npm、Python 3.11、uv。
+Digital Museum 是一个面向 AI 编码 Agent 用户的开源本地工具。它只读扫描本机的 Claude Code、Codex、pi 与 dsh 会话，把时间戳、项目归属、消息计数和首条真实用户消息整理成可追溯档案；你可以浏览时间线、对记录提出异议，再把选中的经历导出为一份离线可看的单文件 HTML 展览。
 
-第一次准备依赖：
+> 它不是另一个替你编故事的 AI 日记。当前版本没有模型调用：先忠实保存机器能够确定的读数，再把最终判断交还给你。
+
+## 三步建馆
+
+| 01 · 同步会话 | 02 · 浏览经历 | 03 · 查回顾 |
+| --- | --- | --- |
+| 打开应用自动增量同步，也可手动同步全部会话 | 按时间与项目浏览档案，展开逐字证据，对不准确记录提出异议 | 选择要展出的经历，进入午夜档案馆，并导出自包含 HTML |
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/readme/workbench.png" alt="Digital Museum 档案工作台与时间线" /></td>
+    <td width="50%"><img src="docs/assets/readme/exhibition.png" alt="Digital Museum 午夜档案馆展览封面" /></td>
+  </tr>
+  <tr>
+    <td align="center">档案工作台 · 同步、浏览、异议</td>
+    <td align="center">午夜档案馆 · 叙事展览与静态导出</td>
+  </tr>
+</table>
+
+> 截图来自隔离的 E2E 样本数据，不包含真实用户会话。
+
+## 它现在能做什么
+
+- **四类 Agent 会话一键同步**：Claude Code、Codex、pi、dsh 共用确定性扫描骨架；只读源目录，不修改原会话文件。
+- **唯一档案库与幂等增量**：重复同步会并入既有档案；中断或源内容变化时按完整性规则重建快照。
+- **证据可回溯**：每段经历可以展开原文摘录、行号和内容指纹。会话时间戳、计数等确定性读数可标记为「系统核实」，但这不表示系统理解或核实了对话叙事。
+- **用户判断优先**：任何记录都保留异议入口；用户已作出的存疑、修正或确认不会被后续同步覆盖。
+- **午夜档案馆**：把选定经历组织成脊线编年展览，提供开馆序列、证据抽屉与协作风格速写。
+- **安全导出**：输出无脚本、自包含的单文件 HTML；导出前扫描常见密钥、本机路径和邮箱，命中后必须人工逐项确认。
+- **档案备份 API**：支持 `archive-v3` ZIP 整库导出与“作为全新数据”恢复，内容哈希校验失败时拒绝写入。
+
+## 快速本地启动
+
+### 环境要求
+
+- Node.js ≥ 22.13
+- npm
+- Python 3.11
+- [uv](https://docs.astral.sh/uv/)
+
+### 安装
 
 ```bash
+git clone https://github.com/sunshine-lang/DigitalMuseum.git
+cd DigitalMuseum
 npm ci
 npm run backend:sync
 ```
 
+### 运行
+
 打开两个终端。
 
-终端 1，启动本地 API：
-
 ```bash
+# 终端 1：本地 API
 npm run backend:dev
-```
 
-API 地址：`http://127.0.0.1:8010`；接口文档：`http://127.0.0.1:8010/docs`。
-
-终端 2，启动 Web 工作台：
-
-```bash
+# 终端 2：Web 工作台
 npm run dev:phase0
 ```
 
-浏览器打开 `http://127.0.0.1:3001`——打开即自动同步本机会话，档案有内容会直接落在时间线。
+浏览器打开 <http://127.0.0.1:3001>。API 文档位于 <http://127.0.0.1:8010/docs>。
 
-## 小白验收步骤
+应用打开后会自动进行一次增量同步。档案为空时，也可以在首页点击「同步本机全部会话」。
 
-1. 打开首页：应用自动增量同步；若档案为空，点「同步本机全部会话」。
-2. 落在「档案时间线」：每段经历带「系统核实」状态与来源标签（Claude Code / Codex / pi / dsh）。
-3. 点开任意一段经历：右侧显示它为什么成立（证据摘要、原文摘录、行号与文件指纹），全部逐字可回溯。
-4. 对与事实不符的经历点「对这段记录提出异议」，选「发生过，但描述要改」并写一句说明——你的判定优先于机器读数。
-5. 回到「同步会话」查看发现面板（各产品有会话的项目清单）与上次同步统计；「清空档案库」需两步确认。
-6. 进入「查回顾」开展：封面标题、时间跨度与原始记录数全部由档案数据推导；展卡叙事是项目级里程碑（首日交手 / 最密集的一天 / 收尾 / 日常节奏）。
-7. 点吸顶栏「导出展览（HTML）」：敏感信息扫描（密钥、本机路径、邮箱）命中时必须逐项确认才会落盘；产物是无脚本自包含单文件。
-8. 刷新页面：档案、异议判定与展览选择全部保持。
+## 支持范围
 
-档案只保存在本机、不联网；会话原文永不整份复制（证据文档只含确定性读数与首条消息摘录）。
+| 会话来源 | 本机只读目录 | 当前状态 |
+| --- | --- | --- |
+| Claude Code | `~/.claude/projects` | 已支持 |
+| Codex | `~/.codex/sessions` | 已支持，仅统计用户主线程 |
+| pi | `~/.pi/agent/sessions` | 已支持 |
+| dsh | `~/.dsh/sessions` | 已支持，排除子代理与注入消息 |
+| ChatGPT / WorkBuddy / OpenClaw | — | 尚未实现 |
+
+当前明确不做：云部署、多用户、笔记上传、Git 仓库导入、照片导入，以及由模型自动概括并写成“事实”。这些边界见 [ADR-0001：档案库为根](docs/adr/0001-archive-root-stage-as-view.md) 与 [ADR-0002：单燃料极简](docs/adr/0002-single-fuel-agent-sessions.md)。
+
+## 隐私与真实性边界
+
+```text
+本机会话目录（只读）
+        ↓
+确定性适配器：时间戳 / cwd / 消息计数 / 首条真实用户消息
+        ↓
+本地 SQLite 档案库 + 内容寻址证据文档
+        ↓
+时间线与异议 → 选展 → 敏感信息扫描 → 单文件 HTML
+```
+
+- 档案数据默认写入本机 `data/`，该目录已被 Git 忽略；当前没有云数据库和模型 API 调用。
+- 证据文档不会整份复制会话，只保留确定性读数和首条真实用户消息摘录；源会话目录始终只读。
+- 本地档案目前**没有静态加密**。请把本机账户、磁盘权限和导出的 HTML 当作隐私边界，不要导入或分享不应暴露的内容。
+- 工作台会请求 Google Fonts，但不会随字体请求上传档案内容；断网时使用本机回退字体。静态展览导出本身无脚本、无外链。
+- v0.3 的机器复核证据已记录，但真实数据大考仍有用户判定字段未填写，因此本项目不会宣称“已通过大考”。详见 [复考记录](docs/gate/real-data-exam-2026-08-25-v0.3.md)。
 
 ## 自动化验证
 
 ```bash
-npm run test:backend   # 后端 pytest（47 用例：四产品同步幂等、适配器行为、历史迁移回归）
-npm run typecheck && npm run lint
-npm run test:local     # 前端构建 + 渲染冒烟 + 导出单测（macOS 用这个）
-npm run test:e2e       # Playwright：每用例一次性隔离后端 + 会话根注入，六景全链
+npm run test:backend   # Ruff + pytest：适配器、同步幂等、迁移与 API
+npm run typecheck      # TypeScript
+npm run lint           # ESLint
+npm run test:local     # 本地构建、渲染冒烟、静态导出单测
+npm run test:e2e       # Playwright 全链路
 ```
 
-运行 e2e 前必须停止正在运行的后端（`npm run backend:dev`）：隔离后端需独占前端默认请求的 8010 端口。改动后端另跑：`cd backend && UV_CACHE_DIR=../.sites-runtime/uv-cache uv run ruff check .`。
-
-本阶段没有模型调用，因此真实模型冒烟为「不适用」，不是「已通过」。以后接入模型时输出只能产生 candidate 与逐字锚定的草稿，永不产生 verified（真实性契约）。
+运行 E2E 前请停止 `npm run backend:dev`：隔离后端需要独占 `8010` 端口。macOS 使用 `npm run test:local`；`npm test` 需要 GNU `timeout`。
 
 ## 项目结构
 
 ```text
-app/        前端（Next.js App Router）：/ 为同步→浏览三步流，/exhibition 为展览与导出
-backend/    本地 API：FastAPI + SQLAlchemy + Alembic；services/ 下四个 Agent 适配器共用扫描骨架与产品注册表
-data/       运行时数据：SQLite 档案库与内容寻址原文（Git 忽略）
-docs/       项目文档：prd/（当前 PRD v0.3）、adr/、gate/、阶段开发文档、references/
-scripts/    Sites 平台构建脚本（面向 Linux 构建环境）
-tests/      前端渲染冒烟、导出单测与 Playwright e2e
+app/        Next.js App Router + vinext/Vite 前端
+backend/    Python 3.11 + FastAPI + SQLAlchemy + Alembic 本地 API
+data/       SQLite 档案库与内容寻址证据（运行时生成，Git 忽略）
+docs/       PRD、ADR、真实数据 Gate、设计与阶段开发记录
+scripts/    本地与 Linux 构建脚本
+tests/      渲染、静态导出与 Playwright E2E
 ```
 
-完整取舍见 [PRD v0.3](docs/prd/digital-museum-prd-v0.3.md)、[ADR-0001 档案库为根](docs/adr/0001-archive-root-stage-as-view.md)、[ADR-0002 单燃料极简](docs/adr/0002-single-fuel-agent-sessions.md) 与各阶段开发文档。
+后端依赖方向保持为 `api → services → domain → core`。完整产品取舍请从 [PRD v0.3](docs/prd/digital-museum-prd-v0.3.md) 开始阅读。
+
+## 当前阶段与下一步
+
+当前交付是 **Phase 0 本地单用户原型**：同步 → 浏览 → 展览 → 静态导出的主链路已经实现。它仍不是生产级产品，也没有完成真实数据大考的用户判定。
+
+下一阶段方向是从跨会话的重复指令中，用可回溯证据点亮“值得沉淀为 Skill 的流程机会”。在这个方向立项前，不会提前引入语义聚类或让模型把推断升级为事实。
+
+## 参与项目
+
+欢迎提交 Issue，尤其是：
+
+- 新 Agent 产品的真实会话格式样本与只读适配建议；
+- 确定性扫描、隐私边界和导出安全问题；
+- macOS 之外环境的可复现运行反馈；
+- 你愿意保存或分享的展览叙事形式。
+
+提交问题时请附最小复现步骤和脱敏日志，不要上传完整会话、API Key、邮箱、本机绝对路径或其他隐私数据。
+
+## License
+
+[MIT](LICENSE) © 2026 sunshine-lang
