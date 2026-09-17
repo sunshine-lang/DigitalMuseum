@@ -63,7 +63,7 @@ def import_project(
     directory, label, display = _resolve_session_directory(
         path_raw, allowed_roots=allowed_roots
     )
-    sessions = _scan_project_sessions(directory)
+    sessions, project_path = _scan_project_sessions(directory)
     return render_project_evidence(
         sessions,
         source_label="claude-code sessions",
@@ -72,6 +72,7 @@ def import_project(
         project_display=display,
         empty_error_code="no_claude_sessions",
         empty_error_message="这个项目还没有可读取的 Claude Code 会话",
+        project_path=project_path,
     )
 
 
@@ -109,12 +110,41 @@ def _label_from_munged_name(name: str) -> str:
     return name.lstrip("-").split("-")[-1] or "claude-project"
 
 
-def _scan_project_sessions(directory: Path) -> list[SessionSummary]:
-    scanned = (
-        scan_session_file(file_path, _classify_record)
-        for file_path in sorted(directory.glob("*.jsonl"))
-    )
-    return [summary for summary in scanned if summary is not None]
+def _scan_project_sessions(directory: Path) -> tuple[list[SessionSummary], str | None]:
+    """在原有流式扫描中收集 cwd 元数据，不反解有歧义的转义目录名。
+
+    每个被纳入的会话都须有一致的绝对 cwd；缺失或冲突时保留旧目录身份，
+    不宣称它与其他 Agent 的真实项目相同。
+    """
+    sessions: list[SessionSummary] = []
+    project_paths: set[str] = set()
+    unresolved = False
+    for file_path in sorted(directory.glob("*.jsonl")):
+        session_paths: set[str] = set()
+        invalid_path = False
+
+        def classify_with_cwd(
+            record: dict, session_paths: set[str] = session_paths
+        ) -> RecordClassification | None:
+            nonlocal invalid_path
+            cwd = record.get("cwd")
+            if cwd is not None:
+                if isinstance(cwd, str) and "\x00" not in cwd and Path(cwd).is_absolute():
+                    try:
+                        session_paths.add(str(Path(cwd).resolve()))
+                    except (OSError, RuntimeError):
+                        invalid_path = True
+                else:
+                    invalid_path = True
+            return _classify_record(record)
+
+        summary = scan_session_file(file_path, classify_with_cwd)
+        if summary is not None:
+            sessions.append(summary)
+            project_paths.update(session_paths)
+            unresolved |= invalid_path or len(session_paths) != 1
+    project_path = next(iter(project_paths)) if not unresolved and len(project_paths) == 1 else None
+    return sessions, project_path
 
 
 def _classify_record(record: dict) -> RecordClassification | None:
@@ -131,6 +161,4 @@ def _classify_record(record: dict) -> RecordClassification | None:
     if not isinstance(message, dict):
         return None
     return ("user", real_user_text(message_text(message.get("content"))))
-
-
 

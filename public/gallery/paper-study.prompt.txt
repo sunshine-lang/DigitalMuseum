@@ -1,0 +1,11 @@
+Use case: photorealistic-natural
+Asset type: a single fine-art gallery raster photograph for Digital Museum, full-bleed portrait 3:4, approximately 1024 by 1365 pixels.
+Primary request: several cream-colored blank paper sheets gently opening into one sculptural fan of petal-like forms, joined through their center by one fine warm-gold thread. The abstract theme is preserving fragments.
+Scene/backdrop: seamless evenly pale ivory-cream background and surface, with no visible horizon or scene props.
+Subject: one elegant sculptural arrangement of several thick thin-edged handmade paper sheets, slowly curving and spreading, delicate binding thread visibly threading their shared center. A real tactile tabletop still life, resting very lightly or appearing almost suspended.
+Style/medium: premium editorial fine-art still-life photography, natural optical depth and true material detail.
+Composition/framing: vertical 3:4 image, the entire sculpture in frame, subject centered and filling approximately 70 percent of the image, bold readable silhouette, generous quiet cream margin.
+Lighting/mood: very soft natural window light from upper left, beautifully rich soft contact shadows and layered self-shadowing between paper sheets, serene, warm, luminous.
+Color palette: cream and warm white paper, pale cream backdrop, very subtle warm gold thread only.
+Materials/textures: fine visible paper fibers, realistic softly rough paper edges, subtle tonal variations and gentle creases, photographic dimensionality.
+Constraints: generate only the artwork photograph, no user interface, no frame, no text, no words, no logo, no watermark, no people, no photographic records or suggestion of a true historical event. No actual flowers, no literal flower illustration, no flat clipart, no vector aesthetic, no plastic CGI, no extra objects. The viewed DepthGallery reference is guidance only for minimal single-subject composition, pale backdrop and refined natural lighting; do not copy its flower.

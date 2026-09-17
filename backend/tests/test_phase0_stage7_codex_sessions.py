@@ -1,4 +1,4 @@
-"""codex-evidence-v1 适配器行为（S3 起经档案库同步链路验证）。
+"""Codex 适配器旧事件格式回归（S3 起经档案库同步链路验证）。
 
 确定性口径：只读 ~/.codex/sessions 日期目录下的 rollout JSONL；项目归属
 由首行 session_meta.cwd 决定；只统计 thread_source=="user"（subagent 内部
@@ -22,10 +22,10 @@ def _rollout_line(timestamp: str, record_type: str, payload: dict) -> str:
     return json.dumps({"timestamp": timestamp, "type": record_type, "payload": payload})
 
 
-def _session_meta(cwd: str, thread_source: str = "user") -> dict:
+def _session_meta(cwd: str, thread_source: str = "user", identity: str = "session-a") -> dict:
     return {
-        "session_id": "meta-session",
-        "id": "meta-id",
+        "session_id": identity,
+        "id": identity,
         "timestamp": "2026-05-10T02:00:00.000Z",
         "cwd": cwd,
         "originator": "codex-tui",
@@ -62,7 +62,7 @@ SESSION_A_LINES = [
 
 SESSION_B_LINES = [
     _rollout_line(
-        "2026-05-10T06:00:00.000Z", "session_meta", _session_meta("{PROJECT}")
+        "2026-05-10T06:00:00.000Z", "session_meta", _session_meta("{PROJECT}", identity="session-b")
     ),
     _rollout_line(
         "2026-05-10T06:01:00.000Z",
@@ -106,7 +106,8 @@ OTHER_PROJECT_LINES = [
 
 OLD_SESSION_LINES = [
     _rollout_line(
-        "2025-01-01T03:00:00.000Z", "session_meta", _session_meta("{PROJECT}")
+        "2025-01-01T03:00:00.000Z", "session_meta",
+        _session_meta("{PROJECT}", identity="old-session")
     ),
     _rollout_line(
         "2025-01-01T03:01:00.000Z",
@@ -182,7 +183,7 @@ def test_sync_creates_verified_daily_events_excluding_subagent(
     assert event["origin"] == "codex"
     claim = event["claims"][0]
     assert claim["evidence_role"] == "artifact"
-    assert claim["processor_version"] == "codex-evidence-v1"
+    assert claim["processor_version"] == "codex-evidence-v2"
     # subagent 与其他项目的会话被排除：只有 2 个会话、3 条真实用户消息
     #（SESSION_A 的 <environment_context> 注入行不计入）。
     assert "2 个 Codex 会话" in claim["text"]
@@ -230,6 +231,10 @@ def test_same_label_projects_same_day_aggregate_into_one_event(
     assert events[0]["origin"] == "aggregated"
     assert events[0]["source_count"] == 2
     assert events[0]["status"] == "verified"
+    # 历史同题同日聚合可能跨目录；项目视图不得把所有来源归给第一条。
+    assert events[0]["project_key"] is None
+    assert events[0]["project_path"] is None
+    assert events[0]["agent_products"] == ["codex"]
 
 
 def test_disputed_then_new_session_absorbs_into_user_judgement(
@@ -250,7 +255,8 @@ def test_disputed_then_new_session_absorbs_into_user_judgement(
             line.replace("{PROJECT}", str(workspace))
             for line in [
                 _rollout_line(
-                    "2026-05-10T07:30:00.000Z", "session_meta", _session_meta("{PROJECT}")
+                    "2026-05-10T07:30:00.000Z", "session_meta",
+                    _session_meta("{PROJECT}", identity="session-c")
                 ),
                 _rollout_line(
                     "2026-05-10T07:31:00.000Z",

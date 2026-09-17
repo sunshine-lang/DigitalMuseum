@@ -197,6 +197,7 @@ def render_evidence_document(
     sessions: list[SessionSummary],
     collaboration_title: str,
     claim_noun: str,
+    project_path: str | None = None,
 ) -> AgentEvidence:
     """把按天分组的会话渲染为确定性证据文档与逐日事件条目；文档头的
     时间范围取会话实际首尾日期。sessions 为空是调用方契约错误，显式报错
@@ -214,8 +215,11 @@ def render_evidence_document(
         f"project: {project_label} ({project_display})",
         f"source: {source_label}",
         f"range: {min(days)}..{max(days)}",
-        "",
     ]
+    if project_path is not None:
+        # JSON 保留空格、括号等合法路径字符，独立锚定供项目视图使用。
+        lines.append(f"project_path: {json.dumps(project_path, ensure_ascii=False)}")
+    lines.append("")
     pending: list[tuple[str, date, str, int, int]] = []
 
     for day in sorted(sessions_by_day):
@@ -276,7 +280,7 @@ def render_evidence_document(
                 char_end=offsets[index] + len(line_text),
             )
             for index, line_text in enumerate(lines)
-            if block_start <= index <= block_end
+            if block_start <= index <= block_end or (project_path is not None and index == 3)
         )
         items.append(
             AgentActivityItem(
@@ -402,6 +406,7 @@ def render_project_evidence(
     project_display: str,
     empty_error_code: str,
     empty_error_message: str,
+    project_path: str | None = None,
 ) -> AgentEvidence:
     """import_project 的公共尾部：空校验 → 确定性证据文档（首尾日期取
     会话实际值，内容是数据的纯函数）。"""
@@ -414,4 +419,5 @@ def render_project_evidence(
         sessions=sessions,
         collaboration_title=f"在 {project_label} 与 {product_name} 协作",
         claim_noun=product_name,
+        project_path=project_path,
     )

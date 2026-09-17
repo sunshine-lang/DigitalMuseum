@@ -20,6 +20,7 @@ def client(app_paths: tuple[str, Path]) -> TestClient:
         create_app(
             database_url=database_url,
             upload_dir=upload_dir,
+            retrospectives_dir=upload_dir.parent / "retrospectives",
         )
     ) as test_client:
         yield test_client
@@ -33,6 +34,7 @@ def sync_client(app_paths: tuple[str, Path], tmp_path: Path) -> TestClient:
         create_app(
             database_url=database_url,
             upload_dir=upload_dir,
+            retrospectives_dir=upload_dir.parent / "retrospectives",
             allowed_repo_roots=str(tmp_path),
             claude_projects_root=str(tmp_path / "claude-home" / "projects"),
             codex_sessions_root=str(tmp_path / "codex-home" / "sessions"),

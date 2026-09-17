@@ -16,6 +16,7 @@ export type E2eEnv = {
   claudeProjectsRoot: string;
   codexSessionsRoot: string;
   projectsRoot: string;
+  retrospectivesDir: string;
 };
 
 const e2eEnvFixture: TestFixture<E2eEnv, object> = async ({}, run) => {
@@ -28,10 +29,12 @@ const e2eEnvFixture: TestFixture<E2eEnv, object> = async ({}, run) => {
     claudeProjectsRoot: join(runDir, "claude-home", "projects"),
     codexSessionsRoot: join(runDir, "codex-home", "sessions"),
     projectsRoot: join(runDir, "projects"),
+    retrospectivesDir: join(runDir, "retrospectives"),
   };
   mkdirSync(env.claudeProjectsRoot, { recursive: true });
   mkdirSync(env.codexSessionsRoot, { recursive: true });
   mkdirSync(env.projectsRoot, { recursive: true });
+  mkdirSync(env.retrospectivesDir, { recursive: true });
 
   // detached 建立进程组：退出时 kill(-pid) 把 uvicorn 孙进程一起带走，
   // 避免 8010 被孤儿进程占用、下一个用例误连到残留后端。
@@ -45,6 +48,7 @@ const e2eEnvFixture: TestFixture<E2eEnv, object> = async ({}, run) => {
         UV_CACHE_DIR: "../.sites-runtime/uv-cache",
         DIGITAL_MUSEUM_DATABASE_URL: `sqlite:///${join(runDir, "digital-museum.db")}`,
         DIGITAL_MUSEUM_UPLOAD_DIR: join(runDir, "uploads"),
+        DIGITAL_MUSEUM_RETROSPECTIVES_DIR: env.retrospectivesDir,
         DIGITAL_MUSEUM_CLAUDE_PROJECTS_ROOT: env.claudeProjectsRoot,
         DIGITAL_MUSEUM_CODEX_SESSIONS_ROOT: env.codexSessionsRoot,
         DIGITAL_MUSEUM_PI_SESSIONS_ROOT: join(runDir, "pi-home", "sessions"),

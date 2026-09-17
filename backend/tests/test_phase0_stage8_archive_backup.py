@@ -81,6 +81,10 @@ def test_round_trip_restores_events_and_blobs_into_fresh_archive(
             event["claims"][0]["anchors"]
         )
         assert restored_event["latest_review"]["decision"] == "confirmed"
+        # 恢复快照的 source_key 已清空，仍可由哈希校验后的原文头还原归属。
+        assert restored_event["project_key"] == event["project_key"]
+        assert restored_event["project_path"] == event["project_path"]
+        assert restored_event["agent_products"] == ["codex"]
 
         # 证据文档原文按内容哈希原样回来。
         blob = restored_client.get(f"/api/v1/blobs/{blob_sha}")

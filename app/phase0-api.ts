@@ -47,11 +47,53 @@ export type CandidateEvent = {
   is_formal: boolean;
   origin: EventOrigin;
   source_count: number;
+  /** 来源身份，仅用于展示分组；旧档案缺失时不得按标题猜测归属。 */
+  project_key?: string | null;
+  project_label?: string | null;
+  project_path?: string | null;
+  agent_products?: string[];
   claims: Claim[];
   latest_review: EventReview | null;
 };
 
 type ApiEnvelope<T> = { data: T };
+
+export type ExperiencePart = { actor: "user" | "agent" | "record"; text: string; source_ids: string[] };
+export type ExhibitArtwork = "gathered-pages" | "everyday-steps" | "continuous-light";
+export type ExhibitPreview = {
+  id: string; project_key: string; status: "candidate";
+  title: string; summary: string; starts_on: string; ends_on: string;
+  artwork: ExhibitArtwork | null; source_roles: ("user" | "assistant" | "document")[];
+  reference_count: number;
+};
+
+export type StoryDraft = {
+  id: string;
+  title: string;
+  project_key: string;
+  status: "candidate";
+  starts_on: string;
+  ends_on: string;
+  chapters: { id: string; title: string; paragraphs: string[]; source_ids: string[] }[];
+  sources: {
+    id: string; role: "user" | "assistant" | "document"; text: string;
+    quote: string | null; filename: string; line: number; timestamp: string;
+  }[];
+  open_questions: string[];
+  exhibit?: {
+    title: string; summary: string; starts_on: string; ends_on: string;
+    artwork: ExhibitArtwork | null; source_ids: string[];
+    goal: ExperiencePart; process: ExperiencePart[]; result: ExperiencePart;
+  } | null;
+};
+
+export function listExhibitPreviews(): Promise<ExhibitPreview[]> {
+  return apiRequest("/api/v1/retrospectives/exhibits");
+}
+
+export function listStoryDrafts(projectKey: string): Promise<StoryDraft[]> {
+  return apiRequest(`/api/v1/retrospectives?project_key=${encodeURIComponent(projectKey)}`);
+}
 type ApiErrorBody = { error?: { code?: string; message?: string } };
 
 const apiBaseUrl =

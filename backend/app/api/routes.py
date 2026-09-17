@@ -18,6 +18,7 @@ from app.domain.schemas import (
     StageCreate,
     StageOut,
     StageUpdate,
+    StoryDraft,
 )
 from app.services import (
     archive_service,
@@ -26,6 +27,7 @@ from app.services import (
     dsh_session_evidence_service,
     museum_service,
     pi_agent_evidence_service,
+    retrospective_service,
 )
 
 BLOB_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -98,12 +100,26 @@ def create_api_router(session_provider) -> APIRouter:
         }
 
     @router.get("/archive/events", response_model=DataEnvelope[list[EventOut]])
-    def archive_events(session: SessionDependency) -> dict:
-        return {"data": museum_service.list_archive_events(session)}
+    def archive_events(request: Request, session: SessionDependency) -> dict:
+        return {"data": museum_service.list_archive_events(
+            session, upload_dir=request.app.state.settings.upload_dir
+        )}
 
     @router.get("/archive/coverage", response_model=DataEnvelope[list[CoverageOut]])
     def archive_coverage(session: SessionDependency) -> dict:
         return {"data": museum_service.list_coverage(session)}
+
+    @router.get("/retrospectives", response_model=DataEnvelope[list[StoryDraft]])
+    def retrospectives(request: Request, project_key: str) -> dict:
+        return {"data": retrospective_service.list_retrospectives(
+            request.app.state.settings.retrospectives_dir, project_key=project_key
+        )}
+
+    @router.get("/retrospectives/exhibits")
+    def exhibit_previews(request: Request) -> dict:
+        return {"data": retrospective_service.list_exhibit_previews(
+            request.app.state.settings.retrospectives_dir
+        )}
 
     @router.delete("/archive", response_model=DataEnvelope[dict])
     def wipe_archive(request: Request, session: SessionDependency) -> dict:
@@ -216,19 +232,26 @@ def create_api_router(session_provider) -> APIRouter:
         "/stages/{stage_id}/events",
         response_model=DataEnvelope[list[EventOut]],
     )
-    def events(stage_id: str, session: SessionDependency) -> dict:
-        return {"data": museum_service.list_events(session, stage_id)}
+    def events(stage_id: str, request: Request, session: SessionDependency) -> dict:
+        return {"data": museum_service.list_events(
+            session, stage_id, upload_dir=request.app.state.settings.upload_dir
+        )}
 
     @router.get("/events/{event_id}", response_model=DataEnvelope[EventOut])
-    def event(event_id: str, session: SessionDependency) -> dict:
-        return {"data": museum_service.get_event(session, event_id)}
+    def event(event_id: str, request: Request, session: SessionDependency) -> dict:
+        return {"data": museum_service.get_event(
+            session, event_id, upload_dir=request.app.state.settings.upload_dir
+        )}
 
     @router.post("/events/{event_id}/reviews", response_model=DataEnvelope[EventOut])
     def review(
         event_id: str,
         payload: ReviewCreate,
+        request: Request,
         session: SessionDependency,
     ) -> dict:
-        return {"data": museum_service.review_event(session, event_id, payload)}
+        return {"data": museum_service.review_event(
+            session, event_id, payload, upload_dir=request.app.state.settings.upload_dir
+        )}
 
     return router

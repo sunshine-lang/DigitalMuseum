@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from calendar import monthrange
 from datetime import date, timedelta
@@ -467,27 +468,33 @@ def _normalized_title(title: str) -> str:
     return " ".join(title.casefold().split())
 
 
-def list_events(session: Session, stage_id: str) -> list[dict]:
+def list_events(session: Session, stage_id: str, *, upload_dir: Path | None = None) -> list[dict]:
     """阶段视图：档案库全局事件按时间窗过滤（无日期事件不隐藏）。"""
     stage = require_stage(session, stage_id)
     events = session.scalars(
         select(CandidateEvent)
         .where(_stage_window_filter(stage))
         .options(
-            selectinload(CandidateEvent.claims).selectinload(Claim.anchors),
+            selectinload(CandidateEvent.claims).selectinload(Claim.anchors)
+            .selectinload(EvidenceAnchor.blob),
+            selectinload(CandidateEvent.claims).selectinload(Claim.occurrence),
             selectinload(CandidateEvent.reviews),
         )
         .order_by(CandidateEvent.created_at)
     ).all()
-    return [serialize_event(event, session) for event in events]
+    blob_projects: dict = {}
+    return [serialize_event(event, session, upload_dir=upload_dir, blob_projects=blob_projects)
+            for event in events]
 
 
-def list_archive_events(session: Session) -> list[dict]:
+def list_archive_events(session: Session, *, upload_dir: Path | None = None) -> list[dict]:
     """档案库时间线：全部事件按发生日升序（无日期排最后）。"""
     events = session.scalars(
         select(CandidateEvent)
         .options(
-            selectinload(CandidateEvent.claims).selectinload(Claim.anchors),
+            selectinload(CandidateEvent.claims).selectinload(Claim.anchors)
+            .selectinload(EvidenceAnchor.blob),
+            selectinload(CandidateEvent.claims).selectinload(Claim.occurrence),
             selectinload(CandidateEvent.reviews),
         )
         .order_by(
@@ -496,14 +503,18 @@ def list_archive_events(session: Session) -> list[dict]:
             CandidateEvent.created_at,
         )
     ).all()
-    return [serialize_event(event, session) for event in events]
+    blob_projects: dict = {}
+    return [serialize_event(event, session, upload_dir=upload_dir, blob_projects=blob_projects)
+            for event in events]
 
 
-def get_event(session: Session, event_id: str) -> dict:
-    return serialize_event(_load_event(session, event_id), session)
+def get_event(session: Session, event_id: str, *, upload_dir: Path | None = None) -> dict:
+    return serialize_event(_load_event(session, event_id), session, upload_dir=upload_dir)
 
 
-def review_event(session: Session, event_id: str, payload: ReviewCreate) -> dict:
+def review_event(
+    session: Session, event_id: str, payload: ReviewCreate, *, upload_dir: Path | None = None
+) -> dict:
     event = _load_event(session, event_id)
     if event.revision != payload.expected_revision:
         raise ApiError(409, "stale_event_revision", "事件已被其他审阅更新，请刷新后再试")
@@ -545,7 +556,7 @@ def review_event(session: Session, event_id: str, payload: ReviewCreate) -> dict
         )
     )
     session.commit()
-    return serialize_event(_load_event(session, event_id), session)
+    return serialize_event(_load_event(session, event_id), session, upload_dir=upload_dir)
 
 
 def list_coverage(session: Session) -> list[dict]:
@@ -580,7 +591,110 @@ def list_coverage(session: Session) -> list[dict]:
     )
 
 
-def serialize_event(event: CandidateEvent, session: Session) -> dict:
+def _blob_project_path(blob: EvidenceBlob, upload_dir: Path | None) -> tuple[str, str] | None:
+    """只读、校验内容哈希后读取确定性文档头；不反解 Claude 转义路径。"""
+    if upload_dir is None:
+        return None
+    try:
+        path = (upload_dir / blob.relative_path).resolve()
+        if not path.is_relative_to(upload_dir.resolve()):
+            return None
+        content = path.read_bytes()
+    except (OSError, RuntimeError):
+        return None
+    if hashlib.sha256(content).hexdigest() != blob.sha256:
+        return None
+    try:
+        lines = content.decode("utf-8").splitlines()
+    except UnicodeDecodeError:
+        return None
+    if len(lines) < 4 or not lines[0].startswith("project: "):
+        return None
+    product = {
+        "source: claude-code sessions": "claude", "source: codex sessions": "codex",
+        "source: pi agent sessions": "pi", "source: dsh sessions": "dsh",
+    }.get(lines[1])
+    if product == "claude":
+        if not lines[3].startswith("project_path: "):
+            return None
+        try:
+            project_path = json.loads(lines[3].removeprefix("project_path: "))
+        except json.JSONDecodeError:
+            return None
+        if (
+            isinstance(project_path, str) and "\x00" not in project_path
+            and Path(project_path).is_absolute()
+        ):
+            return product, project_path
+        return None
+    if product is None or not lines[0].endswith(")"):
+        return None
+    # 括号可能同时出现在标签与目录中；只接纳唯一一个与 basename 相符的解析。
+    header = lines[0].removeprefix("project: ")[:-1]
+    paths = {
+        header[index + 2:]
+        for index in range(len(header))
+        if header[index:index + 2] == " ("
+        and "\x00" not in header[index + 2:]
+        and Path(header[index + 2:]).is_absolute()
+        and header[:index] == (Path(header[index + 2:]).name or f"{product}-project")
+    }
+    return (product, paths.pop()) if len(paths) == 1 else None
+
+
+def _event_project_metadata(
+    event: CandidateEvent, upload_dir: Path | None, blob_projects: dict
+) -> dict:
+    """全部 claim 的项目身份必须一致；旧快照/恢复来源可由原文头只读还原。"""
+    products_by_processor = {adapter.PROCESSOR_VERSION: adapter.KIND for adapter in AGENT_PRODUCTS}
+    products_by_processor["codex-evidence-v1"] = "codex"  # 旧快照仍保留原项目身份。
+    products: set[str] = set()
+    identities: set[tuple[str, str, str | None] | None] = set()
+    for claim in event.claims:
+        product = products_by_processor.get(claim.processor_version)
+        if product is not None:
+            products.add(product)
+        occurrence = claim.occurrence
+        source_key = occurrence.source_key if occurrence is not None else None
+        source_product, _, source_path = (source_key or "").partition(":")
+        if product is None:
+            identities.add(None)
+            continue
+        source_valid = (
+            source_product == product and Path(source_path).is_absolute()
+            and "\x00" not in source_path
+        )
+        if source_valid and product != "claude":
+            identities.add((f"path:{source_path}", Path(source_path).name or "/", source_path))
+            continue
+        paths: set[str | None] = set()
+        for anchor in claim.anchors:
+            if anchor.blob_sha256 not in blob_projects:
+                blob_projects[anchor.blob_sha256] = _blob_project_path(anchor.blob, upload_dir)
+            parsed = blob_projects[anchor.blob_sha256]
+            paths.add(parsed[1] if parsed and parsed[0] == product else None)
+        project_path = next(iter(paths)) if len(paths) == 1 else None
+        if project_path is not None:
+            identities.add((f"path:{project_path}", Path(project_path).name or "/", project_path))
+        elif source_valid and product == "claude":
+            label = Path(source_path).name.lstrip("-").split("-")[-1] or "claude-project"
+            identities.add((f"claude-session:{source_path}", label, None))
+        else:
+            identities.add(None)
+
+    identity = next(iter(identities)) if len(identities) == 1 else None
+    return {
+        "project_key": identity[0] if identity else None,
+        "project_label": identity[1] if identity else None,
+        "project_path": identity[2] if identity else None,
+        "agent_products": sorted(products),
+    }
+
+
+def serialize_event(
+    event: CandidateEvent, session: Session, *, upload_dir: Path | None = None,
+    blob_projects: dict | None = None,
+) -> dict:
     latest_review = event.reviews[-1] if event.reviews else None
     return {
         "id": event.id,
@@ -592,6 +706,9 @@ def serialize_event(event: CandidateEvent, session: Session) -> dict:
         "is_formal": event.status == "confirmed",
         "origin": event.origin,
         "source_count": len({claim.occurrence_id for claim in event.claims}),
+        **_event_project_metadata(
+            event, upload_dir, blob_projects if blob_projects is not None else {}
+        ),
         "claims": [
             {
                 "id": claim.id,
@@ -633,7 +750,9 @@ def _load_event(session: Session, event_id: str) -> CandidateEvent:
         select(CandidateEvent)
         .where(CandidateEvent.id == event_id)
         .options(
-            selectinload(CandidateEvent.claims).selectinload(Claim.anchors),
+            selectinload(CandidateEvent.claims).selectinload(Claim.anchors)
+            .selectinload(EvidenceAnchor.blob),
+            selectinload(CandidateEvent.claims).selectinload(Claim.occurrence),
             selectinload(CandidateEvent.reviews),
         )
     )

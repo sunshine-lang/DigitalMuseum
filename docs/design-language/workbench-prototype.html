@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="zh-CN" data-register="day">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>工作台原型 · 昼夜双馆 v2 · Digital Museum</title>
+<style>
+@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700&family=Source+Serif+4:ital,opsz,wght@0,8..60,300..700;1,8..60,300..700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+:root[data-register="day"] {
+  --paper: #efeae3; --paper-deep: #e7e0d4; --card: #f8f5f0;
+  --ink: #1a1714; --ink-soft: #4d463c; --muted: #6e675b;
+  --line: rgba(26, 23, 18, .16); --line-strong: rgba(26, 23, 18, .34);
+  --st-blue: #3e5871; --st-gold: #8c6d3f; --st-green: #47755e; --st-rust: #9c4a2f;
+  --tint-blue: color-mix(in srgb, var(--st-blue) 5%, transparent);
+  --focus: #8c6d3f;
+}
+:root[data-register="night"] {
+  --paper: #0b0b0d; --paper-deep: #101014; --card: #141416;
+  --ink: #f5f5f7; --ink-soft: #d3d3d8; --muted: #9f9fa0;
+  --line: rgba(245, 245, 247, .1); --line-strong: rgba(245, 245, 247, .26);
+  --st-blue: #a9c2e8; --st-gold: #e0b874; --st-green: #9fd6c2; --st-rust: #e59a86;
+  --tint-blue: color-mix(in srgb, var(--st-blue) 8%, transparent);
+  --focus: #e0b874;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--paper); color: var(--ink);
+  font: 15.5px/1.7 "Source Serif 4", "Songti SC", "PingFang SC", serif;
+  transition: background .45s ease, color .45s ease;
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: 76px;
+}
+.mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+.wrap { max-width: 960px; margin: 0 auto; padding: 0 18px; }
+@media (min-width: 900px) { body { padding-bottom: 0; } .wrap { padding: 0 26px; } }
+
+/* —— 顶栏 —— */
+.topbar { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--paper) 90%, transparent); backdrop-filter: blur(8px); border-bottom: 0.5px solid var(--line); }
+.topbar-in { max-width: 960px; margin: 0 auto; padding: 12px 18px; display: flex; align-items: center; gap: 11px; }
+@media (min-width: 900px) { .topbar-in { padding: 13px 26px; } }
+.logo { width: 34px; height: 34px; border: 1.5px solid var(--ink); border-radius: 6px; display: grid; place-items: center; font: italic 700 12px "Playfair Display", serif; background: var(--card); }
+.topbar b { font-size: 14.5px; font-weight: 500; }
+.topbar small { display: block; font: 400 10.5px "JetBrains Mono", monospace; letter-spacing: .18em; color: var(--muted); }
+.reg-toggle { margin-left: auto; font: 500 11.5px "JetBrains Mono", monospace; letter-spacing: .08em; border: 1px solid var(--line-strong); border-radius: 999px; padding: 8px 14px; background: var(--card); cursor: pointer; }
+.reg-toggle:hover { border-color: var(--ink); }
+
+/* —— 焦点卡 —— */
+.focus { background: var(--card); border: 0.5px solid var(--line); border-radius: 12px; padding: 16px; margin-top: 14px; display: flex; gap: 14px; align-items: flex-start; }
+.nameplate { display: inline-flex; flex-direction: column; align-items: center; border: 1.5px solid var(--ink); border-radius: 6px; padding: 7px 11px; background: var(--paper); flex: 0 0 auto; }
+.nameplate b { font: 500 18px "Playfair Display", "Songti SC", serif; line-height: 1.1; }
+.nameplate span { font: 400 10.5px "JetBrains Mono", monospace; color: var(--muted); letter-spacing: .1em; }
+.focus h1 { font: 500 19px/1.4 "Songti SC", serif; }
+.focus .sub { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+.btn-row { display: flex; gap: 8px; margin-top: 11px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; border-radius: 8px; cursor: pointer; font: 500 13px "Songti SC", sans-serif; border: 1px solid var(--line-strong); background: transparent; transition: border-color .2s ease; }
+.btn:hover { border-color: var(--ink); }
+.btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+/* —— digest —— */
+.digest { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+@media (min-width: 640px) { .digest { grid-template-columns: repeat(4, 1fr); } }
+.stat { background: var(--card); border: 0.5px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.stat span { font: 400 11px "JetBrains Mono", monospace; color: var(--muted); letter-spacing: .08em; display: block; }
+.stat b { font: 500 18px "Playfair Display", "Songti SC", serif; display: block; margin-top: 2px; }
+.stat.g b { color: var(--st-green); } .stat.r b { color: var(--st-rust); }
+
+/* —— 月分隔 —— */
+.month-divider { display: flex; align-items: baseline; gap: 9px; border-bottom: 1.5px solid var(--line-strong); padding-bottom: 7px; margin-top: 34px; position: sticky; top: 62px; background: var(--paper); }
+.month-divider .vol { border: 1px solid var(--st-gold); border-radius: 2px; padding: 2px 6px; font: 400 11px "JetBrains Mono", monospace; letter-spacing: .1em; color: var(--st-gold); background: color-mix(in srgb, var(--st-gold) 10%, transparent); }
+.month-divider b { font: 500 16px "Playfair Display", "Songti SC", serif; letter-spacing: .03em; }
+.month-divider small { margin-left: auto; font: 400 11px "JetBrains Mono", monospace; color: var(--muted); }
+
+/* —— 档案卡 —— */
+.record { background: var(--card); border: 0.5px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-top: 10px; }
+.record.cand { border: 1.5px dashed color-mix(in srgb, var(--st-blue) 45%, transparent); background: color-mix(in srgb, var(--st-blue) 4%, var(--card)); }
+.record .meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.record .meta time { font: 400 11.5px "JetBrains Mono", monospace; color: var(--muted); letter-spacing: .1em; }
+.record h3 { font: 500 18px/1.45 "Songti SC", serif; margin: 8px 0 4px; }
+.record > .summary { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.record .toggle { margin-top: 10px; font: 500 12px "JetBrains Mono", monospace; color: var(--st-gold); background: none; border: 0; cursor: pointer; letter-spacing: .06em; padding: 4px 0; }
+.chip { font: 500 12px "JetBrains Mono", monospace; letter-spacing: .05em; border-radius: 999px; padding: 3px 11px; }
+.chip.candidate { color: var(--st-blue); border: 1.5px dashed color-mix(in srgb, var(--st-blue) 55%, transparent); background: color-mix(in srgb, var(--st-blue) 8%, transparent); }
+.chip.confirmed  { color: var(--st-gold); border: 1.5px solid color-mix(in srgb, var(--st-gold) 55%, transparent); background: color-mix(in srgb, var(--st-gold) 10%, transparent); }
+.chip.verified   { color: var(--st-green); border: 1.5px solid color-mix(in srgb, var(--st-green) 50%, transparent); background: color-mix(in srgb, var(--st-green) 9%, transparent); }
+.chip.disputed   { color: var(--st-rust); border: 1.5px solid color-mix(in srgb, var(--st-rust) 50%, transparent); background: color-mix(in srgb, var(--st-rust) 8%, transparent); }
+
+/* —— 证据展开 —— */
+.evidence { display: none; margin-top: 12px; border-left: 3px solid var(--st-gold); padding: 2px 0 2px 14px; }
+.record.open .evidence { display: block; }
+.evidence q { font-style: italic; font-size: 14.5px; color: var(--ink-soft); quotes: "「" "」"; }
+.evidence .prov { margin-top: 5px; font: 400 11px "JetBrains Mono", monospace; color: var(--muted); letter-spacing: .05em; }
+.actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.act { min-height: 40px; padding: 0 14px; border-radius: 7px; font: 500 12.5px "Songti SC", sans-serif; cursor: pointer; border: 1px solid var(--line-strong); background: transparent; display: inline-flex; align-items: center; gap: 7px; }
+.act:hover { border-color: var(--ink); }
+.act.seal-btn { color: var(--st-gold); border-color: color-mix(in srgb, var(--st-gold) 50%, transparent); }
+.act.warn { color: var(--st-rust); border-color: color-mix(in srgb, var(--st-rust) 45%, transparent); }
+.mini-seal { width: 20px; height: 20px; border: 1.5px solid currentColor; border-radius: 4px; display: grid; place-items: center; font: 700 11px "Songti SC", serif; }
+
+/* —— 视图与票根 —— */
+.view { display: none; }
+.view.on { display: block; }
+.ticket { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; display: flex; background: var(--card); border-top: 1.5px dashed var(--line-strong); padding-bottom: env(safe-area-inset-bottom); }
+.ticket .stub { flex: 1; min-height: 62px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: 0; background: none; cursor: pointer; border-right: 1.5px dashed var(--line-strong); }
+.ticket .stub:last-child { border-right: 0; }
+.ticket .stub i { font: 400 11px "JetBrains Mono", monospace; font-style: normal; color: var(--muted); }
+.ticket .stub span { font-size: 13px; color: var(--ink-soft); }
+.ticket .stub.on { background: var(--ink); }
+.ticket .stub.on i { color: color-mix(in srgb, var(--paper) 60%, transparent); }
+.ticket .stub.on span { color: var(--paper); }
+.flowbar { display: none; }
+@media (min-width: 900px) {
+  .ticket { display: none; }
+  .flowbar { display: flex; background: var(--card); border: 0.5px solid var(--line); border-top: 1.5px dashed var(--line-strong); border-radius: 10px; margin-top: 12px; }
+  .flowbar .stub { flex: 1; min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 0; background: none; cursor: pointer; border-right: 1.5px dashed var(--line-strong); }
+  .flowbar .stub:last-child { border-right: 0; }
+}
+
+/* —— 同步视图 —— */
+.src { background: var(--card); border: 0.5px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-top: 10px; display: flex; align-items: center; gap: 12px; }
+.src b { font-size: 15px; font-weight: 500; display: block; }
+.src small { font: 400 11px "JetBrains Mono", monospace; color: var(--muted); letter-spacing: .05em; display: block; margin-top: 2px; }
+.src .count { margin-left: auto; font: 500 15px "JetBrains Mono", monospace; color: var(--ink-soft); }
+.progress { height: 6px; border-radius: 3px; background: var(--paper-deep); margin-top: 16px; overflow: hidden; display: none; }
+.progress.run { display: block; }
+.progress i { display: block; height: 100%; width: 0; background: var(--st-gold); transition: width .3s ease; }
+
+/* —— 展览视图 —— */
+.pick { display: flex; align-items: center; gap: 11px; background: var(--card); border: 0.5px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-top: 8px; cursor: pointer; }
+.pick:hover { border-color: var(--line-strong); }
+.pick input { width: 20px; height: 20px; accent-color: var(--st-gold); }
+.pick b { font-size: 14px; font-weight: 500; display: block; }
+.pick small { font: 400 11px "JetBrains Mono", monospace; color: var(--muted); }
+.export-panel { background: var(--card); border: 0.5px solid var(--line); border-radius: 12px; padding: 18px; margin-top: 18px; position: sticky; bottom: 14px; }
+.export-panel b { font: 500 16px "Songti SC", serif; }
+.risk-note { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.7; }
+dialog { border: 1px solid var(--line-strong); border-radius: 12px; background: var(--card); color: var(--ink); padding: 22px; max-width: 340px; width: calc(100% - 48px); }
+dialog::backdrop { background: rgba(0, 0, 0, .45); }
+dialog h4 { font: 500 16px "Songti SC", serif; margin-bottom: 8px; }
+dialog p { font-size: 13px; color: var(--muted); line-height: 1.7; }
+dialog .btn-row { margin-top: 14px; }
+
+footer.proto { border-top: 0.5px solid var(--line); margin-top: 56px; padding: 22px 0 30px; }
+footer.proto p { font-size: 12px; color: var(--muted); line-height: 1.8; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.view.on > * { animation: rise .35s ease both; }
+.view.on > *:nth-child(2) { animation-delay: .05s; }
+.view.on > *:nth-child(3) { animation-delay: .1s; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="logo">DM</div>
+    <div><b>Digital Museum</b><small>WORKBENCH PROTOTYPE</small></div>
+    <button class="reg-toggle" id="regToggle">昼夜切换</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- ============ 视图二 · 浏览（默认） ============ -->
+  <section class="view on" id="view-browse" aria-label="浏览">
+    <div class="focus">
+      <span class="nameplate"><b id="todayDate">09·17</b><span>2026</span></span>
+      <div style="min-width:0">
+        <h1>今日 <span id="todayCount">6</span> 条新记录 · 3 个项目</h1>
+        <p class="sub">增量同步 <span id="lastSync">14:02</span> 完成 · 含 2 条已核实读数</p>
+        <div class="btn-row">
+          <button class="btn primary" data-goto="sync">同步全部</button>
+          <button class="btn">浏览当日</button>
+        </div>
+      </div>
+    </div>
+    <div class="digest">
+      <div class="stat"><span>卷宗 VOLUME</span><b>IX · 54</b></div>
+      <div class="stat"><span>项目 PROJECTS</span><b>23</b></div>
+      <div class="stat g"><span>已核实 VERIFIED</span><b>41</b></div>
+      <div class="stat r"><span>待异议 DISPUTED</span><b id="disputeCount">2</b></div>
+    </div>
+
+    <div class="month-divider">
+      <span class="vol">IX</span><b>九月 · 卷宗</b><small>2026-09</small>
+    </div>
+
+    <article class="record" data-status="verified">
+      <div class="meta"><span class="chip verified">已核实</span><time>13:58 · 3 MESSAGES</time></div>
+      <h3>会话适配器兼容性修复</h3>
+      <p class="summary">Codex 兼容处理文件仍变动时档案列表读取失败的问题；本轮只读回退，未删除历史数据。</p>
+      <button class="toggle" aria-expanded="false">展开证据 ▾</button>
+      <div class="evidence">
+        <q>修复后端兼容处理文件仍变动时的读取失败，改为只读原文回退。</q>
+        <p class="prov">CODEX · 首条用户消息 · L1 · SHA-256 8f3a…c21e · 系统核实：时间戳与计数为确定性读数</p>
+      </div>
+    </article>
+
+    <article class="record cand" data-status="candidate">
+      <div class="meta"><span class="chip candidate">候选</span><time>09:41 · 8 MESSAGES</time></div>
+      <h3>产品规格文档待定稿</h3>
+      <p class="summary">摘要由模型辅助整理，等待本人判断；虚线边标记 candidate。</p>
+      <button class="toggle" aria-expanded="false">展开证据 ▾</button>
+      <div class="evidence">
+        <q>帮我写一份新功能的产品规格文档。</q>
+        <p class="prov">CLAUDE · 首条用户消息 · L1 · SHA-256 41bd…9a07 · 摘要含模型辅助整理，未经确认不升级为事实</p>
+        <div class="actions">
+          <button class="act seal-btn" data-confirm><span class="mini-seal">确</span>确认这段摘要</button>
+          <button class="act warn" data-dispute>对记录提出异议</button>
+        </div>
+      </div>
+    </article>
+
+    <article class="record" data-status="confirmed">
+      <div class="meta"><span class="chip confirmed">已确认</span><time>昨日 · 4 MESSAGES</time></div>
+      <h3>里程碑聚合规则调整</h3>
+      <p class="summary">项目级里程碑改为全部展出事件聚合一次；已由本人确认，后续同步不覆盖。</p>
+      <button class="toggle" aria-expanded="false">展开证据 ▾</button>
+      <div class="evidence">
+        <q>按项目聚合一次，卡片按其在项目中的位置取叙事。</q>
+        <p class="prov">CLAUDE · L18 · SHA-256 c7e2…44f0 · 本人已确认 2026-09-16 · 同步保留此判定</p>
+      </div>
+    </article>
+
+    <article class="record" data-status="disputed">
+      <div class="meta"><span class="chip disputed">存疑</span><time>09-15 · 2 MESSAGES</time></div>
+      <h3>自动概括功能评测</h3>
+      <p class="summary">记录的自动概括与实际过程不符，已提出异议，等待核对。</p>
+      <button class="toggle" aria-expanded="false">展开证据 ▾</button>
+      <div class="evidence">
+        <q>这段概括说我完成了 X，但当时实际只做了 Y。</q>
+        <p class="prov">PI · L9 · SHA-256 09aa…77d3 · 异议保留中 · 不会被同步覆盖</p>
+      </div>
+    </article>
+  </section>
+
+  <!-- ============ 视图一 · 同步 ============ -->
+  <section class="view" id="view-sync" aria-label="同步">
+    <div class="focus">
+      <span class="nameplate"><b>同步</b><span>SYNC</span></span>
+      <div style="min-width:0">
+        <h1>四类 Agent 会话 · 只读扫描</h1>
+        <p class="sub">重复同步并入既有档案，幂等；源目录始终只读。</p>
+      </div>
+    </div>
+    <div class="src"><div><b>Claude Code</b><small>~/.claude/projects · 只读</small></div><span class="count">212</span></div>
+    <div class="src"><div><b>Codex</b><small>~/.codex/sessions · 只读</small></div><span class="count">96</span></div>
+    <div class="src"><div><b>pi Agent</b><small>~/.pi/agent/sessions · 只读</small></div><span class="count">61</span></div>
+    <div class="src"><div><b>dsh</b><small>~/.dsh/sessions · 只读</small></div><span class="count">20</span></div>
+    <div class="progress" id="progress"><i id="progressBar"></i></div>
+    <div class="btn-row" style="margin-top:14px">
+      <button class="btn primary" id="syncBtn">同步本机全部会话</button>
+    </div>
+    <p class="sub" id="syncResult" style="margin-top:10px"></p>
+  </section>
+
+  <!-- ============ 视图三 · 展览 ============ -->
+  <section class="view" id="view-exhibit" aria-label="展览">
+    <div class="focus">
+      <span class="nameplate"><b>展览</b><span>EXHIBIT</span></span>
+      <div style="min-width:0">
+        <h1>准备间 · 选展</h1>
+        <p class="sub">勾选的原始记录进入静态导出；导出前做敏感信息扫描。</p>
+      </div>
+    </div>
+    <label class="pick"><input type="checkbox" checked><div><b>09-17 · 会话适配器兼容性修复</b><small>已核实 · CODEX</small></div></label>
+    <label class="pick"><input type="checkbox"><div><b>09-17 · 产品规格文档待定稿</b><small>候选 · CLAUDE</small></div></label>
+    <label class="pick"><input type="checkbox" checked><div><b>09-16 · 里程碑聚合规则调整</b><small>已确认 · CLAUDE</small></div></label>
+    <label class="pick"><input type="checkbox"><div><b>09-15 · 自动概括功能评测</b><small>存疑 · PI</small></div></label>
+    <div class="export-panel">
+      <b>已选 <span id="pickedCount">2</span> 段经历</b>
+      <p class="risk-note">导出为无脚本、自包含的单文件 HTML。导出前扫描常见密钥、本机路径与邮箱，命中后必须人工逐项确认。</p>
+      <div class="btn-row"><button class="btn primary" id="exportBtn">导出静态展览</button></div>
+    </div>
+  </section>
+
+  <footer class="proto">
+    <p>原型说明：样本数据为隔离虚构内容，不含真实会话；无后端、无模型调用，状态变更仅在本页内存中。「昼夜双馆」DM Design Language v2 · 2026-09-17。</p>
+  </footer>
+</div>
+
+<!-- ============ 票根导轨（移动） / 横轨（桌面） ============ -->
+<nav class="ticket" id="railMobile" aria-label="三步流">
+  <button class="stub" data-goto="sync"><i>01</i><span>同步</span></button>
+  <button class="stub on" data-goto="browse"><i>02</i><span>浏览</span></button>
+  <button class="stub" data-goto="exhibit"><i>03</i><span>展览</span></button>
+</nav>
+<nav class="flowbar" id="railDesktop" aria-label="三步流">
+  <button class="stub" data-goto="sync"><i>01</i><span>同步</span></button>
+  <button class="stub on" data-goto="browse"><i>02</i><span>浏览</span></button>
+  <button class="stub" data-goto="exhibit"><i>03</i><span>展览</span></button>
+</nav>
+
+<dialog id="riskDialog">
+  <h4>敏感信息待确认</h4>
+  <p>扫描到 1 处疑似本机绝对路径（样本）。按隐私边界，命中项需逐项确认后才可导出。</p>
+  <div class="btn-row">
+    <button class="btn" id="riskCancel">返回检查</button>
+    <button class="btn primary" id="riskOk">确认导出</button>
+  </div>
+</dialog>
+
+<script>
+  var root = document.documentElement;
+
+  document.getElementById("regToggle").addEventListener("click", function () {
+    var night = root.getAttribute("data-register") === "night";
+    root.setAttribute("data-register", night ? "day" : "night");
+  });
+
+  function goto(name) {
+    document.querySelectorAll(".view").forEach(function (v) { v.classList.remove("on"); });
+    document.getElementById("view-" + name).classList.add("on");
+    document.querySelectorAll(".ticket .stub, .flowbar .stub").forEach(function (b) {
+      b.classList.toggle("on", b.getAttribute("data-goto") === name);
+    });
+    window.scrollTo({ top: 0 });
+  }
+  document.querySelectorAll("[data-goto]").forEach(function (b) {
+    b.addEventListener("click", function () { goto(b.getAttribute("data-goto")); });
+  });
+
+  document.querySelectorAll(".record .toggle").forEach(function (t) {
+    t.addEventListener("click", function () {
+      var card = t.closest(".record");
+      var open = card.classList.toggle("open");
+      t.setAttribute("aria-expanded", String(open));
+      t.textContent = open ? "收起证据 ▴" : "展开证据 ▾";
+    });
+  });
+
+  function setChip(card, status, label) {
+    card.setAttribute("data-status", status);
+    var chip = card.querySelector(".chip");
+    chip.className = "chip " + status;
+    chip.textContent = label;
+  }
+  document.querySelectorAll("[data-confirm]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var card = b.closest(".record");
+      setChip(card, "confirmed", "已确认");
+      card.classList.remove("cand");
+      var acts = card.querySelector(".actions");
+      if (acts) acts.remove();
+      var prov = card.querySelector(".prov");
+      prov.textContent += " · 本人已确认（本页内存）";
+    });
+  });
+  document.querySelectorAll("[data-dispute]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var card = b.closest(".record");
+      setChip(card, "disputed", "存疑");
+      card.classList.remove("cand");
+      var d = document.getElementById("disputeCount");
+      d.textContent = String(Number(d.textContent) + 1);
+    });
+  });
+
+  document.getElementById("syncBtn").addEventListener("click", function () {
+    var bar = document.getElementById("progressBar");
+    var box = document.getElementById("progress");
+    var out = document.getElementById("syncResult");
+    box.classList.add("run");
+    out.textContent = "正在只读扫描四类源目录…";
+    var w = 0;
+    var timer = setInterval(function () {
+      w += 12;
+      bar.style.width = Math.min(w, 100) + "%";
+      if (w >= 100) {
+        clearInterval(timer);
+        document.getElementById("todayCount").textContent = "9";
+        document.getElementById("lastSync").textContent = "刚刚";
+        out.textContent = "同步完成 · 新增 3 条，并入既有档案（幂等演示）。";
+      }
+    }, 160);
+  });
+
+  function refreshPicked() {
+    var n = document.querySelectorAll(".pick input:checked").length;
+    document.getElementById("pickedCount").textContent = String(n);
+  }
+  document.querySelectorAll(".pick input").forEach(function (i) {
+    i.addEventListener("change", refreshPicked);
+  });
+  var dlg = document.getElementById("riskDialog");
+  document.getElementById("exportBtn").addEventListener("click", function () { dlg.showModal(); });
+  document.getElementById("riskCancel").addEventListener("click", function () { dlg.close(); });
+  document.getElementById("riskOk").addEventListener("click", function () {
+    dlg.close();
+    document.getElementById("pickedCount").textContent = "0";
+    alert("原型演示：真实产品在此生成无脚本单文件 HTML。");
+  });
+</script>
+</body>
+</html>

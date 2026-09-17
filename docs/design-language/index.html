@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="zh-CN" data-register="day">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>昼夜双馆 · DM Design Language v2</title>
+<style>
+@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900&family=Source+Serif+4:ital,opsz,wght@0,8..60,300..700;1,8..60,300..700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+:root[data-register="day"] {
+  --paper: #efeae3; --paper-deep: #e7e0d4; --card: #f8f5f0;
+  --ink: #1a1714; --ink-soft: #4d463c; --muted: #6e675b;
+  --line: rgba(26, 23, 18, .16); --line-strong: rgba(26, 23, 18, .34);
+  --st-blue: #3e5871; --st-gold: #8c6d3f; --st-green: #47755e; --st-rust: #9c4a2f;
+  --chip-tint: rgba(248, 245, 240, .9); --focus: #8c6d3f;
+  --shadow: 0 10px 26px -22px rgba(26, 23, 18, .5);
+}
+:root[data-register="night"] {
+  --paper: #0b0b0d; --paper-deep: #101014; --card: #141416;
+  --ink: #f5f5f7; --ink-soft: #d3d3d8; --muted: #9f9fa0;
+  --line: rgba(245, 245, 247, .1); --line-strong: rgba(245, 245, 247, .26);
+  --st-blue: #a9c2e8; --st-gold: #e0b874; --st-green: #9fd6c2; --st-rust: #e59a86;
+  --chip-tint: rgba(20, 20, 22, .6); --focus: #e0b874;
+  --shadow: 0 10px 26px -20px rgba(0, 0, 0, .8);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--paper); color: var(--ink);
+  font: 15.5px/1.75 "Source Serif 4", "Songti SC", "PingFang SC", serif;
+  transition: background .45s ease, color .45s ease;
+  -webkit-font-smoothing: antialiased;
+}
+.mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+.serif { font-family: "Playfair Display", "Source Serif 4", "Songti SC", serif; }
+.wrap { max-width: 920px; margin: 0 auto; padding: 0 26px 96px; }
+
+/* —— 顶栏 —— */
+.topbar {
+  position: sticky; top: 0; z-index: 10;
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 0.5px solid var(--line);
+}
+.topbar-in { max-width: 920px; margin: 0 auto; padding: 13px 26px; display: flex; align-items: center; gap: 12px; }
+.logo {
+  width: 36px; height: 36px; border: 1.5px solid var(--ink); border-radius: 7px;
+  display: grid; place-items: center; font: italic 700 13px "Playfair Display", serif;
+  background: var(--card); flex: 0 0 auto;
+}
+.topbar b { font-size: 15px; font-weight: 500; letter-spacing: .01em; }
+.topbar small { display: block; font-size: 10.5px; letter-spacing: .22em; color: var(--muted); }
+.register-toggle {
+  margin-left: auto; font: 500 12px "JetBrains Mono", monospace; letter-spacing: .1em;
+  border: 1px solid var(--line-strong); border-radius: 999px; padding: 8px 16px;
+  background: var(--card); color: var(--ink); cursor: pointer;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.register-toggle:hover { border-color: var(--ink); }
+.register-toggle .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--st-gold); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* —— 章节 —— */
+section { margin-top: 78px; }
+.eyebrow {
+  font: 500 11px "JetBrains Mono", monospace; letter-spacing: .3em; color: var(--st-gold);
+  text-transform: uppercase; display: flex; align-items: center; gap: 14px; white-space: nowrap;
+}
+.eyebrow::after { content: ""; height: 1px; flex: 1; background: var(--line); }
+h2 { font: 700 clamp(24px, 4vw, 32px)/1.25 "Playfair Display", "Songti SC", serif; margin: 12px 0 6px; }
+.lede { color: var(--ink-soft); max-width: 640px; margin-top: 10px; }
+.grid { display: grid; gap: 14px; }
+.g2 { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.g3 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.g4 { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.card {
+  background: var(--card); border: 0.5px solid var(--line); border-radius: 10px;
+  padding: 18px 20px; transition: background .45s ease, border-color .45s ease;
+}
+.card h3 { font: 500 16px "Songti SC", serif; margin-bottom: 6px; }
+.card p { font-size: 13px; color: var(--muted); line-height: 1.7; }
+.card .k { font: 500 11px "JetBrains Mono", monospace; letter-spacing: .16em; color: var(--st-gold); display: block; margin-bottom: 8px; }
+
+/* —— Hero —— */
+.hero { padding: 96px 0 8px; }
+.hero h1 { font: 700 clamp(38px, 7vw, 62px)/1.12 "Playfair Display", "Songti SC", serif; letter-spacing: -.015em; max-width: 16ch; }
+.hero .sub { margin-top: 20px; color: var(--ink-soft); font-size: 17px; max-width: 560px; }
+.hero .meta { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 8px; }
+.hero .meta span {
+  font: 400 11.5px "JetBrains Mono", monospace; letter-spacing: .05em; color: var(--muted);
+  border: 1px solid var(--line-strong); border-radius: 999px; padding: 4px 12px; background: var(--chip-tint);
+}
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.hero > * { animation: rise .6s ease both; }
+.hero > *:nth-child(2) { animation-delay: .1s; }
+.hero > *:nth-child(3) { animation-delay: .2s; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* —— 色板 —— */
+.swatch { border-radius: 10px; overflow: hidden; border: 0.5px solid var(--line); cursor: pointer; background: var(--card); }
+.swatch .fill { height: 74px; border-bottom: 0.5px solid var(--line); transition: background .45s ease; }
+.swatch .lbl { padding: 10px 13px; }
+.swatch .lbl b { font: 500 13px "Songti SC", serif; display: block; }
+.swatch .lbl span { font: 400 10.5px "JetBrains Mono", monospace; color: var(--muted); letter-spacing: .04em; }
+.swatch:hover { border-color: var(--ink); }
+
+.contract-row {
+  display: grid; grid-template-columns: 130px 1fr 1fr; gap: 12px; align-items: stretch;
+  border: 0.5px solid var(--line); border-radius: 10px; padding: 14px 16px; background: var(--card);
+  margin-top: 10px;
+}
+.contract-row .name b { font: 500 15px "Songti SC", serif; display: block; }
+.contract-row .name small { font: 400 10.5px "JetBrains Mono", monospace; color: var(--muted); letter-spacing: .08em; }
+.chip-demo {
+  align-self: center; justify-self: start; font: 500 12px "JetBrains Mono", monospace; letter-spacing: .06em;
+  border-radius: 999px; padding: 5px 13px;
+}
+.chip-demo.candidate { color: var(--st-blue); border: 1.5px dashed color-mix(in srgb, var(--st-blue) 55%, transparent); background: color-mix(in srgb, var(--st-blue) 8%, transparent); }
+.chip-demo.confirmed  { color: var(--st-gold); border: 1.5px solid color-mix(in srgb, var(--st-gold) 55%, transparent); background: color-mix(in srgb, var(--st-gold) 10%, transparent); }
+.chip-demo.verified   { color: var(--st-green); border: 1.5px solid color-mix(in srgb, var(--st-green) 50%, transparent); background: color-mix(in srgb, var(--st-green) 9%, transparent); }
+.chip-demo.disputed   { color: var(--st-rust); border: 1.5px solid color-mix(in srgb, var(--st-rust) 50%, transparent); background: color-mix(in srgb, var(--st-rust) 8%, transparent); }
+.contract-note { font-size: 12.5px; color: var(--muted); line-height: 1.7; align-self: center; }
+
+/* —— 字体 —— */
+.type-sample { border-top: 1px solid var(--line); padding: 14px 2px; display: grid; grid-template-columns: 150px 1fr; gap: 14px; align-items: baseline; }
+.type-sample .role { font: 400 11px "JetBrains Mono", monospace; color: var(--muted); letter-spacing: .12em; }
+.t-display { font: 700 40px/1.15 "Playfair Display", "Songti SC", serif; }
+.t-h1 { font: 700 28px/1.3 "Playfair Display", "Songti SC", serif; }
+.t-body { font-size: 16px; }
+.t-label { font: 500 12px "JetBrains Mono", monospace; letter-spacing: .18em; }
+.scale-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+.scale-table th { text-align: left; font: 500 11px "JetBrains Mono", monospace; color: var(--muted); letter-spacing: .1em; padding: 8px 10px; border-bottom: 1px solid var(--line-strong); }
+.scale-table td { padding: 8px 10px; border-bottom: 0.5px solid var(--line); color: var(--ink-soft); }
+
+/* —— 度量 —— */
+.meter { display: flex; align-items: center; gap: 10px; margin-top: 8px; font: 400 11px "JetBrains Mono", monospace; color: var(--muted); }
+.meter i { display: block; background: var(--st-gold); height: 12px; border-radius: 2px; }
+.radius-demo { width: 64px; height: 44px; background: var(--card); border: 1.5px solid var(--line-strong); }
+
+/* —— 组件 —— */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 44px; padding: 0 20px; border-radius: 8px; cursor: pointer;
+  font: 500 14px "Songti SC", sans-serif; border: 1px solid var(--line-strong);
+  background: transparent; color: var(--ink); transition: all .2s ease;
+}
+.btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.btn.primary:hover { transform: translateY(-1px); }
+.btn:hover { border-color: var(--ink); }
+.btn.danger { color: var(--st-rust); border-color: color-mix(in srgb, var(--st-rust) 45%, transparent); }
+.row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+
+.record { background: var(--card); border: 0.5px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-top: 10px; }
+.record.cand { border: 1.5px dashed color-mix(in srgb, var(--st-blue) 45%, transparent); background: color-mix(in srgb, var(--st-blue) 4%, var(--card)); }
+.record .meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.record .meta time { font: 400 11.5px "JetBrains Mono", monospace; color: var(--muted); letter-spacing: .12em; }
+.record h3 { font: 500 19px/1.4 "Songti SC", serif; margin: 9px 0 5px; }
+.record p { font-size: 13px; color: var(--muted); }
+
+.nameplate {
+  display: inline-flex; flex-direction: column; align-items: center; gap: 0;
+  border: 1.5px solid var(--ink); border-radius: 6px; padding: 8px 13px; background: var(--card);
+}
+.nameplate b { font: 500 19px "Playfair Display", "Songti SC", serif; line-height: 1.1; }
+.nameplate span { font: 400 10.5px "JetBrains Mono", monospace; color: var(--muted); letter-spacing: .1em; }
+
+.seal {
+  width: 44px; height: 44px; border: 2px solid var(--st-gold); border-radius: 8px;
+  display: grid; place-items: center; color: var(--st-gold);
+  font: 700 20px "Songti SC", serif; background: color-mix(in srgb, var(--st-gold) 8%, transparent);
+  transform: rotate(-4deg);
+}
+.ticket { display: flex; background: var(--card); border: 0.5px solid var(--line); border-top: 1.5px dashed var(--line-strong); border-radius: 10px 10px 0 0; overflow: hidden; margin-top: 12px; }
+.ticket .stub {
+  flex: 1; min-height: 58px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  border-right: 1.5px dashed var(--line-strong); cursor: pointer;
+}
+.ticket .stub:last-child { border-right: 0; }
+.ticket .stub i { font: 400 10.5px "JetBrains Mono", monospace; font-style: normal; color: var(--muted); }
+.ticket .stub span { font-size: 12.5px; color: var(--ink-soft); }
+.ticket .stub.on { background: var(--ink); }
+.ticket .stub.on i { color: color-mix(in srgb, var(--paper) 60%, transparent); }
+.ticket .stub.on span { color: var(--paper); }
+
+.slip { border-left: 3px solid var(--st-gold); padding: 4px 0 4px 16px; margin-top: 12px; }
+.slip q { font-style: italic; font-size: 15px; color: var(--ink-soft); quotes: "「" "」"; }
+.slip footer { margin-top: 6px; font: 400 11px "JetBrains Mono", monospace; color: var(--muted); letter-spacing: .06em; }
+
+footer.page { border-top: 1px solid var(--line); margin-top: 84px; padding-top: 26px; }
+footer.page p { color: var(--muted); font-size: 12.5px; line-height: 1.9; }
+.toast {
+  position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 60px);
+  background: var(--ink); color: var(--paper); border-radius: 999px; padding: 9px 18px;
+  font: 500 12.5px "Songti SC", sans-serif; opacity: 0; transition: all .3s ease; pointer-events: none; z-index: 20;
+}
+.toast.show { transform: translate(-50%, 0); opacity: 1; }
+@media (max-width: 640px) {
+  .contract-row { grid-template-columns: 1fr; }
+  .type-sample { grid-template-columns: 1fr; gap: 4px; }
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="logo">DM</div>
+    <div>
+      <b>昼夜双馆</b>
+      <small>DM DESIGN LANGUAGE V2</small>
+    </div>
+    <button class="register-toggle" id="regToggle" aria-pressed="false">
+      <span class="dot" aria-hidden="true"></span><span id="regLabel">开馆 · 切到夜馆</span>
+    </button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="hero">
+    <p class="eyebrow" style="justify-content:flex-start">One language, two registers</p>
+    <h1>白天是档案馆，深夜是展册。</h1>
+    <p class="sub">DigitalMuseum 的第二版设计语言：一套 token、两种登记。工作台与画廊在「开馆纸」上运行，导出与长读在「夜馆墨」上运行——切换的只是明度，不变的是证据、契约与馆的语言。</p>
+    <div class="meta">
+      <span>v2.0 · 2026-09-17</span><span>状态契约 · 唯一实现</span><span>本地优先 · 无模型调用</span><span>移动 12px / 桌面 10.5px 字号下限</span>
+    </div>
+  </div>
+
+  <section>
+    <p class="eyebrow">01 · Principles</p>
+    <h2>四条设计原则</h2>
+    <div class="grid g2" style="margin-top:18px">
+      <div class="card"><span class="k">EVIDENCE FIRST</span><h3>证据先行</h3><p>每个界面决定先回答「用户凭什么信」。摘录带行号与指纹，叙事只排在证据之后；模型产出永远是 candidate，永不直接成为事实。</p></div>
+      <div class="card"><span class="k">ONE CONTRACT</span><h3>契约唯一</h3><p>状态色只定义一次，昼与夜各有一组值，所有表面引用同一来源。候选虚线、确认实金、核实机器绿——不允许任何表面自造语义。</p></div>
+      <div class="card"><span class="k">TWO REGISTERS</span><h3>一语两馆</h3><p>开馆纸与夜馆墨是同一语言的两种登记：token 同名、组件同构、动效同规。日间追求密度与效率，夜间追求沉浸与长读。</p></div>
+      <div class="card"><span class="k">THUMB &amp; EYE</span><h3>拇指与眼</h3><p>移动端触控目标 ≥44px、字号 ≥12px；桌面留给信息密度。reduced-motion、键盘焦点、断网字体回退是验收项，不是加分项。</p></div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">02 · Status contract</p>
+    <h2>状态契约（语义脊柱）</h2>
+    <p class="lede">三年来最容易漂移的部分。v2 把四种状态的定义收拢为唯一来源：色相在两种登记间不变，只有明度随底色调整。点击任一色样复制十六进制值。</p>
+    <div style="margin-top:18px">
+      <div class="contract-row">
+        <div class="name"><b>候选</b><small>CANDIDATE</small></div>
+        <span class="chip-demo candidate" style="grid-column:2">候选 · 待人判</span>
+        <p class="contract-note">墨蓝 · 虚线边。模型整理或语义聚合的产出，等待用户判断；导出深夜值为 <span class="mono">#a9c2e8</span>，日间 <span class="mono">#3e5871</span>。</p>
+      </div>
+      <div class="contract-row">
+        <div class="name"><b>已确认</b><small>CONFIRMED</small></div>
+        <span class="chip-demo confirmed" style="grid-column:2">已确认 · 盖印</span>
+        <p class="contract-note">暖金 · 实线边，可配印章。用户本人确认的判断，同步不可覆盖；深夜值 <span class="mono">#e0b874</span>，日间 <span class="mono">#8c6d3f</span>。</p>
+      </div>
+      <div class="contract-row">
+        <div class="name"><b>已核实</b><small>VERIFIED</small></div>
+        <span class="chip-demo verified" style="grid-column:2">已核实 · 机器</span>
+        <p class="contract-note">机器绿。时间戳、计数等确定性读数，仅代表机器确定性，不代表内容解读；深夜值 <span class="mono">#9fd6c2</span>，日间 <span class="mono">#47755e</span>。</p>
+      </div>
+      <div class="contract-row">
+        <div class="name"><b>存疑</b><small>DISPUTED</small></div>
+        <span class="chip-demo disputed" style="grid-column:2">存疑 · 异议</span>
+        <p class="contract-note">锈红。用户提出异议的记录，永远保留入口与回退；深夜值 <span class="mono">#e59a86</span>，日间 <span class="mono">#9c4a2f</span>。</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">03 · Color tokens</p>
+    <h2>中性色与厅色</h2>
+    <p class="lede">中性 ramp 两馆同名。点击色样复制值；右上角切换登记，整页随之换底——这就是「一套 token 两种登记」的现场演示。</p>
+    <div class="grid g4" style="margin-top:18px">
+      <div class="swatch" data-hex="paper"><div class="fill" style="background:var(--paper);border-bottom-color:var(--line-strong)"></div><div class="lbl"><b>paper 纸</b><span>页面底 · --paper</span></div></div>
+      <div class="swatch" data-hex="card"><div class="fill" style="background:var(--card)"></div><div class="lbl"><b>card 卡面</b><span>--card</span></div></div>
+      <div class="swatch" data-hex="ink"><div class="fill" style="background:var(--ink)"></div><div class="lbl"><b>ink 墨</b><span>主文字 · --ink</span></div></div>
+      <div class="swatch" data-hex="muted"><div class="fill" style="background:var(--muted)"></div><div class="lbl"><b>muted 次</b><span>次级文字 · --muted</span></div></div>
+      <div class="swatch" data-hex="blue"><div class="fill" style="background:var(--st-blue)"></div><div class="lbl"><b>契约蓝</b><span>--st-blue</span></div></div>
+      <div class="swatch" data-hex="gold"><div class="fill" style="background:var(--st-gold)"></div><div class="lbl"><b>契约金</b><span>--st-gold</span></div></div>
+      <div class="swatch" data-hex="green"><div class="fill" style="background:var(--st-green)"></div><div class="lbl"><b>契约绿</b><span>--st-green</span></div></div>
+      <div class="swatch" data-hex="rust"><div class="fill" style="background:var(--st-rust)"></div><div class="lbl"><b>契约红</b><span>--st-rust</span></div></div>
+    </div>
+    <p class="lede" style="margin-top:26px">厅色（展览分厅的永久色，四色轮换）：日间取哑光版，夜间取发光版。</p>
+    <div class="grid g4" style="margin-top:14px">
+      <div class="swatch" data-hex="hall-1"><div class="fill" style="background:#7d76c9"></div><div class="lbl"><b>Ⅰ 紫厅</b><span>#7d76c9 / #847dff</span></div></div>
+      <div class="swatch" data-hex="hall-2"><div class="fill" style="background:#c68bc2"></div><div class="lbl"><b>Ⅱ 粉厅</b><span>#c68bc2 / #dd90d8</span></div></div>
+      <div class="swatch" data-hex="hall-3"><div class="fill" style="background:#7f9cc8"></div><div class="lbl"><b>Ⅲ 蓝厅</b><span>#7f9cc8 / #90b8f0</span></div></div>
+      <div class="swatch" data-hex="hall-4"><div class="fill" style="background:#b0a8e8"></div><div class="lbl"><b>Ⅳ 淡紫厅</b><span>#b0a8e8 / #d1c9ff</span></div></div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">04 · Typography</p>
+    <h2>三角色制</h2>
+    <div style="margin-top:14px">
+      <div class="type-sample"><span class="role">DISPLAY · Playfair</span><span class="t-display">档案 Ninth Volume</span></div>
+      <div class="type-sample"><span class="role">H1 · Playfair / 宋体</span><span class="t-h1">把散落的会话，变成展览</span></div>
+      <div class="type-sample"><span class="role">BODY · Source Serif 4 / 宋体</span><span class="t-body">正文负责证据与叙事的长时间阅读，行高 1.65–1.75，长路径与长标题 overflow-wrap: anywhere。</span></div>
+      <div class="type-sample"><span class="role">LABEL · JetBrains Mono</span><span class="t-label">09:41 · 8 MESSAGES · SHA-256</span></div>
+    </div>
+    <table class="scale-table">
+      <tr><th>层级</th><th>桌面</th><th>移动</th><th>说明</th></tr>
+      <tr><td>display</td><td>42–62px</td><td>34px</td><td>空库首开馆、导出封面</td></tr>
+      <tr><td>h1</td><td>28px</td><td>24px</td><td>页面主标题（紧凑 hero 为 30px）</td></tr>
+      <tr><td>h3 卡片题</td><td>19–20px</td><td>18px</td><td>档案卡、展签</td></tr>
+      <tr><td>body</td><td>15.5–16px</td><td>15–16px</td><td>正文阅读</td></tr>
+      <tr><td>secondary</td><td>13px</td><td>13px</td><td>辅助说明</td></tr>
+      <tr><td>label / 小签</td><td>≥10.5px</td><td>≥12px</td><td>JetBrains Mono，字母间距 .08–.3em</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <p class="eyebrow">05 · Measures</p>
+    <h2>度量</h2>
+    <div class="grid g3" style="margin-top:18px">
+      <div class="card"><span class="k">SPACE · 4PX BASE</span>
+        <div class="meter"><i style="width:4px"></i>4</div>
+        <div class="meter"><i style="width:8px"></i>8</div>
+        <div class="meter"><i style="width:12px"></i>12</div>
+        <div class="meter"><i style="width:16px"></i>16</div>
+        <div class="meter"><i style="width:24px"></i>24</div>
+        <div class="meter"><i style="width:32px"></i>32</div>
+        <div class="meter"><i style="width:48px"></i>48</div>
+      </div>
+      <div class="card"><span class="k">RADIUS</span>
+        <div class="row" style="align-items:center">
+          <span class="radius-demo" style="border-radius:2px"></span>
+          <span class="radius-demo" style="border-radius:8px"></span>
+          <span class="radius-demo" style="border-radius:14px;border-radius:999px"></span>
+        </div>
+        <p>铭牌 2px 锐角 · 卡面 8–10px · 徽章 999px 胶囊。</p>
+      </div>
+      <div class="card"><span class="k">TOUCH &amp; FOCUS</span>
+        <div class="row"><button class="btn" style="min-width:88px">44px 目标</button></div>
+        <p style="margin-top:8px">触控 ≥44×44px；焦点为 2px 契约金描边，键盘可见。</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">06 · Components</p>
+    <h2>组件</h2>
+
+    <div class="card" style="margin-top:18px">
+      <span class="k">BUTTONS</span>
+      <div class="row">
+        <button class="btn primary">同步全部</button>
+        <button class="btn">浏览当日</button>
+        <button class="btn danger">清空档案库</button>
+      </div>
+    </div>
+
+    <div class="record">
+      <div class="meta"><span class="chip-demo verified">已核实</span><time>13:58 · 3 MESSAGES</time></div>
+      <h3>ReMe 调研：Agent 记忆结合点</h3>
+      <p>已核实读数：时间戳与消息计数来自源会话确定性解析。</p>
+    </div>
+    <div class="record cand">
+      <div class="meta"><span class="chip-demo candidate">候选</span><time>09:41 · 8 MESSAGES</time></div>
+      <h3>产品规格文档待定稿</h3>
+      <p>虚线边与浅蓝底标记 candidate：内容含模型辅助整理，待用户判断。</p>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <span class="k">NAMEPLATE · SEAL · TICKET</span>
+      <div class="row" style="align-items:center">
+        <span class="nameplate"><b>09·17</b><span>2026</span></span>
+        <span class="seal" title="confirmed seal">确</span>
+        <span style="font-size:12.5px;color:var(--muted)">铭牌记日期，印章记判断，票根记流程。</span>
+      </div>
+      <div class="ticket">
+        <div class="stub"><i>01</i><span>同步</span></div>
+        <div class="stub on"><i>02</i><span>浏览</span></div>
+        <div class="stub"><i>03</i><span>展览</span></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <span class="k">EXCERPT SLIP · 摘录单</span>
+      <div class="slip">
+        <q>帮我调研一下这个项目，看下有没有和这个项目结合的机会。</q>
+        <footer>首条用户消息 · CLAUDE · L12 · SHA-256 8f3a…c21e</footer>
+      </div>
+      <p style="margin-top:10px;font-size:12.5px;color:var(--muted)">引文永远可展开到原文行号与指纹——证据是界面的地基，不是装饰。</p>
+    </div>
+  </section>
+
+  <footer class="page">
+    <p>昼夜双馆 · DM Design Language v2 · 2026-09-17。本页由 UI Designer 生成，自身即用该语言写成：右上角切换登记，全页 token 同步换值。</p>
+    <p>不变量：状态契约唯一来源；模型产出永不 verified；无脚本导出与本地优先约束继续成立；reduced-motion 与键盘焦点为验收项。</p>
+  </footer>
+
+</div>
+<div class="toast" id="toast">已复制</div>
+
+<script>
+  var root = document.documentElement;
+  var toggle = document.getElementById("regToggle");
+  var label = document.getElementById("regLabel");
+  toggle.addEventListener("click", function () {
+    var night = root.getAttribute("data-register") === "night";
+    root.setAttribute("data-register", night ? "day" : "night");
+    toggle.setAttribute("aria-pressed", String(!night));
+    label.textContent = night ? "开馆 · 切到夜馆" : "夜馆 · 切回开馆";
+  });
+  var toast = document.getElementById("toast");
+  var toastTimer = null;
+  function showToast(text) {
+    toast.textContent = text;
+    toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toast.classList.remove("show"); }, 1400);
+  }
+  document.querySelectorAll(".swatch").forEach(function (el) {
+    el.addEventListener("click", function () {
+      var key = el.getAttribute("data-hex");
+      var night = root.getAttribute("data-register") === "night";
+      var values = {
+        paper:  night ? "#0b0b0d" : "#efeae3", card:  night ? "#141416" : "#f8f5f0",
+        ink:    night ? "#f5f5f7" : "#1a1714", muted: night ? "#9f9fa0" : "#6e675b",
+        blue:   night ? "#a9c2e8" : "#3e5871", gold:  night ? "#e0b874" : "#8c6d3f",
+        green:  night ? "#9fd6c2" : "#47755e", rust:  night ? "#e59a86" : "#9c4a2f",
+        "hall-1": night ? "#847dff" : "#7d76c9", "hall-2": night ? "#dd90d8" : "#c68bc2",
+        "hall-3": night ? "#90b8f0" : "#7f9cc8", "hall-4": night ? "#d1c9ff" : "#b0a8e8"
+      };
+      var hex = values[key] || key;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(hex).then(function () { showToast("已复制 " + hex); },
+          function () { showToast(hex); });
+      } else { showToast(hex); }
+    });
+  });
+</script>
+</body>
+</html>

@@ -25,6 +25,7 @@ def create_app(
     *,
     database_url: str | None = None,
     upload_dir: Path | None = None,
+    retrospectives_dir: Path | None = None,
     allowed_repo_roots: str | None = None,
     claude_projects_root: str | None = None,
     codex_sessions_root: str | None = None,
@@ -36,6 +37,7 @@ def create_app(
         for key, value in {
             "database_url": database_url,
             "upload_dir": upload_dir,
+            "retrospectives_dir": retrospectives_dir,
             "allowed_repo_roots": allowed_repo_roots,
             "claude_projects_root": claude_projects_root,
             "codex_sessions_root": codex_sessions_root,

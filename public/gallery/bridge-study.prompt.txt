@@ -1,0 +1,11 @@
+Use case: photorealistic-natural
+Asset type: one fine-art gallery raster photograph for Digital Museum; portrait 3:4.
+Primary request: translucent stacked glass sheets and one piece of white paper folded into a small bridge form a single elegant sculpture, with a few delicate cool-blue threads through the center. The abstract theme is letting records connect to each other.
+Scene/backdrop: seamless evenly pale ice-blue-gray background and surface, no visible horizon, no environment or extra props.
+Subject: a tactile minimalist tabletop sculpture; several translucent glass plates with fine visible edges form layered supports, and a sheet of white handmade paper folds into a graceful small bridge linking them. A restrained amount of thin cool-blue thread passes through the center to connect the arrangement.
+Style/medium: premium editorial fine-art still-life photography, part of the same series as a cream handmade paper sculpture bound with fine golden thread. True optical material realism, never CGI or flat illustration.
+Composition/framing: vertical 3:4, entire sculpture in frame, subject centered and filling approximately 70 percent of the picture, clear sculptural silhouette, quiet pale negative space.
+Lighting/mood: very soft natural window light from upper left, delicate true reflections and refraction on glass, richly layered soft shadows, luminous and serene.
+Color palette: uniformly pale ice-blue-gray backdrop, white paper, mostly colorless translucent glass, only a few restrained cool-blue threads.
+Materials/textures: delicate paper fibers, physically plausible folded paper, smooth translucent glass with precise fine edges, natural contact shadows and subtle light transmission.
+Constraints: only the finished artwork photograph; no words, lettering, text, logos, watermarks, frames, interface, people, historical scene, photographic record, architectural location or event implication. No extra objects, no flowers, no excessive ribbons, no saturated neon blue, no dark backdrop, no flat clipart, no artificial plastic look.

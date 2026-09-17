@@ -17,6 +17,7 @@ class Settings(BaseSettings):
 
     database_url: str = f"sqlite:///{PROJECT_ROOT / 'data' / 'digital_museum.db'}"
     upload_dir: Path = PROJECT_ROOT / "data" / "uploads"
+    retrospectives_dir: Path = PROJECT_ROOT / "outputs" / "retrospectives"
     allowed_repo_roots: str = "~"
     claude_projects_root: str = "~/.claude/projects"
     codex_sessions_root: str = "~/.codex/sessions"

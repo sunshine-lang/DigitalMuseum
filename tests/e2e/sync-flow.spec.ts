@@ -108,6 +108,38 @@ test("增量同步：新会话并入，旧经历不重复", async ({ page, e2eEn
   ).toHaveCount(2);
 });
 
+test("Codex 新格式：读取真实发言，忽略镜像，未知结构保留旧档案并说明原因", async ({ page, e2eEnv }) => {
+  const cwd = join(e2eEnv.projectsRoot, "modern-project");
+  mkdirSync(cwd, { recursive: true });
+  const root = e2eEnv.codexSessionsRoot;
+  const file = join(root, "rollout-modern.jsonl");
+  const user = { timestamp: TS, type: "event_msg", payload: {
+    type: "item_completed", thread_id: "thread-one", turn_id: "turn-one",
+    item: { type: "UserMessage", id: "u1", content: [{ type: "text", text: "请检查新版会话读取" }] },
+  } };
+  const original = [
+    { type: "session_meta", payload: { cwd, thread_source: "user", id: "thread-one" } },
+    user,
+    { timestamp: TS, type: "response_item", payload: { type: "message", role: "user", id: "mirror-u1",
+      content: [{ type: "input_text", text: "请检查新版会话读取" }], internal_chat_message_metadata_passthrough: { turn_id: "turn-one" } } },
+  ].map(record => JSON.stringify(record)).join("\n") + "\n";
+  writeFileSync(file, original);
+  writeCodexRollout(e2eEnv, "2026-05-11", "rollout-old.jsonl", "legacy-project");
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "档案时间线 · 2 段经历" })).toBeVisible({ timeout: 20_000 });
+  const before = await (await page.request.get("http://127.0.0.1:8010/api/v1/archive/events")).json();
+  const modern = before.data.find((event: { project_label: string }) => event.project_label === "modern-project");
+  expect(modern.claims[0].text).toContain("共 1 条用户消息");
+  expect(modern.claims[0].text).toContain("请检查新版会话读取");
+  const bad = { timestamp: TS, type: "event_msg", payload: { type: "item_completed", item: { type: "FutureUserMessage" } } };
+  writeFileSync(file, original + JSON.stringify(bad) + "\n");
+  await page.getByRole("button", { name: /1 同步会话/ }).click();
+  await page.getByRole("button", { name: "同步本机全部会话" }).click();
+  await expect(page.locator(".mvp-sync-failures")).toContainText("Codex 消息格式暂不支持，该项目原档案保持不变");
+  const after = await (await page.request.get("http://127.0.0.1:8010/api/v1/archive/events")).json();
+  expect(after).toEqual(before);
+});
+
 test("异议通道：verified 经历可被用户推翻", async ({ page, e2eEnv }) => {
   writeCodexRollout(e2eEnv, "2026-05-10", "rollout-a.jsonl", "proj");
   await page.goto("/");
@@ -140,16 +172,16 @@ test("展览：档案封面由数据推导，系统核实徽标与导出就位",
 
   await page.goto("/exhibition");
   await expect(
-    page.getByRole("heading", { name: "第一步 · 选择要展出的经历" }),
+    page.getByRole("heading", { name: "选择这次想回看的项目" }),
   ).toBeVisible();
   await page.getByRole("button", { name: /开馆 · 展出已选的/ }).click();
   await expect(
-    page.getByRole("heading", { name: "我的 Agent 协作档案" }),
+    page.getByRole("heading", { name: "我的协作时刻" }),
   ).toBeVisible();
   await expect(page.getByText("2026-05-10 — 2026-05-10")).toBeVisible();
-  const badge = page.locator(".expo-seal.sys").first();
+  const badge = page.locator(".depth-status").first();
   await expect(badge).toBeVisible();
-  await expect(badge).toHaveText("系统核实");
+  await expect(badge).toContainText("系统核实");
   await expect(
     page.getByRole("button", { name: "导出展览（HTML）" }),
   ).toBeVisible();

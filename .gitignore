@@ -58,3 +58,6 @@ next-env.d.ts
 .e2e/
 playwright-report/
 test-results/
+
+# WorkBuddy 项目记忆（本地）
+/.workbuddy/

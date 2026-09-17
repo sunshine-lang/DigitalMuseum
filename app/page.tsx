@@ -476,6 +476,14 @@ function SyncView({ syncing, summary, busy, wipeArmed, onSync, onWipeArm, onWipe
 
 function SyncSummaryPanel({ summary }: { summary: ArchiveSyncSummary }) {
   const failed = summary.products.filter((item) => item.status === "failed");
+  const readingErrors: Record<string, string> = {
+    unsupported_codex_message: "Codex 消息格式暂不支持，该项目原档案保持不变",
+    invalid_codex_message_time: "Codex 消息时间无法读取，该项目原档案保持不变",
+    conflicting_codex_message: "Codex 同一消息的记录存在冲突，该项目原档案保持不变",
+    incomplete_codex_history: "Codex 续接历史不完整，该项目原档案保持不变",
+    ambiguous_codex_history: "Codex 存在多条续接分支，暂不能确定采用哪条历史",
+    no_codex_sessions: "没有找到可可靠读取的 Codex 发言，未写入零消息档案",
+  };
   return (
     <div className="mvp-sync-summary" aria-label="上次同步结果">
       <dl>
@@ -488,7 +496,7 @@ function SyncSummaryPanel({ summary }: { summary: ArchiveSyncSummary }) {
         <ul className="mvp-sync-failures">
           {failed.map((item) => (
             <li key={`${item.product}-${item.project}`}>
-              {item.project}（{item.product}）：{item.error_code ?? "未知错误"}
+              {item.project}（{item.product}）：{readingErrors[item.error_code ?? ""] ?? item.error_code ?? "未知错误"}
             </li>
           ))}
         </ul>
