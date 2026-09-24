@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>DigitalMuseum · F01 本机会话接入原型</title>
+  <style>
+    :root { font-family: Inter, "PingFang SC", "Noto Sans SC", system-ui, sans-serif; color: #f8f3eb; background: #191615; font-synthesis: none; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid #f2c88a; outline-offset: 3px; }
+    .room { position: relative; min-height: 865px; overflow: hidden; isolation: isolate; background: radial-gradient(ellipse 42% 42% at 51% 37%, #80634d 0, #3f3029 44%, transparent 100%), linear-gradient(#27211e, #171514 75%); }
+    .room::before { content: ""; position: absolute; z-index: -1; inset: 0; opacity: .34; background: repeating-linear-gradient(90deg, transparent 0 16%, #100e0c 16.2% 17%, #604839 17.2% 18%, transparent 19% 33%); filter: blur(13px); mask-image: linear-gradient(#000, transparent 86%); }
+    .room::after { content: ""; position: absolute; z-index: -1; left: -8%; right: -8%; bottom: -115px; height: 285px; background: radial-gradient(ellipse 50% 90% at 50% 0, #947254 0, #3d2d23 44%, #161413 77%); transform: perspective(900px) rotateX(50deg); opacity: .78; }
+    .chrome { width: min(1020px, calc(100% - 40px)); min-height: 54px; margin: 25px auto 0; padding: 6px 13px; display: flex; justify-content: space-between; align-items: center; gap: 20px; border: 1px solid #ffffff35; border-radius: 999px; background: #ffffff14; box-shadow: 0 12px 40px #0004, inset 0 1px #ffffff20; backdrop-filter: blur(22px); }
+    .brand { display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 750; letter-spacing: .1em; white-space: nowrap; }
+    .brand-mark { width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid #e6c18d; border-radius: 50%; color: #e6c18d; font: 16px Georgia, serif; }
+    .chrome-middle { color: #e8dfd3; font-size: 13px; }
+    .chrome-state { color: #d8c3a8; font-size: 11px; letter-spacing: .08em; white-space: nowrap; }
+    .hero-copy { margin: 47px auto 0; padding: 0 20px; text-align: center; }
+    .eyebrow { display: block; color: #e7bf89; font-size: 11px; font-weight: 750; letter-spacing: .2em; text-transform: uppercase; }
+    .hero-copy h1 { margin: 12px 0 0; font-size: clamp(30px, 3.7vw, 48px); font-weight: 550; line-height: 1.16; letter-spacing: -.045em; }
+    .hero-copy p { margin: 12px auto 0; color: #d3c7ba; max-width: 700px; font-size: 15px; line-height: 1.65; }
+    .stage { position: relative; width: min(1080px, 100%); height: 475px; margin: 33px auto 0; perspective: 1000px; }
+    .stage::before { content: ""; position: absolute; left: 50%; top: 50px; width: 440px; height: 430px; transform: translateX(-50%); border-radius: 50%; background: #d19b7630; filter: blur(68px); pointer-events: none; }
+    .source-card { position: absolute; top: 0; width: 350px; height: 430px; padding: 0; overflow: hidden; text-align: left; color: #fff; border: 1px solid #ffffff85; border-radius: 22px; background: #54483f; box-shadow: 0 28px 68px #000a, inset 0 1px #fff6; transition: transform 300ms cubic-bezier(.2,.75,.2,1), filter 300ms ease, opacity 300ms ease; -webkit-tap-highlight-color: transparent; }
+    .source-card[data-position="center"] { left: calc(50% - 175px); transform: scale(1.04); z-index: 2; }
+    .source-card[data-position="side-left"] { left: calc(50% - 455px); transform: translateY(34px) rotateY(14deg) scale(.82); opacity: .78; filter: brightness(.78); z-index: 1; }
+    .source-card[data-position="side-right"] { left: calc(50% + 160px); transform: translateY(34px) rotateY(-14deg) scale(.82); opacity: .78; filter: brightness(.78); z-index: 1; }
+    .source-card:hover:not([data-position="center"]) { opacity: .95; filter: brightness(.92); }
+    .source-card img { display: block; width: 100%; height: 100%; object-fit: cover; filter: sepia(.14) saturate(.82); }
+    .source-card::after { content: ""; position: absolute; inset: 30% 0 0; background: linear-gradient(transparent, #14131177 48%, #10100ef2); pointer-events: none; }
+    .card-top, .card-copy { position: absolute; z-index: 1; left: 22px; right: 22px; }
+    .card-top { top: 21px; display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 10px; font-weight: 750; letter-spacing: .12em; text-shadow: 0 1px 6px #0008; }
+    .card-status { max-width: 145px; padding: 7px 10px; border: 1px solid #ffffff8a; border-radius: 999px; background: #1118; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .card-copy { bottom: 24px; }
+    .card-copy strong { display: block; font-size: 30px; font-weight: 650; letter-spacing: -.04em; }
+    .card-copy span { display: block; margin-top: 8px; color: #eee6dc; font-size: 13px; line-height: 1.55; }
+    .card-copy small { display: block; margin-top: 15px; color: #d7c5b5; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .control-dock { width: min(440px, calc(100% - 40px)); min-height: 72px; margin: 4px auto 0; padding: 8px 10px; display: flex; align-items: center; gap: 12px; border: 1px solid #ffffff40; border-radius: 999px; background: #ffffff19; box-shadow: 0 15px 45px #0007; backdrop-filter: blur(24px); }
+    .round-button { width: 44px; height: 44px; flex: none; border: 1px solid #ffffff42; border-radius: 50%; color: #fff; background: #ffffff19; font-size: 22px; }
+    .round-button:hover { background: #ffffff30; }
+    .dock-copy { flex: 1; min-width: 0; }
+    .dock-copy strong, .dock-copy span { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .dock-copy strong { font-size: 13px; }
+    .dock-copy span { margin-top: 3px; color: #d6c8b9; font-size: 11px; }
+    .scan-button { min-height: 44px; padding: 0 18px; border: 0; border-radius: 999px; color: #1c1a18; background: #e8c38d; font-weight: 700; white-space: nowrap; }
+    .scan-button:disabled { opacity: .6; cursor: wait; }
+    .room-note { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px 20px; margin: 24px 20px 0; color: #cfc3b7; font-size: 11px; }
+    .room-note span::before { content: "•"; margin-right: 7px; color: #e7bf89; }
+    .workbench { color: #1d252e; background: #f4f1ea; padding: 78px max(24px, calc((100vw - 1160px)/2)) 95px; }
+    .workbench-head { display: flex; justify-content: space-between; align-items: start; gap: 30px; padding-bottom: 30px; border-bottom: 1px solid #d4ccc1; }
+    .workbench .eyebrow { color: #795b37; }
+    .workbench h2 { margin: 10px 0 0; font-size: clamp(28px, 3.2vw, 40px); line-height: 1.2; letter-spacing: -.045em; }
+    .workbench-head p { max-width: 640px; margin: 11px 0 0; color: #57616c; font-size: 15px; line-height: 1.75; }
+    .prototype-badge { padding: 9px 13px; border: 1px solid #c7bfb4; border-radius: 999px; color: #675848; font-size: 12px; white-space: nowrap; }
+    .bench-grid { display: grid; grid-template-columns: minmax(0,1fr) 298px; gap: 24px; margin-top: 28px; }
+    .detail-panel { padding: 30px; border: 1px solid #d6cfc5; border-radius: 16px; background: #fffdf9; }
+    .detail-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: start; gap: 18px; }
+    .detail-head h3 { margin: 0; font-size: 26px; line-height: 1.25; }
+    .status-badge { display: inline-flex; align-items: center; min-height: 29px; padding: 4px 10px; border: 1px solid #c3bdb4; border-radius: 999px; color: #625d56; background: #f3f0ea; font-size: 12px; font-weight: 700; }
+    .status-badge[data-tone="good"] { border-color: #a8c1ad; background: #edf3ee; color: #356348; }
+    .status-badge[data-tone="warn"] { border-color: #dac59d; background: #f8f0e1; color: #74511e; }
+    .status-badge[data-tone="bad"] { border-color: #d3a698; background: #f9eae5; color: #913f2b; }
+    .detail-copy { margin: 14px 0 25px; color: #58616b; font-size: 14px; line-height: 1.75; }
+    .data-list { display: grid; grid-template-columns: 148px minmax(0,1fr); gap: 13px 18px; margin: 0; padding: 22px 0; border-top: 1px solid #e2dbd1; border-bottom: 1px solid #e2dbd1; }
+    .data-list dt { color: #77736e; font-size: 13px; }
+    .data-list dd { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 14px; font-weight: 600; }
+    .path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px !important; }
+    .detail-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 23px; }
+    .detail-actions button, .scenario button, .next-button { min-height: 44px; padding: 9px 15px; border-radius: 7px; border: 1px solid #cfc4b7; color: #1d252e; background: #fffdf9; font-size: 13px; font-weight: 650; }
+    .detail-actions button:hover, .scenario button:hover { border-color: #795b37; }
+    .detail-actions button.primary, .next-button { border-color: #1d252e; color: #fff; background: #1d252e; }
+    .path-editor { margin-top: 22px; padding: 20px; border: 1px solid #d7cbb9; border-radius: 9px; background: #f7f2eb; }
+    .path-editor[hidden] { display: none; }
+    .path-editor label { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 700; }
+    .path-editor input { display: block; width: 100%; min-height: 44px; padding: 9px 12px; border: 1px solid #b5aa9c; border-radius: 5px; color: #1d252e; background: #fff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+    .path-editor p { margin: 9px 0 12px; color: #6c6660; font-size: 12px; line-height: 1.6; }
+    .path-editor button { min-height: 40px; border: 0; padding: 8px 11px; border-radius: 5px; color: #6b4c2d; background: #ebe0d1; }
+    .side-panel { align-self: start; padding: 25px; background: #e9e4dc; border-top: 3px solid #795b37; }
+    .side-panel h3 { margin: 0 0 16px; font-size: 17px; }
+    .side-panel p { margin: 0 0 17px; color: #505b66; font-size: 13px; line-height: 1.7; }
+    .side-panel strong { color: #1d252e; }
+    .side-panel p:last-child { margin-bottom: 0; }
+    .scan-summary { margin-top: 26px; padding: 22px 25px; border-radius: 11px; background: #eee8df; }
+    .scan-summary h3 { margin: 0 0 14px; font-size: 17px; }
+    .summary-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
+    .summary-grid div { min-height: 72px; padding: 12px 15px; border: 1px solid #d3c9bc; border-radius: 7px; background: #f9f6f0; }
+    .summary-grid strong { display: block; font-size: 24px; line-height: 1.2; }
+    .summary-grid span { display: block; margin-top: 4px; color: #646d74; font-size: 12px; }
+    .summary-note { margin: 12px 0 0; color: #5c6670; font-size: 13px; line-height: 1.6; }
+    .bottom-actions { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 15px; margin-top: 28px; }
+    .bottom-actions p { max-width: 660px; margin: 0; color: #69727b; font-size: 12px; line-height: 1.6; }
+    .next-button:disabled { opacity: .45; cursor: not-allowed; }
+    .scenario { margin-top: 46px; padding-top: 23px; border-top: 1px solid #d9d1c7; }
+    .scenario h3 { margin: 0 0 8px; font-size: 13px; color: #66594c; letter-spacing: .08em; }
+    .scenario p { margin: 0 0 13px; color: #6b7379; font-size: 12px; }
+    .scenario-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+    .scenario button { min-height: 38px; font-size: 12px; font-weight: 500; background: transparent; }
+    dialog { max-width: min(520px, calc(100% - 32px)); padding: 30px; border: 1px solid #d4c9bc; border-radius: 15px; color: #1d252e; background: #fffdf9; box-shadow: 0 20px 80px #0007; }
+    dialog::backdrop { background: #121311bb; backdrop-filter: blur(6px); }
+    dialog h2 { margin: 10px 0; font-size: 25px; }
+    dialog p, dialog li { color: #56616b; line-height: 1.65; font-size: 14px; }
+    dialog button { min-height: 44px; padding: 9px 18px; border: 0; border-radius: 7px; background: #1d252e; color: #fff; }
+    @media (max-width: 850px) {
+      .room { min-height: 830px; }
+      .chrome-middle { display: none; }
+      .stage { height: 465px; }
+      .source-card[data-position="center"] { left: 50%; transform: translateX(-50%) scale(1); }
+      .source-card[data-position="side-left"] { left: 50%; transform: translateX(calc(-50% - 255px)) translateY(34px) scale(.82); }
+      .source-card[data-position="side-right"] { left: 50%; transform: translateX(calc(-50% + 255px)) translateY(34px) scale(.82); }
+      .bench-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 540px) {
+      .room { min-height: 776px; }
+      .chrome { width: calc(100% - 26px); margin-top: 14px; }
+      .chrome-state { display: none; }
+      .hero-copy { margin-top: 52px; }
+      .hero-copy p { max-width: 310px; }
+      .stage { height: 414px; margin-top: 26px; }
+      .source-card { width: min(300px, 76vw); height: 390px; }
+      .source-card[data-position="side-left"] { transform: translateX(calc(-50% - 198px)) translateY(29px) scale(.8); }
+      .source-card[data-position="side-right"] { transform: translateX(calc(-50% + 198px)) translateY(29px) scale(.8); }
+      .source-card:not([data-position="center"]) .card-top, .source-card:not([data-position="center"]) .card-copy { opacity: 0; }
+      .card-copy strong { font-size: 25px; }
+      .control-dock { margin-top: 0; }
+      .round-button { width: 40px; height: 40px; }
+      .scan-button { font-size: 12px; padding: 0 13px; }
+      .room-note { margin-top: 17px; }
+      .workbench { padding: 65px 20px 80px; }
+      .workbench-head { display: block; }
+      .prototype-badge { display: inline-block; margin-top: 17px; }
+      .detail-panel { padding: 22px; }
+      .data-list { grid-template-columns: 1fr; gap: 5px; }
+      .data-list dd { margin-bottom: 10px; }
+      .summary-grid { grid-template-columns: repeat(3,1fr); gap: 6px; }
+      .summary-grid div { padding: 10px; }
+      .summary-grid strong { font-size: 19px; }
+      .summary-grid span { font-size: 10px; }
+    }
+    @media (prefers-reduced-motion: reduce) { .source-card { transition: none; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="room" aria-labelledby="hero-title">
+      <nav class="chrome" aria-label="DigitalMuseum 演示导航">
+        <span class="brand"><span class="brand-mark" aria-hidden="true">M</span>DIGITALMUSEUM</span>
+        <span class="chrome-middle">F01 / 本机会话接入</span>
+        <span class="chrome-state">PROTOTYPE · NO FILE ACCESS</span>
+      </nav>
+      <header class="hero-copy">
+        <span class="eyebrow">01 / Connect your sessions</span>
+        <h1 id="hero-title">先找到你的会话</h1>
+        <p>检查 Claude Code 与 Codex 的本地目录。读取只在本机进行；生成项目回顾需要你之后单独确认。</p>
+      </header>
+      <div class="stage" aria-label="支持的本机会话来源">
+        <button class="source-card" type="button" data-source="claude" data-position="center" aria-label="查看 Claude Code 来源" aria-current="true">
+          <img src="../../public/gallery/gathered-pages-v2.png" alt="">
+          <span class="card-top"><span>SOURCE / 01</span><span class="card-status" data-card-status="claude">待检查</span></span>
+          <span class="card-copy"><strong>Claude Code</strong><span>把散落的会话归到所属项目。</span><small>~/.claude/projects</small></span>
+        </button>
+        <button class="source-card" type="button" data-source="codex" data-position="side-right" aria-label="查看 Codex 来源">
+          <img src="../../public/gallery/continuous-light.png" alt="">
+          <span class="card-top"><span>SOURCE / 02</span><span class="card-status" data-card-status="codex">待检查</span></span>
+          <span class="card-copy"><strong>Codex</strong><span>保留记录与解释之间的连接。</span><small>~/.codex/sessions</small></span>
+        </button>
+      </div>
+      <div class="control-dock">
+        <button class="round-button" id="switch-source" type="button" aria-label="切换来源">‹</button>
+        <div class="dock-copy" aria-live="polite"><strong id="dock-title">Claude Code</strong><span id="dock-subtitle">默认目录待检查</span></div>
+        <button class="scan-button" id="scan-all" type="button">检查本机目录</button>
+      </div>
+      <div class="room-note"><span>本原型不读真实文件</span><span>正式接入须只读源会话</span><span>目录检查不会调用模型</span><span>图片仅为装饰插画</span></div>
+    </section>
+
+    <section class="workbench" aria-labelledby="bench-title">
+      <header class="workbench-head">
+        <div><span class="eyebrow">Source inspection / 接入检查台</span><h2 id="bench-title">看清每个来源的结果</h2><p>目录缺失、没有会话和读取失败分别呈现。只有明确可读的会话才进入后续项目列表。</p></div>
+        <span class="prototype-badge">交互原型 · 合成数据</span>
+      </header>
+      <div class="bench-grid">
+        <section class="detail-panel" aria-labelledby="detail-title">
+          <div class="detail-head"><h3 id="detail-title">Claude Code</h3><span class="status-badge" id="detail-status" data-tone="neutral">待检查</span></div>
+          <p class="detail-copy" id="detail-copy" aria-live="polite">尚未检查默认目录。点击上方“检查本机目录”，查看两个来源的模拟读取结果。</p>
+          <dl class="data-list"><dt>当前目录</dt><dd class="path" id="detail-path">~/.claude/projects</dd><dt>可读会话</dt><dd id="detail-count">—</dd><dt>覆盖时间</dt><dd id="detail-range">—</dd><dt>跳过记录</dt><dd id="detail-skipped">—</dd></dl>
+          <div class="detail-actions"><button type="button" id="change-path">指定其他目录</button><button class="primary" type="button" id="scan-selected">重新检查此来源</button></div>
+          <div class="path-editor" id="path-editor" hidden><label for="custom-path">自选会话目录</label><input id="custom-path" type="text" autocomplete="off" placeholder="例如 ~/AgentSessions/claude"><p>这里仅演示目录设置，不访问这台电脑的任何文件。正式产品需校验路径并只读扫描。</p><button type="button" id="fill-example">填入示例目录</button></div>
+        </section>
+        <aside class="side-panel" aria-label="本地处理说明"><h3>接入时会发生什么？</h3><p><strong>读取范围</strong><br>只检查 Claude Code、Codex 的约定目录或你指定的目录。</p><p><strong>不会发生</strong><br>不修改源会话，也不把会话自动发送给模型服务。</p><p><strong>下一步</strong><br>先列出可辨认的项目；选择项目后，再读取相关多轮对话。</p></aside>
+      </div>
+      <section class="scan-summary" aria-labelledby="summary-title"><h3 id="summary-title">本次检查</h3><div class="summary-grid"><div><strong id="summary-found">—</strong><span>可读来源</span></div><div><strong id="summary-sessions">—</strong><span>可读会话</span></div><div><strong id="summary-skipped">—</strong><span>跳过记录</span></div></div><p class="summary-note" id="summary-note" aria-live="polite">尚未检查。示例数字只用于展示界面状态。</p></section>
+      <div class="bottom-actions"><p>本原型没有读取本机 Agent 目录，也没有调用模型。正式产品需在读取、路径校验和失败恢复上独立验收。</p><button class="next-button" id="next-step" type="button" disabled>继续查看项目列表 →</button></div>
+      <div class="scenario"><h3>原型状态演示</h3><p>下列按钮只改变当前选中来源的模拟状态，不属于正式产品界面。</p><div class="scenario-controls"><button type="button" data-demo="empty">目录存在但无会话</button><button type="button" data-demo="error">读取失败</button><button type="button" data-demo="partial">部分跳过</button><button type="button" data-demo="reset">重置演示</button></div></div>
+    </section>
+  </main>
+  <script src="prototype-storage.js"></script>
+  <script>
+    const sources = {
+      claude: { name: 'Claude Code', defaultPath: '~/.claude/projects', customPath: '', status: 'idle', count: null, skipped: null, range: null },
+      codex: { name: 'Codex', defaultPath: '~/.codex/sessions', customPath: '', status: 'idle', count: null, skipped: null, range: null }
+    };
+    const labels = { idle: '待检查', checking: '检查中', found: '已找到', missing: '目录未找到', empty: '没有可读会话', partial: '部分记录跳过', error: '读取失败' };
+    const descriptions = {
+      idle: '尚未检查默认目录。点击上方“检查本机目录”，查看两个来源的模拟读取结果。',
+      checking: '正在模拟检查目录。此步骤不调用模型，也不读取这台电脑的真实文件。',
+      found: '已找到可读会话。正式产品仍需报告具体覆盖范围和跳过原因。',
+      missing: '默认目录未找到。可以指定其他目录；这不等于“0 条会话”。',
+      empty: '目录存在，但没有可读的会话。可以指定其他目录或继续使用另一个来源。',
+      partial: '已读取一部分会话，另有记录跳过。继续前可以查看跳过数量与原因。',
+      error: '目录读取失败。可重试或改用其他目录；其他来源的已有结果保持不变。'
+    };
+    let selected = 'claude';
+    let scanToken = 0;
+    let restoreStatuses = null;
+    const keys = Object.keys(sources);
+    const $ = id => document.getElementById(id);
+    const currentPath = source => source.customPath || source.defaultPath;
+    const statusTone = status => ['found'].includes(status) ? 'good' : ['missing','empty','partial'].includes(status) ? 'warn' : status === 'error' ? 'bad' : 'neutral';
+    function render() {
+      const s = sources[selected];
+      document.querySelectorAll('.source-card').forEach(card => {
+        const key = card.dataset.source;
+        card.dataset.position = key === selected ? 'center' : key === 'claude' ? 'side-left' : 'side-right';
+        if (key === selected) card.setAttribute('aria-current','true'); else card.removeAttribute('aria-current');
+        card.querySelector('[data-card-status]').textContent = labels[sources[key].status];
+        card.querySelector('.card-copy small').textContent = currentPath(sources[key]);
+      });
+      $('dock-title').textContent = s.name;
+      $('dock-subtitle').textContent = labels[s.status] + (s.status === 'found' || s.status === 'partial' ? ` · ${s.count} 会话` : '');
+      $('detail-title').textContent = s.name;
+      $('detail-status').textContent = labels[s.status];
+      $('detail-status').dataset.tone = statusTone(s.status);
+      $('detail-copy').textContent = descriptions[s.status];
+      $('detail-path').textContent = currentPath(s);
+      $('detail-count').textContent = s.count == null ? '—' : `${s.count} 条（演示）`;
+      $('detail-range').textContent = s.range || '—';
+      $('detail-skipped').textContent = s.skipped == null ? '—' : `${s.skipped} 条（演示）`;
+      $('custom-path').value = s.customPath;
+      const found = keys.filter(key => ['found','partial'].includes(sources[key].status));
+      const scanned = keys.some(key => sources[key].status !== 'idle');
+      $('summary-found').textContent = scanned ? String(found.length) : '—';
+      $('summary-sessions').textContent = scanned ? String(found.reduce((n,key) => n + (sources[key].count || 0),0)) : '—';
+      $('summary-skipped').textContent = scanned ? String(found.reduce((n,key) => n + (sources[key].skipped || 0),0)) : '—';
+      $('summary-note').textContent = !scanned ? '尚未检查。示例数字只用于展示界面状态。' : found.length ? '演示结果：可以进入 F02 查看项目；未找到或失败的来源仍保留提示。' : '尚无可读来源。请指定目录或重试；这不是“没有任何历史”的结论。';
+      $('next-step').disabled = found.length === 0;
+      const checking = keys.some(key => sources[key].status === 'checking');
+      $('scan-all').textContent = checking ? '取消检查' : scanned ? '重新检查本机目录' : '检查本机目录';
+      $('scan-all').setAttribute('aria-busy',String(checking));
+      $('scan-selected').disabled = checking;
+    }
+    function select(key) { selected = key; $('path-editor').hidden = true; render(); }
+    function applyResult(key) {
+      const s = sources[key];
+      if (key === 'claude') { s.status = s.customPath ? 'found' : 'partial'; s.count = 86; s.skipped = s.customPath ? 0 : 2; s.range = '2026-07-01 — 2026-09-20（演示）'; }
+      else if (s.customPath.trim()) { s.status = 'found'; s.count = 52; s.skipped = 0; s.range = '2026-08-03 — 2026-09-24（演示）'; }
+      else { s.status = 'missing'; s.count = null; s.skipped = null; s.range = null; }
+    }
+    function scan(which) {
+      if (restoreStatuses) { scanToken++; for (const key of keys) sources[key].status = restoreStatuses[key]; restoreStatuses = null; render(); return; }
+      const targets = which === 'all' ? keys : [which];
+      restoreStatuses = Object.fromEntries(keys.map(key => [key,sources[key].status]));
+      targets.forEach(key => sources[key].status = 'checking');
+      const token = ++scanToken;
+      render();
+      window.setTimeout(() => {
+        if (token !== scanToken) return;
+        targets.forEach(applyResult);
+        restoreStatuses = null;
+        render();
+      }, 850);
+    }
+    document.querySelectorAll('.source-card').forEach(card => card.addEventListener('click',() => select(card.dataset.source)));
+    $('switch-source').addEventListener('click',() => select(selected === 'claude' ? 'codex' : 'claude'));
+    $('scan-all').addEventListener('click',() => scan('all'));
+    $('scan-selected').addEventListener('click',() => {
+      if (!$('path-editor').hidden) sources[selected].customPath = $('custom-path').value.trim();
+      scan(selected);
+    });
+    $('change-path').addEventListener('click',() => { $('path-editor').hidden = !$('path-editor').hidden; if (!$('path-editor').hidden) $('custom-path').focus(); });
+    $('custom-path').addEventListener('input',() => { const s = sources[selected]; s.customPath = $('custom-path').value; s.status = 'idle'; s.count = null; s.skipped = null; s.range = null; render(); });
+    $('fill-example').addEventListener('click',() => { $('custom-path').value = selected === 'codex' ? '~/AgentSessions/codex' : '~/AgentSessions/claude'; $('custom-path').focus(); });
+    document.querySelectorAll('[data-demo]').forEach(button => button.addEventListener('click',() => {
+      const mode = button.dataset.demo;
+      if (mode === 'reset') { scanToken++; restoreStatuses = null; for (const key of keys) Object.assign(sources[key],{ customPath:'',status:'idle',count:null,skipped:null,range:null }); selected = 'claude'; $('path-editor').hidden = true; }
+      else { const s = sources[selected]; s.status = mode; s.count = mode === 'partial' ? 34 : mode === 'empty' ? 0 : null; s.skipped = mode === 'partial' ? 3 : null; s.range = mode === 'partial' ? '2026-08-01 — 2026-09-20（演示）' : null; }
+      render();
+    }));
+    $('next-step').addEventListener('click',() => {
+      const query = new URLSearchParams({ from: 'f01' });
+      let skipped = 0;
+      for (const key of keys) {
+        const source = sources[key];
+        query.set(key + 'Status', source.status);
+        if (['found','partial'].includes(source.status)) {
+          query.set(key, String(source.count || 0));
+          const dates = (source.range || '').match(/\d{4}-\d{2}-\d{2}/g);
+          if (dates?.length === 2) {
+            query.set(key + 'Start', dates[0]);
+            query.set(key + 'End', dates[1]);
+          }
+          skipped += source.skipped || 0;
+        }
+      }
+      query.set('skipped', String(skipped));
+      location.href = 'f02-project-list-prototype.html?' + query.toString();
+    });
+    const savedSettings=MuseumStore.settings();
+    for(const key of keys){if(savedSettings.roots[key]!==sources[key].defaultPath)sources[key].customPath=savedSettings.roots[key];}
+    render();
+    scan('all');
+  </script>
+</body>
+</html>

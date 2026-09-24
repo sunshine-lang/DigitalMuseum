@@ -1,0 +1,28 @@
+{
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "old": {
+    "code": "working checkout app/ at 57204da; product UI unchanged",
+    "routes": [
+      "/",
+      "/exhibition?view=gallery"
+    ],
+    "data": "11 synthetic daily events across five demo projects; API requests intercepted; no real backend started"
+  },
+  "new": {
+    "routes": [
+      "f02-project-list-prototype.html",
+      "f05-f08-project-museum-prototype.html"
+    ],
+    "data": "built-in synthetic prototype data; new isolated browser context; no user archive read"
+  },
+  "intercepted": [
+    "POST /api/v1/archive/sync",
+    "GET /api/v1/archive/events",
+    "GET /api/v1/archive/events",
+    "GET /api/v1/retrospectives/exhibits"
+  ],
+  "errors": []
+}

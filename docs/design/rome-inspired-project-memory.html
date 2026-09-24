@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>DigitalMuseum · Project Memory 视觉方向</title>
+  <style>
+    :root {
+      font-family: Inter, "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+      color: #f9f5ee;
+      background: #171514;
+      font-synthesis: none;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; }
+    button { font: inherit; cursor: pointer; }
+    button:focus-visible, a:focus-visible { outline: 2px solid #f2c88a; outline-offset: 4px; }
+    .room {
+      min-height: 960px;
+      position: relative;
+      overflow: hidden;
+      isolation: isolate;
+      background:
+        radial-gradient(ellipse 47% 38% at 50% 38%, #74523d 0%, #403129 45%, transparent 100%),
+        radial-gradient(ellipse 56% 36% at 50% 100%, #5b4535 0%, transparent 100%),
+        linear-gradient(#26211f, #171514 72%);
+    }
+    .room::before {
+      content: "";
+      position: absolute;
+      z-index: -1;
+      inset: 0;
+      opacity: .36;
+      background: repeating-linear-gradient(90deg, transparent 0 16%, #0b0a0a 16.2% 17.2%, #49372f 17.4% 18.3%, transparent 19% 34%);
+      filter: blur(10px);
+      mask-image: linear-gradient(#000 10%, transparent 82%);
+    }
+    .room::after {
+      content: "";
+      position: absolute;
+      inset: auto -10% 0;
+      height: 27%;
+      z-index: -1;
+      background: radial-gradient(ellipse 58% 90% at 50% 0%, #9b7152 0%, #382a22 45%, #171514 75%);
+      transform: perspective(900px) rotateX(49deg) scale(1.12);
+      transform-origin: bottom;
+      opacity: .72;
+    }
+    .chrome {
+      width: min(940px, calc(100% - 44px));
+      min-height: 54px;
+      margin: 28px auto 0;
+      padding: 6px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      border: 1px solid #ffffff2d;
+      border-radius: 999px;
+      background: #ffffff14;
+      box-shadow: 0 12px 38px #0004, inset 0 1px #ffffff1a;
+      backdrop-filter: blur(22px);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 12px; font-weight: 700; letter-spacing: .1em; white-space: nowrap; }
+    .brand-mark { width: 25px; height: 25px; border: 1px solid #e6c18d; border-radius: 50%; display: grid; place-items: center; color: #e6c18d; font-family: Georgia, serif; font-size: 16px; }
+    .chrome-center { font-size: 13px; color: #ebe5dc; letter-spacing: .03em; }
+    .chrome-right { display: flex; align-items: center; gap: 8px; color: #dbd2c7; font-size: 11px; letter-spacing: .08em; }
+    .chrome-icon { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; border: 1px solid #ffffff29; }
+    .room-heading { margin: 60px auto 0; text-align: center; padding: 0 20px; }
+    .eyebrow { display: block; color: #e3bc88; letter-spacing: .24em; text-transform: uppercase; font-size: 10px; font-weight: 700; }
+    .room-heading h1 { margin: 11px 0 0; font-size: clamp(28px, 3.2vw, 43px); line-height: 1.18; font-weight: 500; letter-spacing: -.045em; }
+    .room-heading p { margin: 12px 0 0; color: #cdc4b9; font-size: 14px; }
+    .gallery { width: min(1230px, 100%); height: 548px; margin: 68px auto 0; position: relative; perspective: 1100px; }
+    .gallery::before { content: ""; position: absolute; left: 50%; top: 125px; width: 490px; height: 440px; transform: translateX(-50%); border-radius: 50%; background: #ce926d32; filter: blur(75px); pointer-events: none; }
+    .project-card {
+      position: absolute;
+      top: 0;
+      width: 326px;
+      height: 514px;
+      padding: 0;
+      color: white;
+      text-align: left;
+      overflow: hidden;
+      border: 1px solid #ffffff6b;
+      border-radius: 21px;
+      background: #34302d;
+      box-shadow: 0 27px 55px #0009, inset 0 1px #fff6;
+      transition: transform 300ms cubic-bezier(.2,.75,.2,1), opacity 300ms ease, filter 300ms ease;
+      transform-origin: center bottom;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .project-card[data-position="left"] { left: calc(50% - 477px); transform: translateY(48px) rotateY(18deg) scale(.84); opacity: .74; filter: brightness(.74); z-index: 1; }
+    .project-card[data-position="center"] { left: calc(50% - 163px); transform: translateY(0) scale(1.07); z-index: 3; }
+    .project-card[data-position="right"] { left: calc(50% + 151px); transform: translateY(48px) rotateY(-18deg) scale(.84); opacity: .74; filter: brightness(.74); z-index: 1; }
+    .project-card:hover:not([data-position="center"]) { filter: brightness(.95); opacity: .9; }
+    .project-card img { width: 100%; height: 100%; display: block; object-fit: cover; object-position: center; filter: sepia(.16) saturate(.79); }
+    .project-card::after { content: ""; position: absolute; inset: 35% 0 0; background: linear-gradient(transparent 0%, #1615145e 27%, #11100fec 100%); pointer-events: none; }
+    .card-top, .card-copy { position: absolute; z-index: 1; left: 22px; right: 22px; }
+    .card-top { top: 20px; display: flex; justify-content: space-between; align-items: center; font-size: 10px; letter-spacing: .13em; color: #fff; text-shadow: 0 1px 8px #0008; }
+    .card-pill { padding: 7px 9px; border-radius: 999px; border: 1px solid #ffffff75; background: #15141247; backdrop-filter: blur(12px); }
+    .card-copy { bottom: 23px; }
+    .card-copy strong { display: block; font-weight: 600; font-size: 28px; line-height: 1.15; letter-spacing: -.035em; }
+    .card-copy span { display: block; margin-top: 9px; color: #f1e9de; font-size: 12px; line-height: 1.6; }
+    .card-copy small { display: block; margin-top: 17px; color: #d6c7b5; font-size: 10px; letter-spacing: .03em; }
+    .dock {
+      width: min(366px, calc(100% - 40px));
+      min-height: 72px;
+      margin: 4px auto 0;
+      padding: 8px;
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      border-radius: 999px;
+      border: 1px solid #ffffff3c;
+      background: #ffffff19;
+      box-shadow: 0 13px 45px #0006;
+      backdrop-filter: blur(24px);
+    }
+    .dock button { width: 43px; height: 43px; flex: none; border: 1px solid #ffffff34; border-radius: 50%; background: #ffffff16; color: #fff; font-size: 22px; }
+    .dock button:hover { background: #ffffff30; }
+    .dock .thumb { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; border: 1px solid #fffa; }
+    .dock-copy { flex: 1; min-width: 0; }
+    .dock-copy strong, .dock-copy span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dock-copy strong { font-size: 13px; }
+    .dock-copy span { margin-top: 3px; color: #cec3b7; font-size: 11px; }
+    .dots { display: flex; justify-content: center; gap: 7px; margin: 17px auto 0; }
+    .dots button { width: 7px; height: 7px; padding: 0; border: 0; border-radius: 999px; background: #ffffff56; }
+    .dots button[aria-current="true"] { width: 22px; background: #e9c28b; }
+    .room-footer { display: flex; justify-content: center; gap: 20px; align-items: center; margin: 25px 20px 0; color: #c8bbb0; font-size: 11px; }
+    .room-footer a { color: #f0c991; text-underline-offset: 4px; }
+    .museum { color: #1c232d; background: #f4f1ea; padding: 92px max(28px, calc((100vw - 1140px)/2)) 120px; }
+    .museum-head { display: flex; justify-content: space-between; align-items: start; gap: 32px; border-bottom: 1px solid #cfc9bf; padding-bottom: 42px; }
+    .museum h2 { margin: 10px 0 0; font-size: clamp(30px, 4vw, 48px); letter-spacing: -.045em; line-height: 1.15; }
+    .museum-head p { color: #606873; margin: 14px 0 0; font-size: 15px; max-width: 580px; line-height: 1.7; }
+    .demo-label { border: 1px solid #cfc9bf; border-radius: 999px; padding: 10px 14px; font-size: 12px; white-space: nowrap; }
+    .museum-grid { display: grid; grid-template-columns: minmax(0,1fr) 296px; gap: 50px; margin-top: 45px; }
+    .museum h3 { font-size: 13px; letter-spacing: .15em; text-transform: uppercase; color: #795b37; margin: 0 0 19px; }
+    .state-card { border: 1px solid #d5cec4; border-radius: 15px; padding: 28px; background: #fffcf7; }
+    .state-card strong { display: block; font-size: 25px; letter-spacing: -.025em; }
+    .state-card p { font-size: 15px; color: #5c6470; line-height: 1.7; margin: 12px 0 0; }
+    .timeline { margin-top: 46px; }
+    .event { position: relative; padding: 0 0 34px 30px; border-left: 1px solid #bcb3a8; }
+    .event::before { content: ""; position: absolute; top: 3px; left: -6px; width: 11px; height: 11px; border-radius: 50%; background: #3e5871; }
+    .event:last-child { border-left-color: transparent; padding-bottom: 0; }
+    .event[data-status="confirmed"]::before { background: #47755e; }
+    .event-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-size: 12px; color: #5b6570; }
+    .status { color: #3e5871; font-weight: 700; }
+    .event[data-status="confirmed"] .status { color: #47755e; }
+    .event h4 { margin: 9px 0 6px; font-size: 19px; }
+    .event p { margin: 0; font-size: 14px; color: #5c6470; line-height: 1.65; }
+    .evidence-link { border: 0; background: none; color: #735331; padding: 8px 0; margin-top: 4px; text-decoration: underline; text-underline-offset: 3px; }
+    .side-note { align-self: start; border-top: 3px solid #795b37; padding: 22px; background: #eae4db; }
+    .side-note p { margin: 0 0 16px; color: #4f5862; font-size: 14px; line-height: 1.7; }
+    .side-note p:last-child { margin-bottom: 0; }
+    dialog { max-width: min(600px, calc(100% - 32px)); border: 1px solid #d2c9be; border-radius: 15px; padding: 30px; color: #1c232d; background: #fffcf7; box-shadow: 0 25px 90px #0008; }
+    dialog::backdrop { background: #121415b9; backdrop-filter: blur(6px); }
+    dialog h2 { margin: 10px 0 8px; font-size: 25px; }
+    dialog p { font-size: 14px; line-height: 1.7; color: #56606a; }
+    dialog blockquote { margin: 24px 0; padding: 15px 18px; border-left: 3px solid #795b37; background: #f2eee8; font-size: 16px; line-height: 1.7; }
+    .dialog-close { background: #1c232d; color: white; border: 0; border-radius: 7px; padding: 10px 18px; min-height: 44px; }
+    @media (max-width: 850px) {
+      .room { min-height: 840px; }
+      .chrome-center { display: none; }
+      .gallery { height: 520px; margin-top: 34px; }
+      .project-card { width: min(310px, 72vw); height: 480px; }
+      .project-card[data-position="center"] { left: 50%; transform: translateX(-50%) scale(1); }
+      .project-card[data-position="left"] { left: 50%; transform: translateX(calc(-50% - 218px)) translateY(48px) scale(.82); }
+      .project-card[data-position="right"] { left: 50%; transform: translateX(calc(-50% + 218px)) translateY(48px) scale(.82); }
+      .museum-grid { grid-template-columns: 1fr; gap: 45px; }
+    }
+    @media (max-width: 540px) {
+      .room { min-height: 804px; }
+      .chrome { margin-top: 16px; width: calc(100% - 28px); }
+      .chrome-right { display: none; }
+      .room-heading { margin-top: 52px; }
+      .room-heading p { max-width: 280px; margin-inline: auto; line-height: 1.6; }
+      .gallery { height: 475px; }
+      .project-card { width: min(286px, 76vw); height: 438px; }
+      .project-card[data-position="left"] { transform: translateX(calc(-50% - 187px)) translateY(36px) scale(.79); }
+      .project-card[data-position="right"] { transform: translateX(calc(-50% + 187px)) translateY(36px) scale(.79); }
+      .project-card:not([data-position="center"]) .card-top,
+      .project-card:not([data-position="center"]) .card-copy { opacity: 0; }
+      .card-copy strong { font-size: 23px; }
+      .room-footer { flex-direction: column; gap: 8px; margin-top: 18px; }
+      .museum { padding: 70px 22px 90px; }
+      .museum-head { display: block; }
+      .demo-label { display: inline-block; margin-top: 22px; }
+      .state-card { padding: 21px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .project-card { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="room" aria-label="项目入口视觉示例">
+      <nav class="chrome" aria-label="演示导航">
+        <div class="brand"><span class="brand-mark" aria-hidden="true">M</span>DIGITALMUSEUM</div>
+        <span class="chrome-center">Project Memory / 项目记忆</span>
+        <span class="chrome-right"><span class="chrome-icon" aria-hidden="true">✦</span> LOCAL · PRIVATE</span>
+      </nav>
+      <div class="room-heading">
+        <span class="eyebrow">A place to re-enter your work</span>
+        <h1>重新进入你的项目</h1>
+        <p>从一个项目开始，找回它为什么走到这里。</p>
+      </div>
+      <div class="gallery" aria-label="演示项目，使用左右箭头切换">
+        <button class="project-card" data-index="0" data-position="left" type="button" aria-label="选择 Agent Memory 示例项目">
+          <img src="../../public/gallery/everyday-steps.png" alt="">
+          <span class="card-top"><span>PROJECT / 01</span><span class="card-pill">EXPLORE</span></span>
+          <span class="card-copy"><strong>Agent Memory</strong><span>从日常问题，走向可解释的记忆。</span><small>Codex · 示例项目</small></span>
+        </button>
+        <button class="project-card" data-index="1" data-position="center" type="button" aria-label="选择 DigitalMuseum 示例项目" aria-current="true">
+          <img src="../../public/gallery/gathered-pages-v2.png" alt="">
+          <span class="card-top"><span>PROJECT / 02</span><span class="card-pill">CURRENT FOCUS</span></span>
+          <span class="card-copy"><strong>DigitalMuseum</strong><span>找回 AI 项目为什么会变成今天这样。</span><small>Claude Code + Codex · 示例项目</small></span>
+        </button>
+        <button class="project-card" data-index="2" data-position="right" type="button" aria-label="选择 Local Archive 示例项目">
+          <img src="../../public/gallery/continuous-light.png" alt="">
+          <span class="card-top"><span>PROJECT / 03</span><span class="card-pill">EXPLORE</span></span>
+          <span class="card-copy"><strong>Local Archive</strong><span>让原始记录与新解释保持连接。</span><small>Claude Code · 示例项目</small></span>
+        </button>
+      </div>
+      <div class="dock" aria-label="项目切换控件">
+        <button id="previous" type="button" aria-label="上一个项目">‹</button>
+        <img class="thumb" id="dock-image" src="../../public/gallery/gathered-pages-v2.png" alt="">
+        <div class="dock-copy" aria-live="polite"><strong id="dock-title">DigitalMuseum</strong><span id="dock-subtitle">项目入口示意</span></div>
+        <button id="next" type="button" aria-label="下一个项目">›</button>
+      </div>
+      <div class="dots" aria-label="项目位置">
+        <button type="button" data-go="0" aria-label="第一个项目"></button>
+        <button type="button" data-go="1" aria-label="第二个项目" aria-current="true"></button>
+        <button type="button" data-go="2" aria-label="第三个项目"></button>
+      </div>
+      <div class="room-footer">
+        <span>示意内容 · 图片为通用装饰插画，不是事件现场</span>
+        <a href="#project-museum" id="open-project">查看项目历史示意 ↓</a>
+      </div>
+    </section>
+    <section class="museum" id="project-museum" aria-label="项目历史阅读示例">
+      <header class="museum-head">
+        <div><span class="eyebrow">Project Museum / Read the why</span><h2>DigitalMuseum</h2><p>沉浸式入口之后，回到清晰可读的项目档案。每条重要解释都应能追溯到原始会话。</p></div>
+        <span class="demo-label">视觉演示 · 非真实项目数据</span>
+      </header>
+      <div class="museum-grid">
+        <div>
+          <h3>Where are we now?</h3>
+          <div class="state-card"><strong>验证 Project Memory 对项目重入的价值</strong><p>当前状态需要来源支撑；未判断的部分明确标为“待核对”。示例中的状态、时间和数量均不是产品自动生成的结果。</p></div>
+          <div class="timeline">
+            <h3>How did we get here?</h3>
+            <article class="event" data-status="candidate"><div class="event-meta"><time>08-18</time><span class="status">Candidate · 候选解释</span></div><h4>第一阶段聚焦 Agent Session</h4><p>系统建议的原因仍待用户核对。</p><button class="evidence-link" type="button">查看证据示例 ↗</button></article>
+            <article class="event" data-status="confirmed"><div class="event-meta"><time>08-25</time><span class="status">User confirmed · 用户确认</span></div><h4>暂停多源资料输入</h4><p>示例范围：当前 MVP。旧决定保留，方便解释后续变化。</p><button class="evidence-link" type="button">查看证据示例 ↗</button></article>
+          </div>
+        </div>
+        <aside class="side-note"><h3>Before continuing</h3><p><strong>仍然有效</strong><br>原始会话只读；候选解释需要证据。</p><p><strong>已停止</strong><br>多源资料输入不在当前 MVP 范围。</p><p><strong>待核对</strong><br>重入项目是否比主动回顾更有价值？</p></aside>
+      </div>
+    </section>
+  </main>
+  <dialog id="evidence-dialog" aria-labelledby="dialog-title">
+    <span class="eyebrow">Evidence / 示例</span>
+    <h2 id="dialog-title">原始证据如何呈现</h2>
+    <p>正式产品在这里显示产品、会话时间、定位与上下文。以下引文为视觉占位，不代表真实会话内容。</p>
+    <blockquote>“先聚焦 Agent Session，让重要解释都能返回原文。”</blockquote>
+    <button class="dialog-close" id="close-dialog" type="button">返回项目历史</button>
+  </dialog>
+  <script>
+    const cards = [...document.querySelectorAll('.project-card')];
+    const dots = [...document.querySelectorAll('.dots button')];
+    const names = ['Agent Memory', 'DigitalMuseum', 'Local Archive'];
+    const art = cards.map(card => card.querySelector('img').getAttribute('src'));
+    let selected = 1;
+    function select(index) {
+      selected = (index + cards.length) % cards.length;
+      cards.forEach((card, i) => {
+        const relative = (i - selected + cards.length) % cards.length;
+        card.dataset.position = relative === 0 ? 'center' : relative === 1 ? 'right' : 'left';
+        if (i === selected) card.setAttribute('aria-current', 'true');
+        else card.removeAttribute('aria-current');
+      });
+      dots.forEach((dot, i) => i === selected ? dot.setAttribute('aria-current', 'true') : dot.removeAttribute('aria-current'));
+      document.getElementById('dock-title').textContent = names[selected];
+      document.getElementById('dock-image').src = art[selected];
+    }
+    cards.forEach((card, i) => card.addEventListener('click', () => select(i)));
+    dots.forEach((dot, i) => dot.addEventListener('click', () => select(i)));
+    document.getElementById('previous').addEventListener('click', () => select(selected - 1));
+    document.getElementById('next').addEventListener('click', () => select(selected + 1));
+    document.addEventListener('keydown', event => {
+      if (document.getElementById('evidence-dialog').open) return;
+      if (event.key === 'ArrowLeft') select(selected - 1);
+      if (event.key === 'ArrowRight') select(selected + 1);
+    });
+    const dialog = document.getElementById('evidence-dialog');
+    document.querySelectorAll('.evidence-link').forEach(button => button.addEventListener('click', () => dialog.showModal()));
+    document.getElementById('close-dialog').addEventListener('click', () => dialog.close());
+  </script>
+</body>
+</html>

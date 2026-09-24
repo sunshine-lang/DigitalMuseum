@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DigitalMuseum · F02 项目列表原型</title>
+<style>
+:root{font-family:Inter,"PingFang SC","Noto Sans SC",system-ui,sans-serif;color:#f8f3eb;background:#191615;font-synthesis:none}*{box-sizing:border-box}body{margin:0}button,input,select{font:inherit}button,a{touch-action:manipulation}button{cursor:pointer}a{color:inherit}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #eec58e;outline-offset:4px}button:disabled{opacity:.45;cursor:not-allowed}[hidden]{display:none!important}
+.room{position:relative;isolation:isolate;overflow:hidden;padding:24px 24px 34px;background:radial-gradient(ellipse 49% 45% at 50% 44%,#6e513e 0,#3b2c25 48%,transparent 100%),linear-gradient(#29231f,#181514 84%)}.room:before{content:"";position:absolute;z-index:-1;inset:0;opacity:.3;background:repeating-linear-gradient(90deg,transparent 0 16%,#080706 16.5% 17.3%,#654c3a 17.5% 18.5%,transparent 19% 34%);filter:blur(12px);mask-image:linear-gradient(#000,transparent 90%)}
+.chrome{max-width:1160px;margin:auto;min-height:54px;padding:6px 17px;display:flex;align-items:center;justify-content:space-between;gap:16px;background:#ffffff12;border:1px solid #ffffff35;border-radius:40px;backdrop-filter:blur(24px);box-shadow:0 12px 40px #0003}.brand{display:flex;align-items:center;gap:9px;font-size:12px;font-weight:750;letter-spacing:.08em;text-decoration:none}.brand-mark{display:grid;place-items:center;border:1px solid #e6c18d;border-radius:50%;color:#e6c18d;width:26px;height:26px;font:17px Georgia,serif}.chrome-step{color:#dbcebf;font-size:12px}.source-link{min-height:40px;display:inline-flex;align-items:center;color:#ead7bb;font-size:12px;text-underline-offset:4px}
+.hero{text-align:center;max-width:800px;margin:44px auto 0}.eyebrow{font-size:10px;letter-spacing:.2em;font-weight:750;text-transform:uppercase;color:#e7bf89}.hero h1{font-size:clamp(30px,4vw,46px);font-weight:550;line-height:1.18;letter-spacing:-.045em;margin:10px 0 13px}.hero p{color:#cfc3b6;font-size:14px;margin:0;line-height:1.7}.source-summary{margin:12px 0 0;color:#e9d8bf;font-size:12px}
+.gallery{height:432px;max-width:1180px;position:relative;margin:36px auto 0;perspective:1100px}.art-card{position:absolute;left:50%;top:0;width:330px;height:412px;padding:0;border:1px solid #ffffff88;border-radius:21px;overflow:hidden;text-align:left;color:#fff;background:#3f352d;box-shadow:0 25px 60px #0008;transition:transform .3s cubic-bezier(.2,.75,.2,1),filter .3s,opacity .3s}.art-card[data-position=center]{transform:translateX(-50%);z-index:3}.art-card[data-position=left]{transform:translateX(calc(-50% - 312px)) translateY(34px) rotateY(15deg) scale(.84);z-index:1;filter:brightness(.68);opacity:.84}.art-card[data-position=right]{transform:translateX(calc(-50% + 312px)) translateY(34px) rotateY(-15deg) scale(.84);z-index:1;filter:brightness(.68);opacity:.84}.art-card:hover{filter:brightness(1)}.art-card img{width:100%;height:100%;object-fit:cover;filter:sepia(.16) saturate(.83)}.art-card:after{content:"";position:absolute;inset:20% 0 0;background:linear-gradient(transparent,#14131166 38%,#10100ff7 100%)}.art-top,.art-copy{position:absolute;z-index:1;left:22px;right:22px}.art-top{top:18px;display:flex;align-items:center;justify-content:space-between;font-size:10px;letter-spacing:.08em}.glass-pill{padding:6px 9px;border:1px solid #ffffff6b;border-radius:99px;background:#16141180;backdrop-filter:blur(12px)}.art-copy{bottom:22px}.art-copy h2{font-size:28px;line-height:1.18;font-weight:600;letter-spacing:-.035em;margin:0 0 8px}.art-copy p{font-size:12px;line-height:1.6;margin:0;color:#ede2d4}.art-copy .art-path{font:10px/1.6 ui-monospace,SFMono-Regular,monospace;overflow-wrap:anywhere;margin:8px 0;color:#e1cbae}.art-bottom{display:flex;justify-content:space-between;align-items:center;margin-top:17px;color:#f1e5d5;font-size:12px}.art-bottom strong{font-size:20px;font-weight:550}
+.dock{display:flex;align-items:center;gap:12px;max-width:490px;margin:18px auto 0;padding:8px;border:1px solid #ffffff40;border-radius:99px;background:#ffffff17;backdrop-filter:blur(24px);box-shadow:0 12px 45px #0005}.arrow{flex:none;width:44px;height:44px;border-radius:50%;border:1px solid #ffffff40;background:#ffffff17;color:#fff;font-size:23px}.dock-info{flex:1;min-width:0}.dock-info strong,.dock-info span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dock-info strong{font-size:13px}.dock-info span{font-size:11px;color:#d2c0ad;margin-top:3px}.choose{min-height:44px;border:0;border-radius:99px;background:#e8c38e;color:#201a15;font-size:13px;font-weight:700;padding:10px 17px;white-space:nowrap}.room-foot{display:flex;justify-content:center;gap:20px;flex-wrap:wrap;margin:20px auto 0;color:#cfc0b0;font-size:11px}.room-foot a{color:#f1cf9e;text-underline-offset:4px}.gallery-empty{max-width:700px;margin:38px auto 12px;min-height:270px;border:1px solid #ffffff33;border-radius:20px;background:#ffffff0c;display:grid;place-content:center;text-align:center;padding:32px}.gallery-empty h2{font-size:25px;margin:0 0 12px}.gallery-empty p{max-width:490px;color:#d6c7b7;font-size:14px;line-height:1.8;margin:0}
+.directory{background:#f4f1ea;color:#1d252e;padding:68px max(24px,calc((100vw - 1160px)/2)) 80px}.directory .eyebrow{color:#795b37}.section-head{display:flex;align-items:end;justify-content:space-between;gap:24px}.section-head h2{font-size:32px;letter-spacing:-.035em;margin:8px 0 0}.section-head p{font-size:13px;color:#5d6771;line-height:1.7;margin:10px 0 0}.badge{padding:8px 12px;border-radius:99px;border:1px solid #c7beb1;font-size:11px;white-space:nowrap}.toolbar{display:flex;align-items:center;gap:12px;margin:27px 0 20px;flex-wrap:wrap}.search{flex:1;min-width:240px;position:relative}.search label{position:absolute;left:13px;top:13px;color:#6b6b64;font-size:16px}.search input{width:100%;height:46px;border:1px solid #cfc7bc;border-radius:8px;background:#fffdf9;padding:10px 16px 10px 36px;color:#1d252e}.toolbar select{height:46px;max-width:100%;padding:8px 34px 8px 13px;border:1px solid #cfc7bc;border-radius:8px;color:#1d252e;background:#fffdf9}.sort-note{font-size:12px;color:#69717a}.result-count{font-size:12px;color:#68717a;margin:0 0 12px}.notice{padding:15px 18px;margin-bottom:21px;border:1px solid #d4ba92;border-radius:8px;background:#f6ecd9;font-size:13px;line-height:1.7;color:#70501f}.notice a{font-weight:700;text-underline-offset:3px}
+.table-head,.project-row{display:grid;grid-template-columns:minmax(230px,1.7fr) 135px 82px minmax(155px,1fr) 105px 112px;gap:18px;align-items:center}.table-head{padding:12px 20px;color:#6c7277;font-size:11px;border-bottom:1px solid #cfc7bc}.project-row{padding:22px 20px;border-bottom:1px solid #ddd5ca;background:#fffdf98a}.project-row:first-child{border-top-left-radius:10px;border-top-right-radius:10px}.project-row:hover{background:#fffdf9}.project-name{display:flex;align-items:center;gap:13px;min-width:0}.mini-art{width:45px;height:57px;flex:none;object-fit:cover;border-radius:7px}.project-name h3{font-size:16px;margin:0 0 5px}.project-name code{display:block;font:10px/1.6 ui-monospace,SFMono-Regular,monospace;color:#716354;overflow-wrap:anywhere}.agents{display:flex;flex-wrap:wrap;gap:5px}.agent{border:1px solid #cfc6b9;border-radius:5px;padding:4px 6px;font-size:10px;color:#515c66;background:#f6f2eb}.count{font-size:19px;font-weight:550}.range,.activity{font-size:12px;color:#505d68;line-height:1.6}.activity small{display:block;color:#7a736b;font-size:10px}.row-action{min-height:44px;border:1px solid #b9ac9a;background:transparent;color:#72512f;border-radius:7px;font-size:12px;font-weight:700;padding:7px 12px}.read-state{display:block;font-size:10px;color:#47705b;margin-top:7px}.empty-list{padding:42px 24px;text-align:center;border:1px dashed #c8bdae;border-radius:9px}.empty-list h3{margin:0 0 10px;font-size:20px}.empty-list p{color:#66717a;font-size:14px;line-height:1.7}.plain-button{min-height:44px;padding:9px 16px;border:1px solid #bcae9a;background:#fffdf9;color:#1d252e;border-radius:7px;font-size:13px}
+.unassigned{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:24px;margin-top:28px;border:1px solid #cbbba3;border-left:3px solid #937147;border-radius:8px;background:#ebe4da}.unassigned h3{margin:0 0 8px;font-size:17px}.unassigned p{margin:0;font-size:13px;line-height:1.7;color:#5c646c}.scenario{margin-top:40px;padding-top:22px;border-top:1px solid #d6cdbf}.scenario summary{cursor:pointer;font-size:12px;color:#766856;min-height:44px;display:flex;align-items:center}.scenario p{font-size:12px;color:#69717a;line-height:1.7}.scenario-controls{display:flex;gap:9px;flex-wrap:wrap}.scenario button{min-height:40px;border:1px solid #c6bba9;border-radius:7px;padding:8px 12px;background:transparent;color:#605749;font-size:12px}.scenario button[aria-pressed=true]{background:#ddd0bc;border-color:#9c8058}.footer{margin-top:26px;font-size:12px;color:#726b62;line-height:1.7}
+dialog{width:min(600px,calc(100% - 30px));max-height:88vh;overflow:auto;padding:30px;border:1px solid #d2c6b5;border-radius:17px;background:#fffdf9;color:#1d252e;box-shadow:0 30px 100px #0008}dialog::backdrop{background:#151310bd;backdrop-filter:blur(7px)}dialog .eyebrow{color:#795b37}dialog h2{font-size:28px;letter-spacing:-.035em;margin:12px 0}dialog p{font-size:14px;line-height:1.8;color:#57636f}dialog code{display:block;font:12px/1.8 ui-monospace,SFMono-Regular,monospace;overflow-wrap:anywhere;background:#f2eee7;padding:12px;border-radius:6px}dialog dl{display:grid;grid-template-columns:112px 1fr;gap:13px;margin:25px 0}dialog dt{font-size:13px;color:#756f67}dialog dd{font-size:14px;margin:0}dialog .next-note{padding:15px;background:#eae4db;border-radius:8px;font-size:13px;line-height:1.8}dialog .dialog-footer{display:flex;justify-content:space-between;align-items:center;gap:18px;margin-top:24px}dialog .dialog-footer small{font-size:11px;color:#776d60;line-height:1.7}.issue{border-top:1px solid #ddd2c3;padding:15px 0}.issue strong{font-size:14px}.issue p{margin:6px 0 0;font-size:13px}
+@media(max-width:1100px){.art-card:not([data-position=center]) .art-top,.art-card:not([data-position=center]) .art-copy{opacity:0}.table-head{display:none}.project-row{grid-template-columns:minmax(210px,1.5fr) 1fr 70px 1fr}.activity{grid-column:2}.row-action{grid-column:4;grid-row:2}.project-name{grid-row:span 2}.range{grid-column:4}.sort-note{margin-left:auto}.art-card[data-position=left]{transform:translateX(calc(-50% - 240px)) translateY(32px) scale(.84)}.art-card[data-position=right]{transform:translateX(calc(-50% + 240px)) translateY(32px) scale(.84)}}
+@media(max-width:600px){.room{padding:15px 14px 27px}.chrome{padding:5px 11px}.chrome-step{display:none}.brand{font-size:10px}.source-link{font-size:11px}.hero{margin-top:38px}.hero p{max-width:290px;margin:auto}.gallery{height:408px;margin-top:30px}.art-card{width:286px;height:386px}.art-card[data-position=left]{transform:translateX(calc(-50% - 197px)) translateY(30px) scale(.82)}.art-card[data-position=right]{transform:translateX(calc(-50% + 197px)) translateY(30px) scale(.82)}.art-card:not([data-position=center]) .art-top,.art-card:not([data-position=center]) .art-copy{opacity:0}.art-copy h2{font-size:25px}.dock{gap:8px;margin-top:4px}.arrow{width:40px;height:40px}.choose{font-size:12px;padding:9px 12px}.dock-info span{font-size:10px}.room-foot{gap:9px;font-size:10px}.directory{padding:49px 20px 65px}.section-head{display:block}.badge{display:inline-block;margin-top:15px}.toolbar{gap:9px}.search{flex-basis:100%}.sort-note{font-size:11px}.project-row{display:grid;grid-template-columns:1fr 1fr;gap:15px;padding:22px 16px;margin-bottom:12px;border:1px solid #d7cebf;border-radius:10px}.project-name{grid-column:1/-1;grid-row:auto}.agents{grid-column:1;grid-row:2}.count{grid-column:2;grid-row:2;text-align:right}.count:after{content:' 条会话';font-size:11px;font-weight:400;color:#717575}.range{grid-column:1;grid-row:3}.range:before{content:'记录覆盖时间';display:block;font-size:10px;color:#81796e}.activity{grid-column:2;grid-row:3;text-align:right}.row-action{grid-column:1/-1;grid-row:4}.read-state{margin-top:3px}.unassigned{display:block;padding:20px}.unassigned button{margin-top:16px}.gallery-empty{min-height:330px;padding:22px}.gallery-empty h2{font-size:22px}dialog{padding:24px}dialog dl{grid-template-columns:92px 1fr}}
+@media(prefers-reduced-motion:reduce){.art-card{transition:none}}
+</style>
+</head>
+<body>
+<main>
+<section class="room" aria-labelledby="page-title">
+  <nav class="chrome" aria-label="原型导航"><a class="brand" href="f01-local-sessions-prototype.html"><span class="brand-mark" aria-hidden="true">M</span>DIGITALMUSEUM</a><span class="chrome-step">接入会话 → <strong>选择项目</strong> → 读取历史</span><a class="source-link" href="f01-local-sessions-prototype.html">管理会话来源 ↗</a></nav>
+  <header class="hero"><span class="eyebrow">Your projects / 回到工作的来处</span><h1 id="page-title">你想回到哪个项目？</h1><p>选择一个项目，找回之前的选择、变化和原因。</p><div class="source-summary" id="source-summary"></div></header>
+  <div class="gallery" id="gallery" aria-label="项目聚焦浏览"></div>
+  <div class="gallery-empty" id="gallery-empty" hidden><h2 id="hero-empty-title"></h2><p id="hero-empty-copy"></p></div>
+  <div class="dock" id="dock"><button class="arrow" id="previous" type="button" aria-label="上一个项目">‹</button><div class="dock-info" aria-live="polite"><strong id="dock-name"></strong><span id="dock-position"></span></div><button class="choose" id="choose" type="button">选择项目</button><button class="arrow" id="next" type="button" aria-label="下一个项目">›</button></div>
+  <div class="room-foot"><span>原型演示 · 合成项目与数据 · 插画仅作装饰</span><a href="#directory">查看完整项目目录 ↓</a></div>
+</section>
+<section class="directory" id="directory" aria-labelledby="directory-title">
+  <header class="section-head"><div><span class="eyebrow">Project directory</span><h2 id="directory-title">全部项目</h2><p>按最近活动排列。同名项目通过完整目录区分。</p></div><span class="badge">仅在项目名称与路径中查找</span></header>
+  <div class="toolbar"><div class="search"><label for="search" aria-label="查找项目">⌕</label><input id="search" type="search" aria-label="查找项目名称或路径" placeholder="查找项目名称或路径"></div><select id="agent-filter" aria-label="按 Agent 筛选"><option value="all">全部 Agent</option><option value="claude">Claude Code</option><option value="codex">Codex</option></select><span class="sort-note">最近活动 ↓</span></div>
+  <div class="notice" id="source-notice" hidden></div>
+  <p class="result-count" id="result-count" aria-live="polite"></p>
+  <div class="table-head" id="table-head" aria-hidden="true"><span>项目 / 所在目录</span><span>来源 Agent</span><span>会话数</span><span>记录覆盖时间</span><span>最近活动</span><span>读取状态</span></div>
+  <div id="project-list" role="list" aria-label="项目目录"></div>
+  <div class="empty-list" id="empty-list" hidden><h3 id="empty-title"></h3><p id="empty-copy"></p><button type="button" class="plain-button" id="clear-filter">清除筛选</button></div>
+  <aside class="unassigned" id="unassigned"><div><h3 id="unassigned-title"></h3><p>部分会话缺少明确项目目录。它们保留在这里，等待核对。</p></div><button class="plain-button" id="view-unassigned" type="button">查看归属说明 ↗</button></aside>
+  <details class="scenario"><summary>原型状态演示</summary><p>切换下面的合成场景，检查空状态和读取失败的区别。场景按钮属于评审工具。</p><div class="scenario-controls"><button type="button" data-scenario="normal" aria-pressed="true">正常发现</button><button type="button" data-scenario="empty" aria-pressed="false">目录中没有项目</button><button type="button" data-scenario="failure" aria-pressed="false">来源读取失败</button></div></details>
+  <p class="footer">F02 展示本地发现结果；多轮对话的读取属于下一步 F03。本页没有访问真实会话目录，也没有发起模型请求。</p>
+</section>
+</main>
+<dialog id="project-dialog" aria-labelledby="dialog-title"><span class="eyebrow">Selected project / 所选项目</span><h2 id="dialog-title"></h2><code id="dialog-path"></code><dl id="dialog-metadata"></dl><div class="next-note">下一步只读取这个项目的多轮历史，并报告读取成功、失败和跳过的情况。生成项目回顾仍需你之后主动触发。</div><div class="dialog-footer"><button class="plain-button" type="button" data-close>返回项目列表</button><button class="choose" id="go-read" type="button">确认范围，读取历史 →</button></div></dialog>
+<dialog id="unassigned-dialog" aria-labelledby="unassigned-dialog-title"><span class="eyebrow">Unassigned sessions</span><h2 id="unassigned-dialog-title">这些记录暂时无法归入项目</h2><p>同名、标题相近或时间相邻，都不足以确认是同一个项目。</p><div id="unassigned-issues"></div><div class="dialog-footer"><small>这里只展示归属原因，原始会话仍保留。</small><button class="plain-button" type="button" data-close>返回项目列表</button></div></dialog>
+<script src="prototype-storage.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const params=new URLSearchParams(location.search),fromF01=params.get('from')==='f01';
+const bounded=v=>v!==null&&/^\d{1,5}$/.test(v)?Math.min(Number(v),10000):0;
+const sourceTotals={claude:fromF01?bounded(params.get('claude')):86,codex:fromF01?bounded(params.get('codex')):52};
+const sourceNames={claude:'Claude Code',codex:'Codex'};
+const sourceStatuses={claude:params.get('claudeStatus'),codex:params.get('codexStatus')};
+const sourceRanges={claude:{start:'2026-07-01',end:'2026-09-20'},codex:{start:'2026-08-03',end:'2026-09-24'}};
+for(const key of Object.keys(sourceRanges)){
+ const start=params.get(key+'Start'),end=params.get(key+'End');
+ if(fromF01&&/^\d{4}-\d{2}-\d{2}$/.test(start||'')&&/^\d{4}-\d{2}-\d{2}$/.test(end||'')&&start<=end&&Number.isFinite(Date.parse(start))&&Number.isFinite(Date.parse(end)))sourceRanges[key]={start,end};
+}
+const skipped=fromF01?bounded(params.get('skipped')):2;
+const base=[
+ {id:'museum',name:'DigitalMuseum',path:'/Users/demo/Projects/DigitalMuseum',counts:{claude:34,codex:21},start:'2026-07-01',end:'2026-09-24',art:'gathered-pages-v2',caption:'找回项目为什么会变成今天这样。'},
+ {id:'agent',name:'Agent Memory',path:'/Users/demo/Projects/agent-memory',counts:{claude:26,codex:18},start:'2026-08-03',end:'2026-09-21',art:'everyday-steps',caption:'让走过的路，成为下一次开始的依据。'},
+ {id:'archive-main',name:'Local Archive',path:'/Users/demo/Projects/local-archive',counts:{claude:14,codex:7},start:'2026-08-08',end:'2026-09-18',art:'continuous-light',caption:'保留记录与解释之间的连接。'},
+ {id:'archive-lab',name:'Local Archive',path:'/Users/demo/Experiments/local-archive',counts:{claude:8,codex:0},start:'2026-08-15',end:'2026-09-10',art:'paper-study',caption:'同一个名字，也可能是另一段尝试。'},
+ {id:'toolkit',name:'Builder Toolkit',path:'/Users/demo/Projects/builder-toolkit',counts:{claude:0,codex:3},start:'2026-09-01',end:'2026-09-03',art:'bridge-study',caption:'从一次小工具，开始一段新的工作。'}
+];
+const unassignedCounts={claude:0,codex:0};
+// Synthetic allocation keeps the F01 handoff total consistent, including its scenario counts.
+for(const key of ['claude','codex']){
+ const weights=[...base.map(p=>p.counts[key]),key==='claude'?4:3],total=weights.reduce((a,b)=>a+b,0);
+ const raw=weights.map(w=>w/total*sourceTotals[key]),counts=raw.map(Math.floor);
+ const order=raw.map((v,i)=>({i,f:v-counts[i]})).sort((a,b)=>b.f-a.f);
+ for(let n=sourceTotals[key]-counts.reduce((a,b)=>a+b,0),i=0;i<n;i++)counts[order[i].i]++;
+ base.forEach((p,i)=>p.counts[key]=counts[i]);unassignedCounts[key]=counts.at(-1);
+}
+for(const p of base){
+ const active=Object.keys(sourceNames).filter(k=>p.counts[k]>0);
+ if(active.length){p.start=active.map(k=>p.start>sourceRanges[k].start?p.start:sourceRanges[k].start).sort()[0];p.end=active.map(k=>p.end<sourceRanges[k].end?p.end:sourceRanges[k].end).sort().at(-1);}
+}
+let selectedId=params.get('focus')||'museum',readProjectId=null,scenario='normal',visible=[];
+const total=p=>p.counts.claude+p.counts.codex;
+const catalog=base.filter(p=>total(p)>0);
+const savedFor=p=>MuseumStore.list(p.path).versions.at(-1);
+function chooseProject(p){if(savedFor(p)){location.href='f05-f08-project-museum-prototype.html?'+new URLSearchParams({project:p.id,resume:'1'}).toString();}else openProject(p);}
+const agents=p=>Object.keys(sourceNames).filter(k=>p.counts[k]>0);
+const artPath=p=>'../../public/gallery/'+p.art+'.png';
+const recent=p=>p.end==='2026-09-24'?'今天':`${Math.round((Date.UTC(2026,8,24)-Date.parse(p.end+'T00:00:00Z'))/86400000)} 天前`;
+function element(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;}
+function filtered(){const q=$('search').value.trim().toLowerCase(),agent=$('agent-filter').value;return catalog.filter(p=>(agent==='all'||p.counts[agent]>0)&&(!q||(p.name+' '+p.path).toLowerCase().includes(q)));}
+function setEmpty(title,copy){$('hero-empty-title').textContent=title;$('hero-empty-copy').textContent=copy;$('empty-title').textContent=title;$('empty-copy').textContent=copy;}
+function render(){
+ visible=scenario==='normal'?filtered():[];
+ if(!visible.some(p=>p.id===selectedId))selectedId=visible[0]?.id||null;
+ const active=visible.find(p=>p.id===selectedId),index=visible.indexOf(active);
+ const allSessions=sourceTotals.claude+sourceTotals.codex,unassigned=unassignedCounts.claude+unassignedCounts.codex;
+ $('source-summary').textContent=scenario==='failure'?'来源检查失败 · 项目数量未知':scenario==='empty'?'已完成检查 · 未发现项目':`${catalog.length} 个项目 · ${allSessions} 条会话 · 合成数据`;
+ $('gallery').replaceChildren();$('project-list').replaceChildren();
+ $('gallery').hidden=!active;$('dock').hidden=!active;$('gallery-empty').hidden=!!active;$('empty-list').hidden=!!active;$('table-head').hidden=!active;
+ if(active){
+  const slots=[{p:visible[(index-1+visible.length)%visible.length],pos:'left'},{p:visible[(index+1)%visible.length],pos:'right'},{p:active,pos:'center'}];
+  const used=new Set();for(const {p,pos} of slots.reverse()){if(used.has(p.id))continue;used.add(p.id);const card=element('button','art-card');card.type='button';card.dataset.position=pos;card.setAttribute('aria-label',`聚焦 ${p.name}，${p.path}`);if(pos==='center')card.setAttribute('aria-current','true');
+   const img=element('img');img.src=artPath(p);img.alt='';card.append(img);
+   const top=element('span','art-top');top.append(element('span','',`PROJECT / ${String(catalog.indexOf(p)+1).padStart(2,'0')}`),element('span','glass-pill','可读取'));card.append(top);
+   const copy=element('span','art-copy');copy.append(element('h2','',p.name),element('p','',p.caption),element('p','art-path',p.path.replace('/Users/demo/','~/')));const bottom=element('span','art-bottom');bottom.append(element('span','',agents(p).map(k=>sourceNames[k]).join(' + ')),element('strong','',String(total(p))));copy.append(bottom,element('p','',`条会话 · ${recent(p)}活动`));card.append(copy);card.addEventListener('click',()=>{selectedId=p.id;render();$('gallery').querySelector('[aria-current=true]')?.focus({preventScroll:true})});$('gallery').append(card);
+  }
+  $('dock-name').textContent=active.name;$('choose').textContent=savedFor(active)?'打开已保存回顾':'选择项目';$('dock-position').textContent=`${index+1} / ${visible.length} · ${recent(active)}活动`;$('previous').disabled=$('next').disabled=visible.length<2;
+ }
+ for(const p of visible){
+  const row=element('article','project-row');row.setAttribute('role','listitem');row.dataset.project=p.id;
+  const identity=element('div','project-name'),img=element('img','mini-art');img.src=artPath(p);img.alt='';const info=element('div');info.append(element('h3','',p.name),element('code','',p.path));identity.append(img,info);
+  const badges=element('div','agents');for(const k of agents(p))badges.append(element('span','agent',sourceNames[k]));
+  const range=element('div','range');range.append(element('span','',p.start+' —'),element('br'),element('span','',p.end));const activity=element('div','activity',recent(p));activity.append(element('small','',p.end));
+  const saved=savedFor(p);const action=element('button','row-action',saved?'打开已保存回顾 ↗':'选择项目 ↗');action.type='button';action.setAttribute('aria-label',`${saved?'打开已保存回顾':'选择'} ${p.name}，${p.path}`);action.append(element('span','read-state',saved?'浏览器本地存档':'可读取'));action.addEventListener('click',()=>chooseProject(p));
+  row.append(identity,badges,element('div','count',String(total(p))),range,activity,action);$('project-list').append(row);
+ }
+ $('result-count').textContent=scenario==='failure'?'项目数与会话数暂时无法确定':scenario==='empty'?'检查完成，未发现可识别的项目':`显示 ${visible.length} / ${catalog.length} 个项目 · 会话数包含该项目全部已接入来源`;
+ $('clear-filter').hidden=scenario!=='normal'||catalog.length===0;
+ if(scenario==='failure')setEmpty('暂时无法读取项目列表','来源读取失败，项目数量尚不明确。请返回会话来源检查目录后重试。');
+ else if(scenario==='empty'||!catalog.length)setEmpty('还没有发现项目','目录检查已完成。可以返回来源设置更换目录，再重新检查。');
+ else if(!active)setEmpty('没有匹配的项目','试试其他项目名称或目录，或清除 Agent 筛选。');
+ const missing=Object.keys(sourceNames).filter(k=>sourceTotals[k]===0&&sourceStatuses[k]&&sourceStatuses[k]!=='empty');
+ $('source-notice').hidden=!missing.length&&skipped===0&&scenario!=='failure';$('source-notice').replaceChildren();
+ if(!$('source-notice').hidden){const text=scenario==='failure'?'读取失败，列表尚不能反映全部项目。':`${missing.map(k=>sourceNames[k]+'：'+({missing:'目录未找到',error:'读取失败',idle:'尚未检查',checking:'尚未完成检查'}[sourceStatuses[k]]||'暂不可读')).join('；')}${missing.length&&skipped?'。':''}${skipped?`来源检查另有 ${skipped} 条记录跳过，当前列表可能不完整。`:''}`;$('source-notice').append(document.createTextNode(text+' '));const a=element('a','','查看来源');a.href='f01-local-sessions-prototype.html';$('source-notice').append(a);}
+ $('unassigned').hidden=scenario!=='normal'||unassigned===0;$('unassigned-title').textContent=`${unassigned} 条会话的项目归属待核对`;
+ document.querySelectorAll('[data-scenario]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.scenario===scenario)));
+}
+function move(delta){if(!visible.length)return;const i=visible.findIndex(p=>p.id===selectedId);selectedId=visible[(i+delta+visible.length)%visible.length].id;render();}
+function openProject(p){readProjectId=p.id;$('dialog-title').textContent=p.name;$('dialog-path').textContent=p.path;$('dialog-metadata').replaceChildren();for(const [label,value]of[['来源',agents(p).map(k=>`${sourceNames[k]} · ${p.counts[k]} 条`).join(' / ')],['会话总数',`${total(p)} 条（合成数据）`],['记录覆盖',`${p.start} — ${p.end}`],['最近活动',`${recent(p)} · ${p.end}`],['读取状态','可读取；尚未读取多轮正文']])$('dialog-metadata').append(element('dt','',label),element('dd','',value));$('project-dialog').showModal();}
+$('go-read').addEventListener('click',()=>{const p=catalog.find(p=>p.id===readProjectId);if(!p)return;const next=new URLSearchParams({from:'f02',project:p.id,claude:String(p.counts.claude),codex:String(p.counts.codex),start:p.start,end:p.end,catalog:params.toString()});for(const key of ['claude','codex']){next.set(key+'Start',sourceRanges[key].start);next.set(key+'End',sourceRanges[key].end);}location.href='f03-read-history-prototype.html?'+next.toString()});
+$('previous').addEventListener('click',()=>move(-1));$('next').addEventListener('click',()=>move(1));$('choose').addEventListener('click',()=>{const p=visible.find(p=>p.id===selectedId);if(p)chooseProject(p)});
+$('gallery').addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();move(e.key==='ArrowRight'?1:-1);$('gallery').querySelector('[aria-current=true]')?.focus()}});
+$('search').addEventListener('input',render);$('agent-filter').addEventListener('change',render);$('clear-filter').addEventListener('click',()=>{$('search').value='';$('agent-filter').value='all';render();$('search').focus()});
+document.querySelectorAll('[data-scenario]').forEach(b=>b.addEventListener('click',()=>{scenario=b.dataset.scenario;render()}));
+document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>b.closest('dialog').close()));
+$('view-unassigned').addEventListener('click',()=>{$('unassigned-issues').replaceChildren();for(const k of Object.keys(sourceNames)){if(!unassignedCounts[k])continue;const box=element('div','issue');box.append(element('strong','',`${sourceNames[k]} · ${unassignedCounts[k]} 条（演示）`),element('p','',k==='claude'?'目录标识无法唯一还原项目路径，保留待核对。':'会话元数据缺少明确工作目录，无法可靠分配项目。'));$('unassigned-issues').append(box)}$('unassigned-dialog').showModal()});
+render();
+</script>
+</body>
+</html>
